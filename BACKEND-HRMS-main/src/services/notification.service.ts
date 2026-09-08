@@ -98,10 +98,13 @@ export const notificationService = {
       console.log(`[Nodemailer] Falling back to SMTP to send email to ${to}`)
       try {
         const transporter = getNodemailerTransporter()
+        const rawFrom = process.env.SMTP_FROM || process.env.RESEND_FROM || 'HRMS <no-reply@hrmsvrpigroup.com>'
+        const emailMatch = rawFrom.match(/<([^>]+)>/)
+        const senderEmail = emailMatch ? emailMatch[1] : (rawFrom.includes('@') ? rawFrom.trim() : (process.env.SMTP_USER?.includes('@') ? process.env.SMTP_USER : 'no-reply@hrmsvrpigroup.com'))
+
         const senderFrom = fromNameOverride
-          ? `"${fromNameOverride}" <${process.env.SMTP_USER || 'vrpigroup@gmail.com'}>`
-          : (process.env.SMTP_FROM 
-              || (process.env.SMTP_USER ? `"VR PI" <${process.env.SMTP_USER}>` : '"VR PI" <vrpigroup@gmail.com>'))
+          ? `"${fromNameOverride}" <${senderEmail}>`
+          : rawFrom
 
         const info = await transporter.sendMail({
           from: senderFrom,
