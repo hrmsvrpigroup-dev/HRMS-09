@@ -235,6 +235,21 @@ function formatBytes(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
+export function parseTimeToMinutes(timeStr: string): number {
+  if (!timeStr) return 0;
+  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!match) return 0;
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const meridiem = (match[3] || '').toUpperCase();
+  if (meridiem === 'PM') {
+    if (hours < 12) hours += 12;
+  } else if (meridiem === 'AM') {
+    if (hours === 12) hours = 24; // 12:00 AM midnight (end of day)
+  }
+  return hours * 60 + minutes;
+}
+
 export function getCandidateCode(c: any): string {
   if (c && c.candidateCode) return c.candidateCode;
   const str = (c?.email || c?.id || c?.phone || `${c?.firstName || ''}${c?.lastName || ''}` || 'cand').toLowerCase();
@@ -1543,6 +1558,22 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
     const normTime = interviewForm.time.trim().toLowerCase();
     const normDate = interviewForm.date.trim();
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+
+    if (normDate < todayStr) {
+      alert('⚠️ Cannot schedule an interview on a past date. Please select today or a future date.');
+      return;
+    }
+
+    if (normDate === todayStr) {
+      const now = new Date();
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      const slotMinutes = parseTimeToMinutes(interviewForm.time);
+      if (slotMinutes < currentMinutes) {
+        alert(`⚠️ Time slot "${interviewForm.time}" has already passed today. Please select a current or future time slot.`);
+        return;
+      }
+    }
 
     // Block duplicate time slot on the same date
     const conflictingCand = candidates.find(c => 
@@ -4354,18 +4385,51 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   className="rec-search-input" 
                                   style={{ width: '100%', paddingLeft: '0.85rem', height: '40px', marginTop: '4px', borderRadius: '0.75rem', fontWeight: 700 }}
                                   value={interviewForm.date}
-                                  onChange={e => setInterviewForm({...interviewForm, date: e.target.value})}
+                                  min={format(new Date(), 'yyyy-MM-dd')}
+                                  onChange={e => {
+                                    const newDate = e.target.value;
+                                    setInterviewForm(prev => {
+                                      let newTime = prev.time;
+                                      const todayStr = format(new Date(), 'yyyy-MM-dd');
+                                      if (newDate === todayStr && newTime) {
+                                        const curMin = new Date().getHours() * 60 + new Date().getMinutes();
+                                        if (parseTimeToMinutes(newTime) < curMin) {
+                                          newTime = '';
+                                        }
+                                      }
+                                      return { ...prev, date: newDate, time: newTime };
+                                    });
+                                  }}
                                   required
                                 />
                               </div>
                               <div className="auth-luxury-label">
                                 Time Slot *
                                 {(() => {
-                                  const slots = [
-                                    '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM',
-                                    '12:00 PM', '12:30 PM', '01:30 PM', '02:00 PM', '02:30 PM', '03:00 PM',
-                                    '03:30 PM', '04:00 PM', '04:30 PM', '05:00 PM', '05:30 PM', '06:00 PM'
+                                  const allSlots = [
+                                    '08:00 AM', '08:30 AM', '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM',
+                                    '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM',
+                                    '02:00 PM', '02:30 PM', '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM',
+                                    '05:00 PM', '05:30 PM', '06:00 PM', '06:30 PM', '07:00 PM', '07:30 PM',
+                                    '08:00 PM', '08:30 PM', '09:00 PM', '09:30 PM', '10:00 PM', '10:30 PM',
+                                    '11:00 PM', '11:30 PM', '12:00 AM'
                                   ];
+
+                                  const todayStr = format(new Date(), 'yyyy-MM-dd');
+                                  const isSelectedDateToday = interviewForm.date === todayStr;
+                                  const isSelectedDatePast = Boolean(interviewForm.date && interviewForm.date < todayStr);
+                                  const now = new Date();
+                                  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+                                  // Filter slots: If today, only show current and future time slots (hide overed/past slots)
+                                  const slots = allSlots.filter(s => {
+                                    if (isSelectedDatePast) return false;
+                                    if (isSelectedDateToday) {
+                                      return parseTimeToMinutes(s) >= currentMinutes;
+                                    }
+                                    return true;
+                                  });
+
                                   const isConflict = candidates.some(c => 
                                     c.interviewDate === interviewForm.date && 
                                     (c.interviewTime || '').trim().toLowerCase() === (interviewForm.time || '').trim().toLowerCase() && 
@@ -4396,7 +4460,13 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                         onChange={e => setInterviewForm({ ...interviewForm, time: e.target.value })}
                                         required
                                       >
-                                        <option value="">-- Select Available Slot --</option>
+                                        <option value="">
+                                          {isSelectedDatePast 
+                                            ? '-- Past Date (No Slots Available) --' 
+                                            : isSelectedDateToday && slots.length === 0
+                                            ? '-- No Remaining Slots Available Today --'
+                                            : '-- Select Available Slot --'}
+                                        </option>
                                         {slots.map(s => {
                                           const bookedCand = candidates.find(c => 
                                             c.interviewDate === interviewForm.date && 
@@ -4419,6 +4489,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                       {isConflict && conflictingCand && (
                                         <p style={{ fontSize: '0.68rem', color: '#dc2626', fontWeight: 800, margin: '4px 0 0 0' }}>
                                           ⚠️ Slot "{interviewForm.time}" is BOOKED for {conflictingCand.firstName} {conflictingCand.lastName}.
+                                        </p>
+                                      )}
+                                      {isSelectedDateToday && slots.length === 0 && (
+                                        <p style={{ fontSize: '0.68rem', color: '#ea580c', fontWeight: 700, margin: '4px 0 0 0' }}>
+                                          ℹ️ All interview slots for today have already passed. Please choose a future date.
                                         </p>
                                       )}
                                     </div>

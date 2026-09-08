@@ -61,9 +61,13 @@ export const notificationService = {
           content: Buffer.isBuffer(att.content) ? att.content.toString('base64') : att.content,
         }))
 
+        const rawResendFrom = process.env.RESEND_FROM || 'HRMS <no-reply@hrmsvrpigroup.com>'
+        const emailMatch = rawResendFrom.match(/<([^>]+)>/)
+        const senderEmail = emailMatch ? emailMatch[1] : rawResendFrom.trim()
+
         const fromAddress = fromNameOverride 
-          ? `"${fromNameOverride}" <onboarding@resend.dev>`
-          : (process.env.RESEND_FROM || process.env.SMTP_FROM || '"VR PI" <onboarding@resend.dev>')
+          ? `"${fromNameOverride}" <${senderEmail}>`
+          : rawResendFrom
 
         const { data, error } = await getResendClient().emails.send({
           from: fromAddress, 
