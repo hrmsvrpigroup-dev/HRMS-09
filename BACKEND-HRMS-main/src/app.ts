@@ -41,61 +41,83 @@ app.use((_req, res, next) => {
   next()
 })
 
-app.use(
-  cors({
-    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      if (!origin) return callback(null, true)
+const corsOptions: cors.CorsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    if (!origin) return callback(null, true)
+    
+    let isAllowed = allowedOrigins.includes(origin) || 
+                    origin.startsWith('http://localhost:') || 
+                    origin.startsWith('http://127.0.0.1:')
+
+    try {
+      const originHost = new URL(origin).hostname
       
-      let isAllowed = allowedOrigins.includes(origin) || 
-                      origin.startsWith('http://localhost:') || 
-                      origin.startsWith('http://127.0.0.1:')
-
-      try {
-        const originHost = new URL(origin).hostname
-        
-        // Allow IP addresses (e.g. 192.168.x.x, 10.x.x.x, 172.x.x.x, 127.0.0.1)
-        if (/^(\d{1,3}\.){3}\d{1,3}$/.test(originHost) || originHost.includes(':')) {
-          isAllowed = true
-        }
-
-        // Allow Vercel deployment domains (*.vercel.app, *.projects.vercel.app, *.vercel.dev)
-        if (originHost.includes('vercel')) {
-          isAllowed = true
-        }
-
-
-        // Allow ngrok deployment/tunnel domains (*.ngrok-free.app, *.ngrok-free.dev, etc.)
-        if (originHost.includes('ngrok')) {
-          isAllowed = true
-        }
-
-        // Allow any subdomain on localhost for development (e.g. tenant.localhost, superadmin.localhost)
-        if (originHost.endsWith('.localhost') || originHost === 'localhost') {
-          isAllowed = true
-        }
-
-        // Allow any subdomain of production allowed origins (e.g. tenant.domain.com, superadmin.domain.com)
-        if (!isAllowed) {
-          isAllowed = allowedOrigins.some(allowed => {
-            try {
-              const allowedHost = new URL(allowed).hostname
-              return originHost === allowedHost || originHost.endsWith('.' + allowedHost)
-            } catch {
-              return false
-            }
-          })
-        }
-      } catch (err) {
-        console.error('CORS URL parsing error:', err)
+      // Allow IP addresses (e.g. 192.168.x.x, 10.x.x.x, 172.x.x.x, 127.0.0.1)
+      if (/^(\d{1,3}\.){3}\d{1,3}$/.test(originHost) || originHost.includes(':')) {
+        isAllowed = true
       }
 
-      callback(null, isAllowed)
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'x-tenant-id'],
-  })
-)
+      // Allow Vercel deployment domains (*.vercel.app, *.projects.vercel.app, *.vercel.dev)
+      if (originHost.includes('vercel')) {
+        isAllowed = true
+      }
+
+      // Allow Render domains (*.onrender.com)
+      if (originHost.includes('onrender.com')) {
+        isAllowed = true
+      }
+
+      // Allow ngrok deployment/tunnel domains (*.ngrok-free.app, *.ngrok-free.dev, etc.)
+      if (originHost.includes('ngrok')) {
+        isAllowed = true
+      }
+
+      // Allow any subdomain on localhost for development (e.g. tenant.localhost, superadmin.localhost)
+      if (originHost.endsWith('.localhost') || originHost === 'localhost') {
+        isAllowed = true
+      }
+
+      // Allow hrmsvrpigroup.com and any subdomains
+      if (originHost === 'hrmsvrpigroup.com' || originHost.endsWith('.hrmsvrpigroup.com')) {
+        isAllowed = true
+      }
+
+      // Allow any subdomain of production allowed origins (e.g. tenant.domain.com, superadmin.domain.com)
+      if (!isAllowed) {
+        isAllowed = allowedOrigins.some(allowed => {
+          try {
+            const allowedHost = new URL(allowed).hostname
+            return originHost === allowedHost || originHost.endsWith('.' + allowedHost)
+          } catch {
+            return false
+          }
+        })
+      }
+    } catch (err) {
+      console.error('CORS URL parsing error:', err)
+    }
+
+    callback(null, isAllowed)
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'x-tenant-id',
+    'x-tenant-subdomain',
+    'Access-Control-Request-Method',
+    'Access-Control-Request-Headers',
+  ],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  optionsSuccessStatus: 200,
+}
+
+app.use(cors(corsOptions))
+app.options('*', cors(corsOptions))
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }))
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true }))
