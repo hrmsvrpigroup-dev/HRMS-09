@@ -245,7 +245,7 @@ export function parseTimeToMinutes(timeStr: string): number {
   if (meridiem === 'PM') {
     if (hours < 12) hours += 12;
   } else if (meridiem === 'AM') {
-    if (hours === 12) hours = 24; // 12:00 AM midnight (end of day)
+    if (hours === 12) hours = 0; // 12:00 AM is 00:00 (start of day)
   }
   return hours * 60 + minutes;
 }
@@ -4411,8 +4411,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                     '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM',
                                     '02:00 PM', '02:30 PM', '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM',
                                     '05:00 PM', '05:30 PM', '06:00 PM', '06:30 PM', '07:00 PM', '07:30 PM',
-                                    '08:00 PM', '08:30 PM', '09:00 PM', '09:30 PM', '10:00 PM', '10:30 PM',
-                                    '11:00 PM', '11:30 PM', '12:00 AM'
+                                    '08:00 PM'
                                   ];
 
                                   const todayStr = format(new Date(), 'yyyy-MM-dd');
