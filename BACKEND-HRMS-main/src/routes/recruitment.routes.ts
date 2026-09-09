@@ -7,8 +7,9 @@ import { tenantIsolation } from '../middleware/tenant.middleware'
 
 const router = Router()
 
-// Public real-time Google Form/Sheet response poll route
+// Public real-time Google Form/Sheet response poll routes
 router.get('/live-google-responses', recruitmentController.fetchLiveSheetData)
+router.get('/live-document-responses', recruitmentController.fetchLiveDocumentSheetData)
 
 router.use(authenticate, authorize('ADMIN', 'HR'), tenantIsolation)
 router.get('/jobs', recruitmentController.jobs)
@@ -20,6 +21,7 @@ router.patch('/applications/:id/ai-screen', recruitmentController.aiScreenCandid
 router.patch('/applications/:id/interview', recruitmentController.scheduleInterview)
 router.post('/generate-teams-link', recruitmentController.generateTeamsLink)
 router.post('/send-interview-invite', recruitmentController.sendInterviewInviteDirect)
+router.post('/send-call-letter', recruitmentController.sendCallLetterDirect)
 router.patch('/applications/:id/offer', recruitmentController.manageOffer)
 router.patch('/applications/:id/documents-verify', recruitmentController.verifyDocuments)
 router.post('/applications/:id/onboard', recruitmentController.initiateOnboarding)

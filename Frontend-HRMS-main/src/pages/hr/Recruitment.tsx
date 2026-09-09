@@ -13,7 +13,7 @@ import {
   ArrowUpRight, Activity, Layers, Settings, RefreshCw, ChevronDown,
   BookOpen, FileText, BarChart2, PieChart as PieChartIcon, Cpu, Copy, ExternalLink,
   FileCode, Video, FileSpreadsheet, Package, Paperclip, AlertTriangle, File, Check, X,
-  MailCheck, Printer, Building2, Trash2, FastForward
+  MailCheck, Printer, Building2, Trash2, FastForward, ArrowLeft
 } from 'lucide-react';
 import api from '../../api/axios';
 import { format } from 'date-fns';
@@ -57,12 +57,17 @@ interface Candidate {
   
   // Verification Phase
   documentsVerified?: boolean;
+  candidateType?: string;
 
   // Call Letter Phase
   callLetterDate?: string;
   callLetterReportingDate?: string;
   callLetterTime?: string;
   callLetterVenue?: string;
+  callLetterHrEmail?: string;
+  callLetterHrPhone?: string;
+  callLetterReferenceNo?: string;
+  callLetterDesignation?: string;
   callLetterHrContact?: string;
   callLetterStatus?: string; // 'PENDING' | 'SENT' | 'ISSUED'
   callLetterNotes?: string;
@@ -126,10 +131,11 @@ export function parseAttachmentItem(item: any, index: number = 0): FormAttachmen
     const rawUrl = item.url || item.secureUrl || '';
     const driveMatch = rawUrl.match(/(?:id=|\/d\/|\/uc\?.*id=)([a-zA-Z0-9_-]{25,})/);
     const driveId = item.driveId || (driveMatch ? driveMatch[1] : undefined);
-    const type = item.type || (driveId ? 'pdf' : detectFileType(item.name || rawUrl || ''));
+    const itemDocTitle = item.name || item.title || item.rawHeader;
+    const type = item.type || (driveId ? 'pdf' : detectFileType(itemDocTitle || rawUrl || ''));
     return {
       id: item.id || driveId || `att-${index}`,
-      name: item.name || (driveId ? `Google_Drive_Doc_${index + 1}` : 'Attachment'),
+      name: itemDocTitle || (driveId ? `Google_Drive_Doc_${index + 1}` : 'Attachment'),
       type,
       mimeType: item.mimeType || getMimeType(type),
       url: rawUrl,
@@ -137,7 +143,7 @@ export function parseAttachmentItem(item: any, index: number = 0): FormAttachmen
       originalUrl: item.originalUrl || (driveId ? `https://drive.google.com/file/d/${driveId}/view` : rawUrl),
       downloadUrl: item.downloadUrl || (driveId ? `https://drive.google.com/uc?export=download&id=${driveId}` : rawUrl),
       driveId,
-      docType: item.docType,
+      docType: item.docType || item.type,
       docField: item.docField,
       sizeStr: item.sizeStr || (item.size ? formatBytes(item.size) : undefined),
       uploadedAt: item.uploadedAt,
@@ -421,6 +427,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
   const setActiveTab = (tab: string) => {
     setActiveTabState(tab);
+    setPreviewCallLetterCandidate(null);
     try {
       localStorage.setItem('hrms_recruitment_active_tab', tab);
     } catch (_) {}
@@ -439,6 +446,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
   const [liveSheetResponses, setLiveSheetResponses] = useState<any[]>([]);
+  const [liveDocumentResponses, setLiveDocumentResponses] = useState<any[]>([]);
   
   // State for forms & UI flows
   const [selectedJobId, setSelectedJobId] = useState<string>('');
@@ -463,6 +471,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   const googleFormUrl = "https://docs.google.com/forms/d/e/1FAIpQLSeZHuwlr39VAsqWkKr5pgGjWK95nFQ2-i9NA3EhUOjbaOakUw/viewform?usp=header";
   const googleFormEmbedUrl = "https://docs.google.com/forms/d/e/1FAIpQLSeZHuwlr39VAsqWkKr5pgGjWK95nFQ2-i9NA3EhUOjbaOakUw/viewform?embedded=true";
   const googleSheetUrl = "https://docs.google.com/spreadsheets/d/1lQJhC2BRKi-ut7XerrcptvLwiRpJvxGbZGZaS9WzWpg/edit?resourcekey=&gid=1809928383#gid=1809928383";
+  const googleDocSheetUrl = "https://docs.google.com/spreadsheets/d/1jz7d2yAaLfzgGPMpOO7GzHamvHVIspk82Y86IED_raY/edit?resourcekey=&gid=510736051#gid=510736051";
   const [previewMediaAttachment, setPreviewMediaAttachment] = useState<FormAttachment | null>(null);
   const [driveUploadModal, setDriveUploadModal] = useState<{
     candidateId: string;
@@ -869,13 +878,51 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
   // Stage Call Letter form state
   const [callLetterForm, setCallLetterForm] = useState({
-    reportingDate: format(new Date(Date.now() + 3 * 86400000), 'yyyy-MM-dd'),
-    reportingTime: '09:30 AM',
-    venue: 'VRPI Corporate Headquarters, 4th Floor - Executive Wing, Hyderabad',
-    hrContact: 'HR Talent Operations (hr@vrpigroup.com / +91 99490 20175)',
+    designation: '',
+    venue: '',
+    reportingDate: '',
+    reportingTime: '',
+    hrEmail: '',
+    hrPhone: '',
+    hrContact: '',
     notes: 'Please carry your original KYC identification, 2 passport size photographs, and educational certificates for physical verification.'
   });
   const [previewCallLetterCandidate, setPreviewCallLetterCandidate] = useState<Candidate | null>(null);
+  
+  const formatCallLetterTime = (timeStr?: string) => {
+    if (!timeStr) return '';
+    if (timeStr.includes('AM') || timeStr.includes('PM')) return timeStr;
+    const parts = timeStr.split(':');
+    if (parts.length >= 2) {
+      let hours = parseInt(parts[0], 10);
+      const minutes = parts[1];
+      if (!isNaN(hours)) {
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12;
+        const strHours = hours < 10 ? `0${hours}` : `${hours}`;
+        return `${strHours}:${minutes} ${ampm}`;
+      }
+    }
+    return timeStr;
+  };
+
+  const numberToWordsINR = (num?: number | null): string => {
+    if (!num || isNaN(num) || num <= 0) return '';
+    const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+    const convert = (n: number): string => {
+      if (n < 20) return a[n];
+      if (n < 100) return b[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + a[n % 10] : '');
+      if (n < 1000) return a[Math.floor(n / 100)] + ' Hundred' + (n % 100 !== 0 ? ' and ' + convert(n % 100) : '');
+      if (n < 100000) return convert(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 !== 0 ? ' ' + convert(n % 1000) : '');
+      if (n < 10000000) return convert(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 !== 0 ? ' ' + convert(n % 100000) : '');
+      return convert(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 !== 0 ? ' ' + convert(n % 10000000) : '');
+    };
+
+    return convert(Math.floor(num)) + ' Rupees Only';
+  };
 
   // Stage 7 Offer form state
   const [offerForm, setOfferForm] = useState({
@@ -1159,6 +1206,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
             if (cl.reportingDate) cand.callLetterReportingDate = cl.reportingDate;
             if (cl.reportingTime) cand.callLetterTime = cl.reportingTime;
             if (cl.venue) cand.callLetterVenue = cl.venue;
+            if (cl.salary !== undefined) cand.offerSalary = Number(cl.salary) || cand.offerSalary;
+            if (cl.hrEmail) cand.callLetterHrEmail = cl.hrEmail;
+            if (cl.hrPhone) cand.callLetterHrPhone = cl.hrPhone;
+            if (cl.referenceNo) cand.callLetterReferenceNo = cl.referenceNo;
+            if (cl.designation) cand.callLetterDesignation = cl.designation;
             if (cl.hrContact) cand.callLetterHrContact = cl.hrContact;
             if (cl.notes) cand.callLetterNotes = cl.notes;
           }
@@ -1282,13 +1334,25 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     } catch (_) {}
   };
 
+  const pollLiveDocumentResponses = async () => {
+    try {
+      const res = await api.get(`/recruitment/live-document-responses?t=${Date.now()}`);
+      if (res.data?.data?.applicants && Array.isArray(res.data.data.applicants)) {
+        const validApplicants = res.data.data.applicants.filter((r: any) => !isCandidateDeleted(r.id, r.email));
+        setLiveDocumentResponses(validApplicants);
+      }
+    } catch (_) {}
+  };
+
   useEffect(() => {
     loadRecruitmentData();
     pollLiveSheetResponses();
+    pollLiveDocumentResponses();
 
     // Auto-update live Google Sheet submissions and sync status every 3 seconds in real time
     const intervalId = setInterval(() => {
       pollLiveSheetResponses();
+      pollLiveDocumentResponses();
     }, 3000);
 
     return () => clearInterval(intervalId);
@@ -2093,9 +2157,12 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   };
 
   // Verify and Approve Candidate Documents (Moves to Call Letter Stage)
-  const handleVerifyDocumentsSubmit = async (candidateId: string) => {
+  const handleVerifyDocumentsSubmit = async (candidateId: string, candidateObj?: any) => {
     try {
-      const target = candidates.find(c => c.id === candidateId || c.email === candidateId);
+      let target = candidates.find(c => c.id === candidateId || c.email === candidateId);
+      if (!target && candidateObj) {
+        target = candidateObj;
+      }
       const candEmail = target?.email || (candidateId.includes('@') ? candidateId : undefined);
 
       // 1. Synchronously update formApplicantStatuses in localStorage & React state
@@ -2137,24 +2204,37 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
       // 3. Update shortlisted candidates in localStorage
       const currentShortlisted = getStoredShortlistedCandidates();
+      let existsInShortlisted = false;
       const updatedShortlisted = currentShortlisted.map(c => {
         if (c.id === candidateId || (candEmail && c.email && c.email.toLowerCase() === candEmail.toLowerCase())) {
+          existsInShortlisted = true;
           return { ...c, stage: 'Call Letter', documentsVerified: true };
         }
         return c;
       });
+      if (!existsInShortlisted && target) {
+        updatedShortlisted.unshift({ ...target, stage: 'Call Letter', documentsVerified: true });
+      }
       saveStoredShortlistedCandidates(updatedShortlisted);
 
       // 4. Update React state immediately
-      setCandidates(prev => prev.map(c => {
-        if (c.id === candidateId || (candEmail && c.email && c.email.toLowerCase() === candEmail.toLowerCase()) || (target?.id && c.id === target.id)) {
-          return { ...c, stage: 'Call Letter', documentsVerified: true };
+      setCandidates(prev => {
+        let found = false;
+        const mapped = prev.map(c => {
+          if (c.id === candidateId || (candEmail && c.email && c.email.toLowerCase() === candEmail.toLowerCase()) || (target?.id && c.id === target.id)) {
+            found = true;
+            return { ...c, stage: 'Call Letter', documentsVerified: true };
+          }
+          return c;
+        });
+        if (!found && target) {
+          return [{ ...target, stage: 'Call Letter', documentsVerified: true }, ...mapped];
         }
-        return c;
-      }));
+        return mapped;
+      });
 
       // 5. Update backend if real database candidate
-      if (candidateId && !candidateId.startsWith('cand-') && !candidateId.startsWith('sheet-row-')) {
+      if (candidateId && !candidateId.startsWith('cand-') && !candidateId.startsWith('sheet-row-') && !candidateId.startsWith('sheet-doc-')) {
         try {
           await api.patch(`/recruitment/applications/${candidateId}/documents-verify`, {
             verified: true
@@ -2172,21 +2252,87 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     }
   };
 
-  // Issue / Dispatch Call Letter
+  // Update Individual Candidate Call Letter Fields (Date, Time, Venue, Salary, HR Email, HR Phone, Ref No, Designation)
+  const handleUpdateCandidateCallLetter = (
+    candidateId: string, 
+    updates: Partial<{ 
+      reportingDate: string; 
+      reportingTime: string; 
+      venue: string; 
+      salary: number | string; 
+      hrEmail: string;
+      hrPhone: string;
+      referenceNo: string;
+      designation: string;
+      hrContact: string; 
+      notes: string;
+    }>
+  ) => {
+    setCandidates(prev => prev.map(c => {
+      if (c.id === candidateId || c.email === candidateId) {
+        return {
+          ...c,
+          callLetterReportingDate: updates.reportingDate !== undefined ? updates.reportingDate : c.callLetterReportingDate,
+          callLetterTime: updates.reportingTime !== undefined ? updates.reportingTime : c.callLetterTime,
+          callLetterVenue: updates.venue !== undefined ? updates.venue : c.callLetterVenue,
+          offerSalary: updates.salary !== undefined ? Number(updates.salary) || 0 : c.offerSalary,
+          callLetterHrEmail: updates.hrEmail !== undefined ? updates.hrEmail : c.callLetterHrEmail,
+          callLetterHrPhone: updates.hrPhone !== undefined ? updates.hrPhone : c.callLetterHrPhone,
+          callLetterReferenceNo: updates.referenceNo !== undefined ? updates.referenceNo : c.callLetterReferenceNo,
+          callLetterDesignation: updates.designation !== undefined ? updates.designation : c.callLetterDesignation,
+          callLetterHrContact: updates.hrContact !== undefined ? updates.hrContact : c.callLetterHrContact,
+          callLetterNotes: updates.notes !== undefined ? updates.notes : c.callLetterNotes
+        };
+      }
+      return c;
+    }));
+
+    // Persist to localStorage per profile
+    try {
+      const stored = JSON.parse(localStorage.getItem('hrms_candidate_call_letters') || '{}');
+      const target = candidates.find(c => c.id === candidateId || c.email === candidateId);
+      const existing = stored[candidateId] || (target?.email ? stored[target.email.toLowerCase()] : {}) || {};
+      const merged = { ...existing, ...updates };
+      stored[candidateId] = merged;
+      if (target?.email) stored[target.email.toLowerCase()] = merged;
+      localStorage.setItem('hrms_candidate_call_letters', JSON.stringify(stored));
+    } catch (_) {}
+  };
+
+  // Issue / Dispatch Call Letter via Real-time Email
   const handleIssueCallLetter = async (candidateId: string) => {
     try {
+      const target = candidates.find(c => c.id === candidateId || c.email === candidateId);
+      const code = getCandidateCode(target);
       const todayStr = format(new Date(), 'yyyy-MM-dd');
+      const repDate = target?.callLetterReportingDate || callLetterForm.reportingDate || format(new Date(Date.now() + 3 * 86400000), 'yyyy-MM-dd');
+      const repTime = formatCallLetterTime(target?.callLetterTime || callLetterForm.reportingTime) || '09:30 AM';
+      const repVenue = target?.callLetterVenue || callLetterForm.venue || '4th Floor, Dwaraka Central, Plot no.: 57, Hitech City Rd, VIP Hills, Jaihind Enclave, Madhapur, Hyderabad, Telangana 500081';
+      const repSalary = target?.offerSalary !== undefined && target?.offerSalary !== null && Number(target.offerSalary) > 0 ? Number(target.offerSalary) : undefined;
+      const repHrEmail = target?.callLetterHrEmail || callLetterForm.hrEmail || 'hr@vrpigroup.com';
+      const repHrPhone = target?.callLetterHrPhone || callLetterForm.hrPhone || '+91 99490 20175';
+      const repRefNo = target?.callLetterReferenceNo || `VRPI/HR/CL-2026/${code}`;
+      const repDesignation = target?.callLetterDesignation || (target?.jobTitle || 'Full Stack Engineer').replace(/\s*\([^)]*Google\s*Form[^)]*\)/gi, '').replace(/\s*\(Google Form Recruitment\)/gi, '').replace(/Google Form Recruitment/gi, 'Full Stack Engineer').trim();
+      const repContact = target?.callLetterHrContact || `${repHrEmail} / ${repHrPhone}`;
+      const repNotes = target?.callLetterNotes || callLetterForm.notes;
+      const candidateEmail = target?.email || (candidateId.includes('@') ? candidateId : '');
+
       setCandidates(prev => prev.map(c => {
-        if (c.id === candidateId) {
+        if (c.id === candidateId || c.email === candidateId) {
           return {
             ...c,
             callLetterStatus: 'SENT',
             callLetterDate: todayStr,
-            callLetterReportingDate: callLetterForm.reportingDate,
-            callLetterTime: callLetterForm.reportingTime,
-            callLetterVenue: callLetterForm.venue,
-            callLetterHrContact: callLetterForm.hrContact,
-            callLetterNotes: callLetterForm.notes
+            callLetterReportingDate: repDate,
+            callLetterTime: repTime,
+            callLetterVenue: repVenue,
+            offerSalary: repSalary,
+            callLetterHrEmail: repHrEmail,
+            callLetterHrPhone: repHrPhone,
+            callLetterReferenceNo: repRefNo,
+            callLetterDesignation: repDesignation,
+            callLetterHrContact: repContact,
+            callLetterNotes: repNotes
           };
         }
         return c;
@@ -2195,26 +2341,267 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       // Store in localStorage
       try {
         const stored = JSON.parse(localStorage.getItem('hrms_candidate_call_letters') || '{}');
-        const target = candidates.find(c => c.id === candidateId);
         const data = {
           callLetterStatus: 'SENT',
           callLetterDate: todayStr,
-          ...callLetterForm
+          reportingDate: repDate,
+          reportingTime: repTime,
+          venue: repVenue,
+          salary: repSalary,
+          hrEmail: repHrEmail,
+          hrPhone: repHrPhone,
+          referenceNo: repRefNo,
+          designation: repDesignation,
+          hrContact: repContact,
+          notes: repNotes
         };
         stored[candidateId] = data;
         if (target?.email) stored[target.email.toLowerCase()] = data;
         localStorage.setItem('hrms_candidate_call_letters', JSON.stringify(stored));
       } catch (_) {}
 
-      if (candidateId && !candidateId.startsWith('cand-')) {
-        await api.patch(`/recruitment/applications/${candidateId}/status`, {
-          status: 'CALL_LETTER'
-        });
+      // Real-time backend email dispatch
+      let emailSuccess = false;
+      if (candidateEmail && candidateEmail.includes('@')) {
+        try {
+          const emailRes = await api.post('/recruitment/send-call-letter', {
+            candidateId,
+            candidateName: target ? `${target.firstName} ${target.lastName}`.trim() : 'Candidate',
+            candidateEmail,
+            jobTitle: repDesignation,
+            referenceNo: repRefNo,
+            reportingDate: repDate,
+            reportingTime: repTime,
+            venue: repVenue,
+            salary: repSalary,
+            hrEmail: repHrEmail,
+            hrPhone: repHrPhone,
+            notes: repNotes
+          });
+          if (emailRes.data?.success) {
+            emailSuccess = true;
+          }
+        } catch (mailErr: any) {
+          console.error('[CallLetter] Backend email error:', mailErr);
+        }
       }
 
-      alert('✉️ Official Call Letter dispatched and sent to candidate successfully!');
+      if (candidateId && !candidateId.startsWith('cand-') && !candidateId.startsWith('sheet-row-')) {
+        try {
+          await api.patch(`/recruitment/applications/${candidateId}/status`, {
+            status: 'CALL_LETTER'
+          });
+        } catch (_) {}
+      }
+
+      alert(`✉️ Official Call Letter dispatched in real-time to ${candidateEmail || target?.firstName || 'Candidate'}!`);
     } catch (err) {
       alert('Failed to issue call letter.');
+    }
+  };
+
+  // Download printable Call Letter Document (Letter of Intent)
+  const handleDownloadCallLetter = (cand: Candidate) => {
+    const code = getCandidateCode(cand);
+    const candName = cand ? `${cand.firstName} ${cand.lastName}`.trim() : 'Candidate';
+    const cleanJobTitle = (cand.callLetterDesignation || cand.jobTitle || '')
+      .replace(/\s*\([^)]*Google\s*Form[^)]*\)/gi, '')
+      .replace(/\s*\(Google Form Recruitment\)/gi, '')
+      .replace(/Google Form Recruitment/gi, '')
+      .trim();
+    const role = cleanJobTitle || '(Designation - Role)';
+    
+    const dateObj = new Date();
+    const currentYear = dateObj.getFullYear();
+    const nextYearShort = String((currentYear + 1) % 100).padStart(2, '0');
+    const financialYear = `${currentYear}-${nextYearShort}`;
+    const monthDate = `${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+    const defaultSlNo = code ? code.padStart(3, '0') : '001';
+    const refNo = cand.callLetterReferenceNo || `${financialYear}/${monthDate}/${defaultSlNo}`;
+    
+    const repDate = cand.callLetterReportingDate || callLetterForm.reportingDate || format(new Date(Date.now() + 3 * 86400000), 'dd/MM/yyyy');
+    const location = cand.callLetterVenue || callLetterForm.venue || '(Location)';
+    
+    const hasSalary = cand.offerSalary !== undefined && cand.offerSalary !== null && Number(cand.offerSalary) > 0;
+    const formattedSalary = hasSalary ? Number(cand.offerSalary).toLocaleString('en-IN') : '';
+    const salaryWords = hasSalary ? numberToWordsINR(Number(cand.offerSalary)) : '';
+    const formattedDate = format(new Date(), 'dd/MM/yyyy');
+
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title></title>
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 0;
+          }
+          * {
+            box-sizing: border-box;
+          }
+          html, body {
+            margin: 0;
+            padding: 0;
+            background: #ffffff;
+            color: #000000;
+          }
+          body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 12.5px;
+            line-height: 1.42;
+            padding: 16mm 20mm 14mm 20mm;
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+          }
+          .title {
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 14px;
+            text-decoration: underline;
+            letter-spacing: 0.5px;
+          }
+          .meta-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 12.5px;
+          }
+          .addressee {
+            margin: 10px 0;
+            font-size: 12.5px;
+            line-height: 1.4;
+          }
+          .subject {
+            text-align: center;
+            font-weight: bold;
+            margin: 12px 0 10px 0;
+            font-size: 13px;
+          }
+          .salutation {
+            margin-bottom: 8px;
+            font-size: 12.5px;
+          }
+          .para {
+            margin: 0 0 8px 0;
+            text-align: justify;
+            font-size: 12.5px;
+            line-height: 1.42;
+          }
+          .signoff {
+            margin-top: 14px;
+            margin-bottom: 14px;
+            font-size: 12.5px;
+            line-height: 1.4;
+          }
+          .annexure-title {
+            text-align: center;
+            font-weight: bold;
+            text-decoration: underline;
+            margin: 14px 0 10px 0;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+          }
+          .annexure-box {
+            margin-bottom: 10px;
+            font-size: 12.5px;
+            line-height: 1.5;
+          }
+          .acceptance {
+            margin: 10px 0;
+            font-size: 12.5px;
+            text-align: justify;
+            line-height: 1.4;
+          }
+          .joining-block {
+            margin-top: 12px;
+            font-size: 12.5px;
+            line-height: 1.7;
+          }
+          @media print {
+            html, body {
+              padding: 16mm 20mm 14mm 20mm;
+              margin: 0;
+              width: 100%;
+              height: auto;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1.5px solid #cbd5e1; padding-bottom: 8px; margin-bottom: 12px;">
+          <div>
+            <div style="font-weight: bold; font-size: 13px; color: #1e293b; text-decoration: underline;">VR PI TECH SOLUTIONS LLP</div>
+            <div style="font-size: 9.5px; color: #475569; margin-top: 2px;">Head Quarters : 2-27-163, Gandhi Nagar, Near Jammi Chettu, Wanaparthy, Telangana, India - 509103.</div>
+            <div style="font-size: 9.5px; color: #475569;">Email: talentacquisition@vrpigroup.co.in | Phone: (+91) 879-094-6714</div>
+          </div>
+          <img src="/call_letter_logo.png" style="height: 36px; width: auto; object-fit: contain;" alt="VR PI Logo" />
+        </div>
+
+        <div class="title">LETTER OF INTENT</div>
+        
+        <div class="meta-row">
+          <div><strong>Date:</strong> ${formattedDate}</div>
+          <div><strong>Ref no.:</strong> ${refNo}</div>
+        </div>
+
+        <div class="addressee">
+          To<br>
+          Mr/Ms/Mrs. ${candName}
+        </div>
+
+        <div class="subject">Sub: Offer Letter</div>
+
+        <div class="salutation">Dear ${candName},</div>
+
+        <p class="para">We are pleased to offer you the post of <strong>${role}</strong> based at <strong>${location}</strong>.</p>
+        <p class="para">The compensation structure is enclosed for your reference as Annexure.</p>
+        <p class="para">Your employment with the Company will be subject to strict adherence to the policies and procedures of the Company.</p>
+        <p class="para">You will be on probation for six months.</p>
+        <p class="para">This offer is subjected to background verification and medical fitness.</p>
+        <p class="para">On acceptance of the terms of conditions as per this offer letter, you will be able to terminate your employment with the Company by giving one (1) month notice to the Company and vice versa. You shall not be eligible to avail leave during the notice period.</p>
+        <p class="para">We welcome you to join the Company and would be happy if you can sign the duplicate copy of this letter in token of your acceptance of the offer of employment with the Company.</p>
+        <p class="para">If you have any question, please clarify from the undersigned.</p>
+
+        <div class="signoff">
+          With regards,<br>
+          <strong>Talent Acquisition Team</strong><br>
+          HR - Head
+        </div>
+
+        <div class="annexure-title">ANNEXURE</div>
+
+        <div class="annexure-box">
+          The gross salary of the employee for every month is as follows:<br>
+          <strong>Net Salary/Monthly:</strong> ₹ ${formattedSalary}<br>
+          <strong>Amount in words:</strong> ${salaryWords}
+        </div>
+
+        <div class="acceptance">
+          I accept the aforesaid terms &amp; conditions and this offer of employment. I shall keep the contents of this document confidential.
+        </div>
+
+        <div class="joining-block">
+          I will join on ________________.<br>
+          Name: <strong>${candName}</strong><br>
+          Signature: ___________________ .<br>
+          Date: _________________________ .
+        </div>
+      </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.open();
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+      }, 300);
     }
   };
 
@@ -2223,6 +2610,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     try {
       const target = candidates.find(c => c.id === candidateId || c.email === candidateId);
       const candEmail = target?.email || (candidateId.includes('@') ? candidateId : undefined);
+      const targetSalary = target?.offerSalary !== undefined ? target.offerSalary : (offerForm.salary ? Number(offerForm.salary) : 75000);
 
       // 1. Synchronously persist to formApplicantStatuses
       let updatedStatuses: { [key: string]: any } = {};
@@ -2250,7 +2638,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       const currentScheduled = getStoredScheduledInterviews();
       const updatedScheduled = currentScheduled.map(c => {
         if (c.id === candidateId || (candEmail && c.email && c.email.toLowerCase() === candEmail.toLowerCase())) {
-          return { ...c, stage: 'Offer', callLetterStatus: 'ISSUED' };
+          return { ...c, stage: 'Offer', callLetterStatus: 'ISSUED', offerSalary: targetSalary };
         }
         return c;
       });
@@ -2259,10 +2647,13 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       // 3. Update React state immediately
       setCandidates(prev => prev.map(c => {
         if (c.id === candidateId || (candEmail && c.email && c.email.toLowerCase() === candEmail.toLowerCase()) || (target?.id && c.id === target.id)) {
-          return { ...c, stage: 'Offer', callLetterStatus: 'ISSUED' };
+          return { ...c, stage: 'Offer', callLetterStatus: 'ISSUED', offerSalary: targetSalary };
         }
         return c;
       }));
+
+      // 4. Update offerForm salary for active editing
+      setOfferForm(prev => ({ ...prev, salary: String(targetSalary) }));
 
       if (candidateId && !candidateId.startsWith('cand-') && !candidateId.startsWith('sheet-row-')) {
         try {
@@ -2279,6 +2670,71 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       setActiveTab('stage-7');
     } catch (err) {
       alert('Failed to advance candidate to Offer stage.');
+    }
+  };
+
+  // Move / Revert candidate back to Stage 5: Call Letter from Offer Stage
+  const handleRevertOfferToCallLetter = async (candidateId: string) => {
+    try {
+      const target = candidates.find(c => c.id === candidateId || c.email === candidateId);
+      const candEmail = target?.email || (candidateId.includes('@') ? candidateId : undefined);
+
+      // 1. Synchronously persist to formApplicantStatuses in localStorage
+      let updatedStatuses: { [key: string]: any } = {};
+      try {
+        const savedStr = localStorage.getItem('hrms_form_applicant_statuses');
+        if (savedStr) updatedStatuses = JSON.parse(savedStr);
+      } catch (_) {}
+      
+      if (candEmail) {
+        updatedStatuses[candEmail] = 'call_letter';
+        updatedStatuses[candEmail.toLowerCase()] = 'call_letter';
+      }
+      if (candidateId) {
+        updatedStatuses[candidateId] = 'call_letter';
+      }
+      if (target?.id) {
+        updatedStatuses[target.id] = 'call_letter';
+      }
+      try {
+        localStorage.setItem('hrms_form_applicant_statuses', JSON.stringify(updatedStatuses));
+      } catch (_) {}
+      setFormApplicantStatuses(updatedStatuses);
+
+      // 2. Update scheduled interviews in localStorage
+      const currentScheduled = getStoredScheduledInterviews();
+      const updatedScheduled = currentScheduled.map(c => {
+        if (c.id === candidateId || (candEmail && c.email && c.email.toLowerCase() === candEmail.toLowerCase())) {
+          return { ...c, stage: 'Call Letter', offerStatus: undefined };
+        }
+        return c;
+      });
+      saveStoredScheduledInterviews(updatedScheduled);
+
+      // 3. Update React state immediately
+      setCandidates(prev => prev.map(c => {
+        if (c.id === candidateId || (candEmail && c.email && c.email.toLowerCase() === candEmail.toLowerCase()) || (target?.id && c.id === target.id)) {
+          return { ...c, stage: 'Call Letter', offerStatus: undefined };
+        }
+        return c;
+      }));
+
+      // 4. Update backend DB if real application
+      if (candidateId && !candidateId.startsWith('cand-') && !candidateId.startsWith('sheet-row-')) {
+        try {
+          await api.patch(`/recruitment/applications/${candidateId}/status`, {
+            status: 'CALL_LETTER'
+          });
+        } catch (err) {
+          console.warn('Backend status revert warning:', err);
+        }
+      }
+
+      alert('↩️ Candidate profile successfully moved back to Stage 5: Call Letter!');
+      await loadRecruitmentData();
+      setActiveTab('stage-call-letter');
+    } catch (err) {
+      alert('Failed to move candidate back to Call Letter stage.');
     }
   };
 
@@ -2934,44 +3390,6 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                     </tbody>
                   </table>
                 </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
-                  {visibleJobs.length === 0 ? (
-                    <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '3rem', background: '#f8fafc', borderRadius: '1rem', border: '1px solid #e2e8f0', color: '#94a3b8', fontSize: '0.75rem' }}>
-                      No active jobs posted yet. Click "Post New Job" to create your first listing.
-                    </div>
-                  ) : (
-                    visibleJobs.map(job => (
-                      <div key={job.id} style={{ background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: '1rem', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <div>
-                            <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '2px 8px', borderRadius: '6px', background: '#e0f2fe', color: '#0369a1', textTransform: 'uppercase' }}>{job.department}</span>
-                            <h3 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', marginTop: '0.35rem' }}>{job.title}</h3>
-                          </div>
-                          <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '3px 8px', borderRadius: '99px', background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0' }}>{job.status}</span>
-                        </div>
-
-                        <p style={{ fontSize: '0.7rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <MapPin className="h-3.5 w-3.5 text-slate-400" /> {job.location} · {job.type}
-                        </p>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: '#f8fafc', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', fontSize: '0.7rem' }}>
-                          <div><span style={{ color: '#94a3b8' }}>Applicants:</span> <span style={{ fontWeight: 800, color: '#4f46e5' }}>{job.applicants}</span></div>
-                          <div><span style={{ color: '#94a3b8' }}>Posted:</span> <span style={{ fontWeight: 700, color: '#475569' }}>{job.postedDate}</span></div>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto', paddingTop: '0.5rem' }}>
-                          <button onClick={() => setSelectedSimulatedChannel(job.id)} className="rec-btn-outline" style={{ flex: 1, fontSize: '0.7rem', height: '32px', padding: '0', justifyContent: 'center' }}>
-                            <Share2 className="h-3.5 w-3.5" /> Channels
-                          </button>
-                          <button onClick={() => { setSelectedJobId(job.id); setActiveTab('stage-3'); }} className="rec-btn-primary" style={{ flex: 1, fontSize: '0.7rem', height: '32px', padding: '0', justifyContent: 'center' }}>
-                            View Applications
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
               </div>
             )}
 
@@ -3329,19 +3747,15 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                               </span>
 
                                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
-                                                <button
-                                                  onClick={() => {
-                                                    if (att.type === 'image') {
-                                                      setPreviewMediaAttachment(att);
-                                                    } else {
-                                                      window.open(att.url, '_blank');
-                                                    }
-                                                  }}
-                                                  style={{ background: 'transparent', border: 0, padding: 0, color: '#4f46e5', fontWeight: 700, cursor: 'pointer', fontSize: '0.62rem' }}
-                                                  title="View file"
+                                                <a
+                                                  href={att.originalUrl || (att.driveId ? `https://drive.google.com/file/d/${att.driveId}/view` : att.url)}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  style={{ background: 'transparent', border: 0, padding: 0, color: '#4f46e5', fontWeight: 700, cursor: 'pointer', fontSize: '0.62rem', textDecoration: 'none' }}
+                                                  title="Open document in new tab"
                                                 >
-                                                  View
-                                                </button>
+                                                  View ↗
+                                                </a>
 
                                                 <span style={{ color: '#cbd5e1' }}>|</span>
 
@@ -3720,14 +4134,24 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 </button>
                               )}
                             </div>
-                            <button
-                              onClick={() => handleSkipToDocuments(c)}
-                              className="rec-btn-outline"
-                              title="Skip Interview and move candidate directly to Document Verification"
-                              style={{ width: '100%', fontSize: '0.7rem', height: '30px', padding: '0 8px', color: '#4f46e5', borderColor: '#c7d2fe', background: '#eef2ff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px', fontWeight: 700, borderRadius: '6px' }}
-                            >
-                              <FastForward className="h-3.5 w-3.5" /> Skip to Documents Tab →
-                            </button>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button
+                                onClick={() => handleSkipToDocuments(c)}
+                                className="rec-btn-outline"
+                                title="Skip Interview and move candidate directly to Document Verification"
+                                style={{ flex: 1, fontSize: '0.68rem', height: '30px', padding: '0 8px', color: '#4f46e5', borderColor: '#c7d2fe', background: '#eef2ff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontWeight: 700, borderRadius: '6px' }}
+                              >
+                                <FastForward className="h-3.5 w-3.5" /> Skip to Docs →
+                              </button>
+                              <button
+                                onClick={() => setInspectCandidate(c)}
+                                className="rec-btn-outline"
+                                title="Live Step-by-Step Recruitment Tracker"
+                                style={{ fontSize: '0.68rem', height: '30px', padding: '0 10px', color: '#6366f1', borderColor: '#c7d2fe', background: '#f8fafc', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontWeight: 700, borderRadius: '6px' }}
+                              >
+                                <Search className="h-3.5 w-3.5" /> Track
+                              </button>
+                            </div>
                           </div>
                         </div>
                       ))
@@ -4229,7 +4653,15 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   </span>
                                 </td>
                                 <td style={{ textAlign: 'left', padding: '14px 16px' }}>
-                                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-start' }}>
+                                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-start', alignItems: 'center' }}>
+                                    <button
+                                      onClick={() => setInspectCandidate(c)}
+                                      className="rec-btn-outline"
+                                      title="Live Track Candidate Step-by-Step Recruitment Progress"
+                                      style={{ fontSize: '0.68rem', color: '#6366f1', borderColor: '#c7d2fe', background: '#f8fafc', padding: '0 8px', height: '32px', borderRadius: '0.5rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                                    >
+                                      <Search className="h-3 w-3" /> Track
+                                    </button>
                                     <button
                                       onClick={() => handleInterviewDecision(c.id, 'fail')}
                                       className="rec-btn-outline"
@@ -4779,12 +5211,80 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
             {/* ════════════════ STAGE 8: DOCUMENTS (STAGE 4: DOCUMENT VERIFICATION) ════════════════ */}
             {activeTab === 'stage-8' && (() => {
-              const documentCandidates = candidates.filter(c => {
+              // 1. Pipeline candidates in 'Documents' stage
+              const pipelineDocs = candidates.filter(c => {
                 const s = formApplicantStatuses[c.email] || (c.email ? formApplicantStatuses[c.email.toLowerCase()] : undefined) || (c.id ? formApplicantStatuses[c.id] : undefined);
                 if (s === 'call_letter' || s === 'call-letter' || s === 'callletter' || s === 'offer' || s === 'onboarded' || s === 'declined') return false;
                 if (c.stage === 'Call Letter' || c.stage === 'Offer' || c.stage === 'Onboarding' || c.stage === 'Rejected') return false;
                 return c.stage === 'Documents' || s === 'documents';
               });
+
+              // 2. Map every live applicant record from the Google Sheet
+              const sheetDocs: Candidate[] = liveDocumentResponses
+                .filter(r => !isCandidateDeleted(r.id, r.email))
+                .filter(r => {
+                  const s = (r.email && formApplicantStatuses[r.email]) || (r.email && formApplicantStatuses[r.email.toLowerCase()]) || (r.id && formApplicantStatuses[r.id]);
+                  if (s === 'call_letter' || s === 'call-letter' || s === 'callletter' || s === 'offer' || s === 'onboarded' || s === 'declined') return false;
+                  return true;
+                })
+                .map((r, idx) => {
+                  const existing = candidates.find(c => 
+                    (r.email && c.email && c.email.toLowerCase() === r.email.toLowerCase()) || 
+                    c.id === r.id || 
+                    (`${c.firstName} ${c.lastName}`.trim().toLowerCase() === (r.fullName || '').trim().toLowerCase())
+                  );
+
+                  const docObjects = (r.documents || []).map((d: any) => ({
+                    name: d.title,
+                    url: d.url,
+                    docType: d.type,
+                    rawHeader: d.rawHeader
+                  }));
+
+                  const nameParts = (r.fullName || 'Applicant').trim().split(' ');
+                  const fName = existing?.firstName || nameParts[0] || 'Applicant';
+                  const lName = existing?.lastName || nameParts.slice(1).join(' ') || '';
+
+                  const baseCand: Candidate = existing ? {
+                    ...existing,
+                    candidateType: r.candidateType || (existing as any).candidateType,
+                    attachmentImages: Array.from(new Set([...(existing.attachmentImages || []), ...docObjects]))
+                  } : {
+                    id: r.id || `sheet-doc-row-${idx + 1}`,
+                    firstName: fName,
+                    lastName: lName,
+                    email: r.email || `applicant_${idx + 1}@vrpi.recruitment`,
+                    phone: r.phone || 'N/A',
+                    stage: 'Documents',
+                    candidateType: r.candidateType || 'Experienced',
+                    source: 'Google Form (Documents)',
+                    jobTitle: 'Selected Candidate',
+                    experience: r.candidateType || 'Experienced',
+                    location: 'Hyderabad / Wanaparthy',
+                    appliedDate: r.timestamp || format(new Date(), 'dd/MM/yyyy'),
+                    matchScore: 90,
+                    skills: ['Verified Credentials', r.candidateType || 'Experienced'],
+                    avatarColor: 'bg-emerald-100 text-emerald-600 border-emerald-200',
+                    attachmentImages: docObjects
+                  };
+
+                  return baseCand;
+                });
+
+              // Merge unique by candidate key
+              const map = new Map<string, Candidate>();
+              sheetDocs.forEach(c => {
+                const key = (c.email || c.id || `${c.firstName}_${c.lastName}`).toLowerCase();
+                map.set(key, c);
+              });
+              pipelineDocs.forEach(c => {
+                const key = (c.email || c.id || `${c.firstName}_${c.lastName}`).toLowerCase();
+                if (!map.has(key)) {
+                  map.set(key, c);
+                }
+              });
+
+              const documentCandidates = Array.from(map.values());
 
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -4805,6 +5305,28 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                           <p className="rec-section-sub" style={{ margin: '3px 0 0 0', color: '#64748b' }}>HR collects and verifies credential proofs before issuing official Call Letter</p>
                         </div>
                       </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => pollLiveDocumentResponses()}
+                          className="rec-btn-outline"
+                          style={{ fontSize: '0.72rem', height: '32px', padding: '0 12px', gap: '6px', color: '#059669', borderColor: '#a7f3d0', background: '#ecfdf5', fontWeight: 700 }}
+                          title="Refresh live Google Sheet document responses"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" /> Sync Sheet
+                        </button>
+                        <a
+                          href={googleDocSheetUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rec-btn-outline"
+                          style={{ fontSize: '0.72rem', height: '32px', padding: '0 12px', gap: '6px', textDecoration: 'none', color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff', fontWeight: 700 }}
+                          title="Open live Google Sheets document collection"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" /> Open Google Sheet
+                        </a>
+                      </div>
                     </div>
                   </div>
 
@@ -4816,7 +5338,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
                             <FolderOpen className="h-8 w-8 text-slate-300" />
                             <p style={{ margin: 0, fontWeight: 700, color: '#64748b' }}>No candidates currently pending Document Verification</p>
-                            <p style={{ margin: 0, fontSize: '0.75rem', color: '#94a3b8' }}>Candidates who pass the Stage 3 Interview will automatically appear here.</p>
+                            <p style={{ margin: 0, fontSize: '0.75rem', color: '#94a3b8' }}>Candidates who submit documents via Google Form will automatically appear here in real time.</p>
                           </div>
                         </div>
                       ) : (
@@ -4828,6 +5350,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                             if (!combinedImages.includes(d)) combinedImages.push(d);
                           });
                           const formAtts = combinedImages.map((att, idx) => parseAttachmentItem(att, idx));
+                          const candType = (c as any).candidateType;
 
                           return (
                             <div key={c.id} style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '1.15rem', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', boxShadow: '0 4px 15px rgba(15, 23, 42, 0.03)' }}>
@@ -4839,12 +5362,19 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   </div>
                                   <div>
                                     <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>{c.firstName} {c.lastName}</h3>
-                                    <p style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, margin: '2px 0 0 0' }}>{c.jobTitle} · #{code}</p>
+                                    <p style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, margin: '2px 0 0 0' }}>#{code}</p>
                                   </div>
                                 </div>
-                                <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '3px 8px', borderRadius: '99px', background: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0' }}>
-                                  Stage 4: Documents
-                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  {candType && (
+                                    <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '3px 8px', borderRadius: '99px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
+                                      {candType}
+                                    </span>
+                                  )}
+                                  <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '3px 8px', borderRadius: '99px', background: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0' }}>
+                                    Stage 4: Documents
+                                  </span>
+                                </div>
                               </div>
 
                               {/* Google Form Attachments List */}
@@ -4889,50 +5419,43 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 ) : (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                     {formAtts.map((att, idx) => {
-                                      const displayName = (att.docType === 'Resume' || (!att.docField && idx === 0 && (att.url?.includes('resume') || att.name.includes('Doc_1')))) 
-                                        ? 'Submitted Resume (Google Form)' 
-                                        : (att.name || `Document ${idx + 1}`);
+                                      const displayName = att.name || (att.docType === 'Resume' ? 'Submitted Resume (Google Form)' : `Document ${idx + 1}`);
 
                                       return (
-                                        <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#ffffff', padding: '6px 10px', borderRadius: '0.5rem', border: '1px solid #cbd5e1', flexWrap: 'wrap', gap: '6px' }}>
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', minWidth: '160px', flex: 1 }}>
-                                            <FileText className="h-3.5 w-3.5 text-indigo-500 flex-shrink-0" />
-                                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#ffffff', padding: '8px 12px', borderRadius: '0.65rem', border: '1px solid #cbd5e1', flexWrap: 'wrap', gap: '8px' }}>
+                                          <a
+                                            href={att.originalUrl || att.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', minWidth: '160px', flex: 1, textDecoration: 'none', color: '#1e293b' }}
+                                            title="Click to open document in a new tab"
+                                          >
+                                            <FileText className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+                                            <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                               {displayName}
                                             </span>
                                             {(att.driveId || att.url?.includes('drive.google.com')) && (
-                                              <span style={{ fontSize: '0.58rem', background: '#e0f2fe', color: '#0369a1', padding: '1px 5px', borderRadius: '4px', fontWeight: 800, flexShrink: 0 }}>
+                                              <span style={{ fontSize: '0.58rem', background: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: '4px', fontWeight: 800, flexShrink: 0 }}>
                                                 Drive
                                               </span>
                                             )}
-                                          </div>
+                                          </a>
                                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                            <button
-                                              type="button"
-                                              onClick={() => setPreviewMediaAttachment({ ...att, name: displayName })}
-                                              className="rec-btn-outline"
-                                              style={{ fontSize: '0.68rem', height: '26px', padding: '0 8px', gap: '4px', color: '#4f46e5', borderColor: '#c7d2fe', fontWeight: 700 }}
-                                              title="View and inspect document in viewer"
+                                            <a
+                                              href={att.originalUrl || att.url}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="rec-btn-primary"
+                                              style={{ fontSize: '0.68rem', height: '26px', padding: '0 10px', gap: '4px', textDecoration: 'none', background: '#4f46e5', color: '#ffffff', fontWeight: 700, borderRadius: '6px', display: 'inline-flex', alignItems: 'center' }}
+                                              title="Open document in a new browser tab"
                                             >
-                                              <Eye className="h-3 w-3" /> View Document
-                                            </button>
-                                            {(att.driveId || att.url?.includes('drive.google.com') || att.url?.startsWith('http')) && (
-                                              <a
-                                                href={att.originalUrl || att.url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="rec-btn-outline"
-                                                style={{ fontSize: '0.68rem', height: '26px', padding: '0 8px', gap: '4px', textDecoration: 'none', color: '#0284c7', borderColor: '#bae6fd', fontWeight: 700 }}
-                                                title="Open original file URL"
-                                              >
-                                                <ExternalLink className="h-3 w-3" /> Open Link
-                                              </a>
-                                            )}
+                                              <ExternalLink className="h-3 w-3" /> View in New Tab
+                                            </a>
                                             <button
                                               type="button"
                                               onClick={() => handleDeleteDoc(c.id, c.email, att.id || att.url)}
                                               className="rec-btn-outline"
-                                              style={{ fontSize: '0.68rem', height: '26px', width: '26px', padding: 0, justifyContent: 'center', color: '#ef4444', borderColor: '#fecaca', background: '#fef2f2' }}
+                                              style={{ fontSize: '0.68rem', height: '26px', width: '26px', padding: 0, justifyContent: 'center', color: '#ef4444', borderColor: '#fecaca', background: '#fef2f2', borderRadius: '6px' }}
                                               title="Remove this attached document"
                                             >
                                               <Trash2 className="h-3 w-3" />
@@ -4948,7 +5471,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                               {/* Verification Footer Action */}
                               <div>
                                 <button
-                                  onClick={() => handleVerifyDocumentsSubmit(c.id)}
+                                  onClick={() => handleVerifyDocumentsSubmit(c.id, c)}
                                   className="rec-btn-primary"
                                   style={{
                                     width: '100%',
@@ -5010,7 +5533,32 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        <a
+                          href="https://docs.google.com/spreadsheets/d/1nFaAEv_99akWqw_FwyXPSDQnBLGDXNwYtBjb5oIw0q8/edit?usp=sharing"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rec-btn-outline"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 14px',
+                            borderRadius: '0.75rem',
+                            border: '1px solid #10b981',
+                            background: '#ecfdf5',
+                            color: '#047857',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            textDecoration: 'none',
+                            boxShadow: '0 2px 6px rgba(16, 185, 129, 0.12)'
+                          }}
+                        >
+                          <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                          <span>Google Sheet</span>
+                          <ExternalLink className="h-3 w-3 text-emerald-500" />
+                        </a>
+
                         <span style={{ fontSize: '0.75rem', color: '#6b21a8', background: '#faf5ff', padding: '6px 12px', borderRadius: '0.75rem', border: '1px solid #e9d5ff', fontWeight: 700 }}>
                           Step 5 of Recruitment Pipeline
                         </span>
@@ -5018,45 +5566,32 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                     </div>
 
                     {/* Quick Global Reporting Defaults Accordion / Settings */}
-                    <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid #f3e8ff', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                    <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid #f3e8ff', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.85rem' }}>
                       <div>
-                        <label style={{ fontSize: '0.72rem', fontWeight: 800, color: '#4c1d95', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
-                          Default Reporting Date
-                        </label>
-                        <input 
-                          type="date"
-                          className="rec-search-input"
-                          style={{ width: '100%', height: '36px', paddingLeft: '0.75rem', background: '#fff', border: '1px solid #d8b4fe', borderRadius: '0.5rem', fontSize: '0.78rem' }}
-                          value={callLetterForm.reportingDate}
-                          onChange={e => setCallLetterForm({ ...callLetterForm, reportingDate: e.target.value })}
-                        />
-                      </div>
-
-                      <div>
-                        <label style={{ fontSize: '0.72rem', fontWeight: 800, color: '#4c1d95', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
-                          Reporting Time
+                        <label style={{ fontSize: '0.7rem', fontWeight: 800, color: '#4c1d95', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
+                          Default Designation
                         </label>
                         <input 
                           type="text"
                           className="rec-search-input"
-                          style={{ width: '100%', height: '36px', paddingLeft: '0.75rem', background: '#fff', border: '1px solid #d8b4fe', borderRadius: '0.5rem', fontSize: '0.78rem' }}
-                          value={callLetterForm.reportingTime}
-                          onChange={e => setCallLetterForm({ ...callLetterForm, reportingTime: e.target.value })}
-                          placeholder="e.g. 09:30 AM"
+                          style={{ width: '100%', height: '34px', paddingLeft: '0.75rem', background: '#fff', border: '1px solid #d8b4fe', borderRadius: '0.5rem', fontSize: '0.75rem' }}
+                          value={callLetterForm.designation}
+                          onChange={e => setCallLetterForm({ ...callLetterForm, designation: e.target.value })}
+                          placeholder=""
                         />
                       </div>
 
-                      <div style={{ gridColumn: 'span 2' }}>
-                        <label style={{ fontSize: '0.72rem', fontWeight: 800, color: '#4c1d95', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
-                          Reporting Venue / Mode
+                      <div>
+                        <label style={{ fontSize: '0.7rem', fontWeight: 800, color: '#4c1d95', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
+                          Default Reporting Venue / Address
                         </label>
                         <input 
                           type="text"
                           className="rec-search-input"
-                          style={{ width: '100%', height: '36px', paddingLeft: '0.75rem', background: '#fff', border: '1px solid #d8b4fe', borderRadius: '0.5rem', fontSize: '0.78rem' }}
+                          style={{ width: '100%', height: '34px', paddingLeft: '0.75rem', background: '#fff', border: '1px solid #d8b4fe', borderRadius: '0.5rem', fontSize: '0.75rem' }}
                           value={callLetterForm.venue}
                           onChange={e => setCallLetterForm({ ...callLetterForm, venue: e.target.value })}
-                          placeholder="e.g. Corporate Headquarters, 4th Floor - Executive Wing"
+                          placeholder=""
                         />
                       </div>
                     </div>
@@ -5090,7 +5625,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   </div>
                                   <div>
                                     <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>{c.firstName} {c.lastName}</h3>
-                                    <p style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, margin: '2px 0 0 0' }}>{c.jobTitle} · #{code}</p>
+                                    <p style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, margin: '2px 0 0 0' }}>#{code}</p>
                                   </div>
                                 </div>
                                 <span className={cn(
@@ -5101,33 +5636,83 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 </span>
                               </div>
 
-                              {/* Candidate Snapshot & Verification Status */}
-                              <div style={{ background: '#f8fafc', borderRadius: '0.85rem', padding: '0.85rem', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem' }}>
-                                  <span style={{ color: '#64748b' }}>Email:</span>
-                                  <strong style={{ color: '#0f172a' }}>{c.email}</strong>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem' }}>
-                                  <span style={{ color: '#64748b' }}>Phone:</span>
-                                  <strong style={{ color: '#0f172a' }}>{c.phone || 'N/A'}</strong>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem' }}>
-                                  <span style={{ color: '#64748b' }}>Document KYC:</span>
-                                  <span style={{ color: '#059669', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    <CheckCircle className="h-3.5 w-3.5" /> Verified ✓
+                              {/* Candidate Particular Reporting Schedule & Salary Configuration */}
+                              <div style={{ background: '#f8fafc', borderRadius: '0.85rem', padding: '0.85rem', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', borderBottom: '1px dashed #e2e8f0', paddingBottom: '6px', flexWrap: 'wrap', gap: '4px' }}>
+                                  <div style={{ display: 'flex', gap: '8px', color: '#64748b' }}>
+                                    <span>Email: <strong style={{ color: '#0f172a' }}>{c.email}</strong></span>
+                                    <span>·</span>
+                                    <span>Phone: <strong style={{ color: '#0f172a' }}>{c.phone || 'N/A'}</strong></span>
+                                  </div>
+                                  <span style={{ color: '#059669', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                    <CheckCircle className="h-3.5 w-3.5" /> KYC Verified ✓
                                   </span>
                                 </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem' }}>
-                                  <span style={{ color: '#64748b' }}>Reporting Venue:</span>
-                                  <span style={{ color: '#334155', fontWeight: 700, maxWidth: '200px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {c.callLetterVenue || callLetterForm.venue}
-                                  </span>
+
+                                {/* Reference Number Box */}
+                                <div>
+                                  <label style={{ fontSize: '0.66rem', fontWeight: 800, color: '#4c1d95', textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>
+                                    Call Letter Reference No.
+                                  </label>
+                                  <input 
+                                    type="text"
+                                    className="rec-search-input"
+                                    style={{ width: '100%', height: '32px', paddingLeft: '0.5rem', background: '#fff', border: '1px solid #d8b4fe', borderRadius: '0.45rem', fontSize: '0.72rem', fontWeight: 700, color: '#6b21a8' }}
+                                    value={c.callLetterReferenceNo || ''}
+                                    onChange={e => handleUpdateCandidateCallLetter(c.id, { referenceNo: e.target.value })}
+                                    placeholder=""
+                                  />
+                                </div>
+
+                                {/* Designation Box */}
+                                <div>
+                                  <label style={{ fontSize: '0.66rem', fontWeight: 800, color: '#4c1d95', textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>
+                                    Designation
+                                  </label>
+                                  <input 
+                                    type="text"
+                                    className="rec-search-input"
+                                    style={{ width: '100%', height: '32px', paddingLeft: '0.5rem', background: '#fff', border: '1px solid #d8b4fe', borderRadius: '0.45rem', fontSize: '0.72rem', fontWeight: 700, color: '#0f172a' }}
+                                    value={c.callLetterDesignation || ''}
+                                    onChange={e => handleUpdateCandidateCallLetter(c.id, { designation: e.target.value })}
+                                    placeholder=""
+                                  />
+                                </div>
+
+                                {/* Reporting Venue Box */}
+                                <div>
+                                  <label style={{ fontSize: '0.66rem', fontWeight: 800, color: '#4c1d95', textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>
+                                    Reporting Venue / Address
+                                  </label>
+                                  <input 
+                                    type="text"
+                                    className="rec-search-input"
+                                    style={{ width: '100%', height: '32px', paddingLeft: '0.5rem', background: '#fff', border: '1px solid #d8b4fe', borderRadius: '0.45rem', fontSize: '0.72rem' }}
+                                    value={c.callLetterVenue || ''}
+                                    onChange={e => handleUpdateCandidateCallLetter(c.id, { venue: e.target.value })}
+                                    placeholder=""
+                                  />
+                                </div>
+
+                                {/* Salary Box */}
+                                <div>
+                                  <label style={{ fontSize: '0.66rem', fontWeight: 800, color: '#4c1d95', textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>
+                                    Salary (INR / Month)
+                                  </label>
+                                  <input 
+                                    type="number"
+                                    className="rec-search-input"
+                                    style={{ width: '100%', height: '32px', paddingLeft: '0.5rem', background: '#fff', border: '1px solid #d8b4fe', borderRadius: '0.45rem', fontSize: '0.72rem', fontWeight: 700 }}
+                                    value={c.offerSalary !== undefined && c.offerSalary !== null ? c.offerSalary : ''}
+                                    onChange={e => handleUpdateCandidateCallLetter(c.id, { salary: e.target.value })}
+                                    placeholder=""
+                                  />
                                 </div>
                               </div>
 
                               {/* Call Letter Action Buttons */}
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: '6px' }}>
                                   <button
                                     type="button"
                                     onClick={() => setPreviewCallLetterCandidate(c)}
@@ -5136,14 +5721,33 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                       height: '36px',
                                       fontSize: '0.72rem',
                                       justifyContent: 'center',
-                                      gap: '6px',
+                                      gap: '4px',
                                       borderColor: '#c084fc',
                                       color: '#7e22ce',
                                       background: '#faf5ff',
                                       fontWeight: 700
                                     }}
                                   >
-                                    <Eye className="h-3.5 w-3.5" /> Preview Letter
+                                    <Eye className="h-3.5 w-3.5" /> Preview
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDownloadCallLetter(c)}
+                                    className="rec-btn-outline"
+                                    style={{
+                                      height: '36px',
+                                      fontSize: '0.72rem',
+                                      justifyContent: 'center',
+                                      gap: '4px',
+                                      borderColor: '#38bdf8',
+                                      color: '#0284c7',
+                                      background: '#f0f9ff',
+                                      fontWeight: 700
+                                    }}
+                                    title="Download printable Call Letter PDF/Document"
+                                  >
+                                    <Download className="h-3.5 w-3.5" /> Download
                                   </button>
 
                                   <button
@@ -5154,34 +5758,55 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                       height: '36px',
                                       fontSize: '0.72rem',
                                       justifyContent: 'center',
-                                      gap: '6px',
+                                      gap: '4px',
                                       background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
                                       boxShadow: '0 3px 8px rgba(139, 92, 246, 0.3)',
                                       fontWeight: 700
                                     }}
                                   >
-                                    <MailCheck className="h-3.5 w-3.5" /> {isSent ? 'Resend Call Letter' : 'Send Call Letter'}
+                                    <MailCheck className="h-3.5 w-3.5" /> {isSent ? 'Resend' : 'Send'}
                                   </button>
                                 </div>
 
-                                <button
-                                  type="button"
-                                  onClick={() => handlePassCallLetterToOffer(c.id)}
-                                  className="rec-btn-primary"
-                                  style={{
-                                    width: '100%',
-                                    height: '40px',
-                                    justifyContent: 'center',
-                                    marginTop: '0.25rem',
-                                    borderRadius: '0.75rem',
-                                    background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
-                                    boxShadow: '0 4px 14px rgba(249, 115, 22, 0.35)',
-                                    fontWeight: 800,
-                                    fontSize: '0.78rem'
-                                  }}
-                                >
-                                  <Award className="h-4 w-4" /> Approve & Proceed to Stage 6: Offer
-                                </button>
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePassCallLetterToOffer(c.id)}
+                                    className="rec-btn-primary"
+                                    style={{
+                                      flex: 1,
+                                      height: '38px',
+                                      justifyContent: 'center',
+                                      borderRadius: '0.75rem',
+                                      background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                                      boxShadow: '0 4px 14px rgba(249, 115, 22, 0.35)',
+                                      fontWeight: 800,
+                                      fontSize: '0.75rem'
+                                    }}
+                                  >
+                                    <Award className="h-4 w-4" /> Move to Offer →
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setInspectCandidate(c)}
+                                    className="rec-btn-outline"
+                                    title="Live Step-by-Step Recruitment Tracker"
+                                    style={{
+                                      height: '38px',
+                                      padding: '0 12px',
+                                      fontSize: '0.72rem',
+                                      justifyContent: 'center',
+                                      gap: '4px',
+                                      borderColor: '#c7d2fe',
+                                      color: '#4f46e5',
+                                      background: '#f8fafc',
+                                      fontWeight: 700,
+                                      borderRadius: '0.75rem'
+                                    }}
+                                  >
+                                    <Search className="h-3.5 w-3.5" /> Track
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           );
@@ -5220,7 +5845,16 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                               <h3 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a' }}>{c.firstName} {c.lastName}</h3>
                               <p style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>{c.jobTitle} · Exp: {c.experience}</p>
                             </div>
-                            <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleRevertOfferToCallLetter(c.id)}
+                                className="rec-btn-outline"
+                                style={{ fontSize: '0.65rem', height: '24px', padding: '0 8px', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', gap: '4px', fontWeight: 700 }}
+                                title="Move candidate back to Call Letter stage"
+                              >
+                                <ArrowLeft className="h-3 w-3" /> Back to Call Letter
+                              </button>
                               <span className={cn(
                                 'px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase',
                                 c.offerStatus === 'SENT' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-amber-50 text-amber-600 border-amber-100'
@@ -5252,13 +5886,32 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   onChange={e => setOfferForm({...offerForm, salary: e.target.value})}
                                 />
                               </div>
-                              <button 
-                                onClick={() => handleExtendOfferSubmit(c.id)} 
-                                className="rec-btn-primary" 
-                                style={{ width: '100%', height: '36px', justifyContent: 'center' }}
-                              >
-                                <Send className="h-4 w-4" /> Send Offer Letter
-                              </button>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button 
+                                  type="button"
+                                  onClick={() => handleRevertOfferToCallLetter(c.id)}
+                                  className="rec-btn-outline"
+                                  style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', gap: '4px', fontWeight: 700 }}
+                                >
+                                  <ArrowLeft className="h-3.5 w-3.5" /> Back
+                                </button>
+                                <button 
+                                  onClick={() => handleExtendOfferSubmit(c.id)} 
+                                  className="rec-btn-primary" 
+                                  style={{ flex: 1, height: '36px', justifyContent: 'center' }}
+                                >
+                                  <Send className="h-4 w-4" /> Send Offer Letter
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setInspectCandidate(c)}
+                                  className="rec-btn-outline"
+                                  title="Live Step-by-Step Recruitment Tracker"
+                                  style={{ height: '36px', padding: '0 10px', fontSize: '0.72rem', color: '#6366f1', borderColor: '#c7d2fe', background: '#f8fafc', fontWeight: 700, gap: '4px' }}
+                                >
+                                  <Search className="h-3.5 w-3.5" /> Track
+                                </button>
+                              </div>
                             </div>
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -5284,6 +5937,14 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                     style={{ fontSize: '0.65rem', height: '26px', background: '#10b981' }}
                                   >
                                     Accept Offer
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setInspectCandidate(c)}
+                                    className="rec-btn-outline"
+                                    style={{ fontSize: '0.65rem', height: '26px', color: '#6366f1', borderColor: '#c7d2fe', background: '#ffffff', fontWeight: 700 }}
+                                  >
+                                    Track
                                   </button>
                                 </div>
                               </div>
@@ -5371,7 +6032,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                       <div key={c.id} style={{ background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: '1rem', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                         <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
                           <h3 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a' }}>{c.firstName} {c.lastName}</h3>
-                          <p style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 600 }}>{c.jobTitle} · Email: {c.email}</p>
+                          <p style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 600 }}>#{getCandidateCode(c)} · Email: {c.email}</p>
                         </div>
 
                         <div style={{ background: '#faf5ff', border: '1px solid #f3e8ff', borderRadius: '0.75rem', padding: '0.75rem', fontSize: '0.7rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
@@ -5753,90 +6414,173 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                     </div>
                   </div>
 
-                  {/* Inspect Candidate Modal Popup */}
+                  {/* Inspect Candidate Modal Popup with Live Real-Time Tracking */}
                   {inspectCandidate && (() => {
-                    const c = inspectCandidate;
-                    const isAccepted = c.accepted || c.stage === 'Shortlisting' || c.stage === 'Interviews' || c.stage === 'Offer' || c.stage === 'Onboarding' || formApplicantStatuses[c.email] === 'accepted';
-                    const isDeclined = c.declined || c.stage === 'Rejected' || formApplicantStatuses[c.email] === 'declined';
+                    // Resolve latest live candidate state from candidates array or localStorage
+                    const liveCand = candidates.find(item => 
+                      (inspectCandidate.id && item.id === inspectCandidate.id) || 
+                      (inspectCandidate.email && item.email && item.email.toLowerCase() === inspectCandidate.email.toLowerCase())
+                    ) || {};
+                    const c = { ...inspectCandidate, ...liveCand };
                     const candidateCode = getCandidateCode(c);
 
-                    let currentStageName = 'Stage 1: Application Received';
-                    let stuckReason = '';
-                    let statusColor = '#6366f1';
-                    let statusBg = '#eef2ff';
+                    // Check all stored data sources
+                    const candEmailKey = c.email ? c.email.toLowerCase() : '';
+                    const status = formApplicantStatuses[c.email] || (candEmailKey ? formApplicantStatuses[candEmailKey] : undefined) || (c.id ? formApplicantStatuses[c.id] : undefined) || c.stage;
+                    
+                    let storedCallLetters: { [key: string]: any } = {};
+                    try {
+                      storedCallLetters = JSON.parse(localStorage.getItem('hrms_candidate_call_letters') || '{}');
+                    } catch (_) {}
+                    const cl = storedCallLetters[c.id] || (candEmailKey ? storedCallLetters[candEmailKey] : undefined);
+                    const hasCallLetter = !!c.callLetterReferenceNo || !!c.callLetterDate || (cl && cl.callLetterStatus === 'SENT') || status === 'call_letter' || status === 'call-letter' || status === 'callletter' || status === 'offer';
+                    
+                    const extraDocs = getStoredCandidateDocs(c.id, c.email, candidateCode);
+                    const allDocsCount = Math.max((c.attachmentImages ? c.attachmentImages.length : 0), extraDocs.length);
+
+                    const isDeclined = c.declined || c.stage === 'Rejected' || status === 'declined' || status === 'REJECTED';
+                    const isOnboarded = c.stage === 'Onboarding' || c.stage === 'Onboarded' || status === 'onboarded' || status === 'onboarding' || status === 'ONBOARDED';
+                    const isDocuments = isOnboarded || c.stage === 'Documents' || status === 'documents' || c.documentsVerified || (allDocsCount > 1 && hasCallLetter);
+                    const isCallLetter = isDocuments || hasCallLetter || c.stage === 'Call Letter' || c.stage === 'Offer';
+                    const isInterview = isCallLetter || c.stage === 'Interviews' || status === 'scheduled' || status === 'interview' || status === 'SCHEDULED' || !!c.interviewDate;
+                    const isShortlisted = isInterview || c.stage === 'Shortlisting' || status === 'accepted' || status === 'SHORTLISTED' || c.accepted;
+
+                    let currentStageName = 'Stage 1: Google Form Submission Received';
+                    let stuckReason = '⏳ Candidate applied via Google Form and is currently awaiting HR initial shortlisting review.';
+                    let statusColor = '#9333ea';
+                    let statusBg = '#faf5ff';
+                    let currentBadge = 'In Review';
 
                     if (isDeclined) {
-                      currentStageName = 'Stage 2: Shortlisting & Screening';
-                      stuckReason = '❌ Candidate Application Rejected: Profile was declined during initial shortlisting evaluation by HR Manager.';
+                      currentStageName = 'Candidate Application Rejected';
+                      stuckReason = '❌ Candidate profile was declined during recruitment evaluation by HR.';
                       statusColor = '#dc2626';
                       statusBg = '#fef2f2';
-                    } else if (isAccepted) {
-                      currentStageName = c.stage === 'Interviews' ? 'Stage 3: Technical Interview Round' : c.stage === 'Offer' ? 'Stage 4: Offer Letter Stage' : c.stage === 'Documents' ? 'Stage 5: Document Collection' : c.stage === 'Onboarding' ? 'Stage 6: Employee Onboarding' : 'Stage 2: Shortlisting Approved';
-                      stuckReason = '✅ Candidate Accepted: Profile approved and currently active in recruitment pipeline.';
-                      statusColor = '#16a34a';
-                      statusBg = '#f0fdf4';
-                    } else {
-                      currentStageName = 'Stage 1: Google Form Submission Queue';
-                      stuckReason = '⏳ Candidate Pending Review: Candidate applied via Google Form and is currently awaiting HR shortlisting decision.';
+                      currentBadge = 'Rejected';
+                    } else if (isOnboarded) {
+                      currentStageName = 'Stage 6: System Employee Onboarding Completed';
+                      stuckReason = '🎉 Candidate has been successfully onboarded and created as an active employee in HRMS.';
+                      statusColor = '#0d9488';
+                      statusBg = '#f0fdfa';
+                      currentBadge = 'Onboarded';
+                    } else if (isDocuments) {
+                      currentStageName = 'Stage 5: Document Collection & Verification';
+                      stuckReason = c.documentsVerified 
+                        ? '✅ Candidate documents verified by HR. Ready for final system employee onboarding.' 
+                        : `📁 Document verification in progress (${allDocsCount} document(s) uploaded on file).`;
+                      statusColor = '#0284c7';
+                      statusBg = '#f0f9ff';
+                      currentBadge = 'Documents';
+                    } else if (isCallLetter) {
+                      currentStageName = 'Stage 4: Offer Letter / Call Letter Issued';
+                      stuckReason = `📜 Official Letter of Intent dispatched (Ref: ${c.callLetterReferenceNo || cl?.referenceNo || 'Issued'}). Awaiting signed copy & verification documents.`;
                       statusColor = '#9333ea';
                       statusBg = '#faf5ff';
+                      currentBadge = 'Call Letter Sent';
+                    } else if (isInterview) {
+                      currentStageName = 'Stage 3: Interview & Technical Evaluation';
+                      stuckReason = c.interviewDate 
+                        ? `📅 Interview scheduled on ${c.interviewDate} at ${c.interviewTime || 'Scheduled Time'} (${c.interviewType || 'Online'}).` 
+                        : '⏳ Candidate shortlisted for interview round. Evaluation pending.';
+                      statusColor = '#2563eb';
+                      statusBg = '#eff6ff';
+                      currentBadge = 'Interview Scheduled';
+                    } else if (isShortlisted) {
+                      currentStageName = 'Stage 2: Shortlisting & Screening Approved';
+                      stuckReason = '✅ Candidate approved in shortlisting round and active in talent pipeline.';
+                      statusColor = '#16a34a';
+                      statusBg = '#f0fdf4';
+                      currentBadge = 'Shortlisted';
                     }
 
                     const timelineSteps = [
                       {
                         title: 'Stage 1: Google Form Application Received',
-                        desc: `Applied on ${c.appliedDate || '24/08/2026 10:58:33'} via ${c.source || 'Google Form'}`,
+                        desc: `Applied on ${c.appliedDate || '2026-09-04'} via ${c.source || 'Google Form'} (Code: #${candidateCode})`,
                         status: 'completed',
                       },
                       {
                         title: 'Stage 2: Shortlisting & Initial Screening',
                         desc: isDeclined 
                           ? '❌ Application Declined — Rejected at Shortlisting Stage' 
-                          : isAccepted 
-                            ? '✅ Accepted — Profile approved for Shortlist' 
+                          : isShortlisted 
+                            ? '✅ Shortlisted & Approved — Profile passed initial screening' 
                             : '⏳ Currently Pending Review — Awaiting HR Decision',
-                        status: isDeclined ? 'rejected' : isAccepted ? 'completed' : 'pending',
+                        status: isDeclined ? 'rejected' : isShortlisted ? 'completed' : 'pending',
                       },
                       {
                         title: 'Stage 3: Interview Round & Technical Evaluation',
-                        desc: c.stage === 'Interviews' ? '📅 Interview Scheduled' : isAccepted ? 'Awaiting interview schedule' : 'Not started',
-                        status: c.stage === 'Interviews' ? 'active' : 'upcoming',
+                        desc: isDeclined && !isInterview
+                          ? 'Application closed'
+                          : isCallLetter || isDocuments || isOnboarded
+                            ? `✅ Interview Cleared — Technical round passed${c.interviewDate ? ` (${c.interviewDate})` : ''}`
+                            : isInterview
+                              ? `📅 Interview Scheduled: ${c.interviewDate || 'Date set'} at ${c.interviewTime || 'Time set'} (${c.interviewType || 'Online'})${c.interviewer ? ` with ${c.interviewer}` : ''}`
+                              : isShortlisted
+                                ? '⏳ Ready for Interview Scheduling'
+                                : 'Not started',
+                        status: isDeclined && !isInterview ? 'rejected' : (isCallLetter || isDocuments || isOnboarded) ? 'completed' : isInterview ? 'active' : isShortlisted ? 'pending' : 'upcoming',
                       },
                       {
-                        title: 'Stage 4: Extended Offer & Salary Terms',
-                        desc: c.stage === 'Offer' ? '📜 Offer Extended' : 'Not reached',
-                        status: c.stage === 'Offer' ? 'active' : 'upcoming',
+                        title: 'Stage 4: Call Letter & Offer Letter Terms',
+                        desc: isDeclined && !isCallLetter
+                          ? 'Application closed'
+                          : isDocuments || isOnboarded
+                            ? `✅ Call Letter / Letter of Intent Issued & Accepted (Ref: ${c.callLetterReferenceNo || cl?.referenceNo || 'Issued'})`
+                            : isCallLetter
+                              ? `📜 Call Letter Dispatched — Ref: ${c.callLetterReferenceNo || cl?.referenceNo || 'Generated'}${c.offerSalary ? ` · Salary: ₹${Number(c.offerSalary).toLocaleString('en-IN')}` : ''}`
+                              : isInterview
+                                ? '⏳ Pending Call Letter Generation'
+                                : 'Not reached',
+                        status: isDeclined && !isCallLetter ? 'rejected' : (isDocuments || isOnboarded) ? 'completed' : isCallLetter ? 'active' : isInterview ? 'pending' : 'upcoming',
                       },
                       {
                         title: 'Stage 5: Document Collection & Verification',
-                        desc: c.stage === 'Documents' ? '📁 Document Verification' : 'Not reached',
-                        status: c.stage === 'Documents' ? 'active' : 'upcoming',
+                        desc: isDeclined && !isDocuments
+                          ? 'Application closed'
+                          : isOnboarded
+                            ? `✅ Documents Verified by HR (${allDocsCount || 1} files on record)`
+                            : isDocuments
+                              ? c.documentsVerified
+                                ? `✅ Documents Verified by HR (${allDocsCount} files uploaded)`
+                                : `📁 Document Verification in Progress (${allDocsCount} files uploaded)`
+                              : isCallLetter
+                                ? '⏳ Awaiting Candidate Signed Call Letter & ID Documents'
+                                : 'Not reached',
+                        status: isDeclined && !isDocuments ? 'rejected' : isOnboarded ? 'completed' : isDocuments ? 'active' : isCallLetter ? 'pending' : 'upcoming',
                       },
                       {
                         title: 'Stage 6: System Employee Onboarding',
-                        desc: c.stage === 'Onboarding' ? '🎉 Joined & Onboarded' : 'Not reached',
-                        status: c.stage === 'Onboarding' ? 'completed' : 'upcoming',
+                        desc: isOnboarded
+                          ? '🎉 Successfully Joined & Onboarded to HRMS Employee System'
+                          : isDocuments
+                            ? '⏳ Ready for System Employee Account Creation'
+                            : 'Not reached',
+                        status: isOnboarded ? 'completed' : isDocuments ? 'pending' : 'upcoming',
                       },
                     ];
 
                     return (
                       <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-                        <div style={{ background: '#ffffff', borderRadius: '1.25rem', width: '100%', maxWidth: '650px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ background: '#ffffff', borderRadius: '1.25rem', width: '100%', maxWidth: '680px', maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
                           
                           {/* Modal Header */}
                           <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fafafa', borderTopLeftRadius: '1.25rem', borderTopRightRadius: '1.25rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                              <div className="h-10 w-10 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow">
+                              <div className="h-11 w-11 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow">
                                 {(c.firstName || 'A').charAt(0)}{(c.lastName || '').charAt(0)}
                               </div>
                               <div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>{c.firstName} {c.lastName}</h3>
-                                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#059669', fontFamily: 'monospace', padding: '1px 6px', background: '#ecfdf5', borderRadius: '5px', border: '1px solid #a7f3d0' }}>
+                                  <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>{c.firstName} {c.lastName}</h3>
+                                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#059669', fontFamily: 'monospace', padding: '2px 8px', background: '#ecfdf5', borderRadius: '6px', border: '1px solid #a7f3d0' }}>
                                     #{candidateCode}
                                   </span>
+                                  <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: '6px', background: statusBg, color: statusColor, border: `1px solid ${statusColor}40` }}>
+                                    {currentBadge}
+                                  </span>
                                 </div>
-                                <p style={{ fontSize: '0.7rem', color: '#64748b', margin: 0 }}>{c.email} · {c.phone || c.mobile || 'N/A'}</p>
+                                <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '2px 0 0 0' }}>{c.email} · {c.phone || c.mobile || 'N/A'} · {c.jobTitle || 'Role'}</p>
                               </div>
                             </div>
                             <button 
@@ -5852,13 +6596,18 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                             
                             {/* Current Status Box */}
                             <div style={{ background: statusBg, border: `1px solid ${statusColor}40`, borderRadius: '0.85rem', padding: '1rem 1.25rem' }}>
-                              <p style={{ fontSize: '0.7rem', fontWeight: 800, color: statusColor, textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 4px 0' }}>
-                                Current Pipeline Inspection Status
-                              </p>
-                              <p style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                <p style={{ fontSize: '0.7rem', fontWeight: 800, color: statusColor, textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>
+                                  Live Recruitment Stage Tracking
+                                </p>
+                                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> Real-Time Live
+                                </span>
+                              </div>
+                              <p style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', margin: '0 0 4px 0' }}>
                                 {currentStageName}
                               </p>
-                              <p style={{ fontSize: '0.75rem', color: '#334155', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>
+                              <p style={{ fontSize: '0.78rem', color: '#334155', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>
                                 {stuckReason}
                               </p>
                             </div>
@@ -5866,9 +6615,15 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                             {/* Detailed Candidate Info Grid */}
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', background: '#f8fafc', padding: '1rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0', fontSize: '0.75rem' }}>
                               <div><span style={{ color: '#94a3b8' }}>Qualification:</span> <span style={{ fontWeight: 700, color: '#334155' }}>{c.experience || c.qualification || '-'}</span></div>
-                              <div><span style={{ color: '#94a3b8' }}>Location:</span> <span style={{ fontWeight: 700, color: '#334155' }}>{c.location || 'WNP'}</span></div>
+                              <div><span style={{ color: '#94a3b8' }}>Location / Venue:</span> <span style={{ fontWeight: 700, color: '#334155' }}>{c.location || c.callLetterVenue || 'WNP'}</span></div>
                               <div><span style={{ color: '#94a3b8' }}>Application Source:</span> <span style={{ fontWeight: 700, color: '#334155' }}>{c.source || 'Google Form'}</span></div>
-                              <div><span style={{ color: '#94a3b8' }}>Applied Date:</span> <span style={{ fontWeight: 700, color: '#334155' }}>{c.appliedDate || '24/08/2026 10:58:33'}</span></div>
+                              <div><span style={{ color: '#94a3b8' }}>Applied Date:</span> <span style={{ fontWeight: 700, color: '#334155' }}>{c.appliedDate || c.appliedAt || '2026-09-04'}</span></div>
+                              {c.interviewDate && (
+                                <div><span style={{ color: '#94a3b8' }}>Interview Slot:</span> <span style={{ fontWeight: 700, color: '#2563eb' }}>{c.interviewDate} at {c.interviewTime || ''}</span></div>
+                              )}
+                              {(c.callLetterReferenceNo || cl?.referenceNo) && (
+                                <div><span style={{ color: '#94a3b8' }}>Call Letter Ref:</span> <span style={{ fontWeight: 700, color: '#7c3aed' }}>{c.callLetterReferenceNo || cl?.referenceNo}</span></div>
+                              )}
                               {(c.resumeUrl || c.resumeLink) && (
                                 <div style={{ gridColumn: '1/-1' }}>
                                   <span style={{ color: '#94a3b8' }}>Resume Document: </span>
@@ -5881,10 +6636,15 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
                             {/* Timeline Pipeline Tracker */}
                             <div>
-                              <h4 style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.85rem' }}>
-                                📍 Candidate Recruitment Step-by-Step Tracker
-                              </h4>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', position: 'relative', paddingLeft: '1.25rem', borderLeft: '2px solid #e2e8f0' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
+                                <h4 style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                                  📍 Candidate Recruitment Step-by-Step Tracker
+                                </h4>
+                                <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                                  Auto-synced with HR Pipeline
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem', position: 'relative', paddingLeft: '1.35rem', borderLeft: '2px solid #e2e8f0', marginLeft: '0.5rem' }}>
                                 {timelineSteps.map((stp, idx) => {
                                   let dotBg = '#cbd5e1';
                                   let icon = <Clock className="h-3 w-3 text-white" />;
@@ -5902,14 +6662,14 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
                                   return (
                                     <div key={idx} style={{ position: 'relative' }}>
-                                      <div style={{ position: 'absolute', left: '-1.85rem', top: '2px', width: 22, height: 22, borderRadius: '50%', background: dotBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                      <div style={{ position: 'absolute', left: '-1.95rem', top: '1px', width: 22, height: 22, borderRadius: '50%', background: dotBg, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                                         {icon}
                                       </div>
                                       <div>
-                                        <p style={{ fontSize: '0.78rem', fontWeight: 700, color: stp.status === 'rejected' ? '#ef4444' : stp.status === 'completed' ? '#10b981' : '#0f172a', margin: 0 }}>
+                                        <p style={{ fontSize: '0.8rem', fontWeight: 700, color: stp.status === 'rejected' ? '#ef4444' : stp.status === 'completed' ? '#10b981' : stp.status === 'active' ? '#7c3aed' : '#0f172a', margin: 0 }}>
                                           {stp.title}
                                         </p>
-                                        <p style={{ fontSize: '0.7rem', color: '#64748b', margin: '2px 0 0 0' }}>
+                                        <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '2px 0 0 0', lineHeight: 1.4 }}>
                                           {stp.desc}
                                         </p>
                                       </div>
@@ -5921,8 +6681,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
                           </div>
 
-                          {/* Modal Footer */}
-                          <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #f1f5f9', background: '#fafafa', borderBottomLeftRadius: '1.25rem', borderBottomRightRadius: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                          {/* Modal Footer with Stage Navigation Actions */}
+                          <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #f1f5f9', background: '#fafafa', borderBottomLeftRadius: '1.25rem', borderBottomRightRadius: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.5rem', flexWrap: 'wrap' }}>
                             <button
                               onClick={() => {
                                 handleDeleteApplicant(c.id, c.email);
@@ -5930,9 +6690,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                               className="rec-btn-outline"
                               style={{ fontSize: '0.72rem', height: '32px', padding: '0 12px', color: '#dc2626', borderColor: '#fca5a5', background: '#fef2f2', marginRight: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
                             >
-                              <Trash2 className="h-3.5 w-3.5" /> Delete Applicant
+                              <Trash2 className="h-3.5 w-3.5" /> Delete
                             </button>
-                            {!isAccepted && (
+
+                            {/* Stage Action Shortcuts */}
+                            {!isShortlisted && !isDeclined && (
                               <button
                                 onClick={() => {
                                   handleAcceptFormApplicant(c);
@@ -5941,10 +6703,80 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 className="rec-btn-primary"
                                 style={{ fontSize: '0.72rem', height: '32px', padding: '0 12px', background: '#16a34a', borderColor: '#15803d' }}
                               >
-                                <Check className="h-3.5 w-3.5 mr-1" /> {isDeclined ? 'Re-Accept Candidate' : 'Accept Candidate'}
+                                <Check className="h-3.5 w-3.5 mr-1" /> Accept to Shortlist
                               </button>
                             )}
-                            {!isDeclined && (
+
+                            {isShortlisted && !isInterview && !isDeclined && (
+                              <button
+                                onClick={() => {
+                                  setSelectedCandidate(c);
+                                  setActiveTab('stage-6');
+                                  setInspectCandidate(null);
+                                }}
+                                className="rec-btn-primary"
+                                style={{ fontSize: '0.72rem', height: '32px', padding: '0 12px', background: '#2563eb', borderColor: '#1d4ed8' }}
+                              >
+                                <Calendar className="h-3.5 w-3.5 mr-1" /> Schedule Interview →
+                              </button>
+                            )}
+
+                            {isInterview && !isCallLetter && !isDeclined && (
+                              <button
+                                onClick={() => {
+                                  setSelectedCandidate(c);
+                                  setActiveTab('stage-call-letter');
+                                  setInspectCandidate(null);
+                                }}
+                                className="rec-btn-primary"
+                                style={{ fontSize: '0.72rem', height: '32px', padding: '0 12px', background: '#9333ea', borderColor: '#7e22ce' }}
+                              >
+                                <MailCheck className="h-3.5 w-3.5 mr-1" /> Issue Call Letter →
+                              </button>
+                            )}
+
+                            {isCallLetter && !isDocuments && !isDeclined && (
+                              <button
+                                onClick={() => {
+                                  setSelectedCandidate(c);
+                                  setActiveTab('stage-7');
+                                  setInspectCandidate(null);
+                                }}
+                                className="rec-btn-primary"
+                                style={{ fontSize: '0.72rem', height: '32px', padding: '0 12px', background: '#0284c7', borderColor: '#0369a1' }}
+                              >
+                                <FolderOpen className="h-3.5 w-3.5 mr-1" /> Document Verification →
+                              </button>
+                            )}
+
+                            {isDocuments && !isOnboarded && !isDeclined && (
+                              <button
+                                onClick={() => {
+                                  setSelectedCandidate(c);
+                                  setActiveTab('stage-9');
+                                  setInspectCandidate(null);
+                                }}
+                                className="rec-btn-primary"
+                                style={{ fontSize: '0.72rem', height: '32px', padding: '0 12px', background: '#0d9488', borderColor: '#0f766e' }}
+                              >
+                                <UserPlus className="h-3.5 w-3.5 mr-1" /> Complete Onboarding →
+                              </button>
+                            )}
+
+                            {isDeclined && (
+                              <button
+                                onClick={() => {
+                                  handleAcceptFormApplicant(c);
+                                  setInspectCandidate(null);
+                                }}
+                                className="rec-btn-primary"
+                                style={{ fontSize: '0.72rem', height: '32px', padding: '0 12px', background: '#16a34a', borderColor: '#15803d' }}
+                              >
+                                <Check className="h-3.5 w-3.5 mr-1" /> Re-Accept Candidate
+                              </button>
+                            )}
+
+                            {!isDeclined && !isOnboarded && (
                               <button
                                 onClick={() => {
                                   handleDeclineFormApplicant(c);
@@ -5953,9 +6785,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 className="rec-btn-outline"
                                 style={{ fontSize: '0.72rem', height: '32px', padding: '0 12px', color: '#dc2626', borderColor: '#fca5a5', background: '#fef2f2' }}
                               >
-                                <X className="h-3.5 w-3.5 mr-1" /> Decline Candidate
+                                <X className="h-3.5 w-3.5 mr-1" /> Decline
                               </button>
                             )}
+
                             <button
                               onClick={() => setInspectCandidate(null)}
                               className="rec-btn-outline"
@@ -6082,24 +6915,13 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                 </button>
               </div>
 
-              <div style={{ padding: '0.75rem 0', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '380px', maxHeight: '72vh', width: '100%' }}>
+              <div style={{ padding: '1rem 0', display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
                 {previewMediaAttachment.error ? (
-                  <div style={{ textAlign: 'center', color: '#f87171' }}>
+                  <div style={{ textAlign: 'center', color: '#f87171', padding: '2rem' }}>
                     <AlertTriangle className="h-8 w-8 mx-auto mb-2 text-amber-500" />
                     <p style={{ fontWeight: 600, fontSize: '0.85rem' }}>⚠️ File unavailable</p>
                   </div>
-                ) : (previewMediaAttachment.driveId || (previewMediaAttachment.url && previewMediaAttachment.url.includes('drive.google.com')) || previewMediaAttachment.type === 'pdf') ? (
-                  <div style={{ width: '100%', height: '540px', display: 'flex', flexDirection: 'column' }}>
-                    <iframe
-                      src={previewMediaAttachment.previewUrl || (previewMediaAttachment.driveId ? `https://drive.google.com/file/d/${previewMediaAttachment.driveId}/preview` : previewMediaAttachment.url)}
-                      width="100%"
-                      height="100%"
-                      style={{ border: '1px solid #334155', borderRadius: '0.5rem', background: '#ffffff' }}
-                      title={previewMediaAttachment.name}
-                      allow="autoplay"
-                    />
-                  </div>
-                ) : (previewMediaAttachment.type === 'image' || previewMediaAttachment.url?.startsWith('data:image')) ? (
+                ) : (previewMediaAttachment.type === 'image' && !previewMediaAttachment.driveId && !previewMediaAttachment.url?.includes('drive.google.com')) ? (
                   <img
                     src={previewMediaAttachment.url}
                     alt={previewMediaAttachment.name}
@@ -6109,13 +6931,38 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                     }}
                   />
                 ) : (
-                  <iframe
-                    src={previewMediaAttachment.url}
-                    width="100%"
-                    height="500px"
-                    style={{ border: '1px solid #334155', borderRadius: '0.5rem', background: '#fff' }}
-                    title={previewMediaAttachment.name}
-                  />
+                  <div style={{ textAlign: 'center', padding: '2.5rem 1.5rem', background: '#1e293b', borderRadius: '0.85rem', border: '1px solid #334155', width: '100%', maxWidth: '520px' }}>
+                    <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(56, 189, 248, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem auto' }}>
+                      <FileText className="h-8 w-8 text-sky-400" />
+                    </div>
+                    <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#f8fafc', margin: '0 0 0.5rem 0' }}>
+                      {previewMediaAttachment.name}
+                    </h4>
+                    <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '0 auto 1.5rem auto', lineHeight: 1.5 }}>
+                      Google Drive documents are viewed in a new browser tab for full security, access, and direct high-resolution viewing.
+                    </p>
+                    <a
+                      href={previewMediaAttachment.originalUrl || (previewMediaAttachment.driveId ? `https://drive.google.com/file/d/${previewMediaAttachment.driveId}/view` : previewMediaAttachment.url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rec-btn-primary"
+                      style={{
+                        padding: '0.75rem 1.5rem',
+                        fontSize: '0.85rem',
+                        fontWeight: 700,
+                        background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        borderRadius: '0.6rem',
+                        color: '#ffffff',
+                        boxShadow: '0 4px 14px rgba(2, 132, 199, 0.4)'
+                      }}
+                    >
+                      <ExternalLink className="h-4.5 w-4.5" /> Open Document in New Tab ↗
+                    </a>
+                  </div>
                 )}
               </div>
 
@@ -6398,7 +7245,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
       {/* ════════════════ OFFICIAL CALL LETTER PREVIEW & PRINT MODAL ════════════════ */}
       <AnimatePresence>
-        {previewCallLetterCandidate && (
+        {previewCallLetterCandidate && activeTab === 'stage-call-letter' && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -6419,12 +7266,20 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.5rem', background: '#0f172a', color: '#fff' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <MailCheck className="h-5 w-5 text-purple-400" />
-                  <span style={{ fontSize: '0.95rem', fontWeight: 800 }}>Official Selection & Appointment Call Letter</span>
+                  <span style={{ fontSize: '0.95rem', fontWeight: 800 }}>Official Selection & Appointment - Letter of Intent</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <button
                     type="button"
-                    onClick={() => window.print()}
+                    onClick={() => handleDownloadCallLetter(previewCallLetterCandidate)}
+                    className="rec-btn-outline"
+                    style={{ fontSize: '0.72rem', height: '30px', padding: '0 12px', gap: '5px', background: 'rgba(168,85,247,0.25)', borderColor: 'rgba(192,132,252,0.5)', color: '#ffffff', fontWeight: 800 }}
+                  >
+                    <Download className="h-3.5 w-3.5" /> Download
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadCallLetter(previewCallLetterCandidate)}
                     className="rec-btn-outline"
                     style={{ fontSize: '0.72rem', height: '30px', padding: '0 10px', gap: '4px', background: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.2)', color: '#fff', fontWeight: 700 }}
                   >
@@ -6441,127 +7296,96 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               </div>
 
               {/* Official Letterhead Body */}
-              <div style={{ padding: '2rem 2.5rem', overflowY: 'auto', background: '#ffffff', color: '#1e293b', fontSize: '0.85rem', lineHeight: '1.6' }} id="printable-call-letter">
-                {/* Corporate Header */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2.5px solid #4f46e5', paddingBottom: '1.25rem', marginBottom: '1.5rem' }}>
+              <div style={{ padding: '2.5rem 3rem', overflowY: 'auto', background: '#ffffff', color: '#000000', fontSize: '0.88rem', lineHeight: '1.65' }} id="printable-call-letter">
+                {/* Header with Logo & Company Info */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1.5px solid #cbd5e1', paddingBottom: '10px', marginBottom: '1.25rem' }}>
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                      <Building2 className="h-6 w-6 text-indigo-600" />
-                      <h2 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
-                        VRPI GROUP ENTERPRISES
-                      </h2>
-                    </div>
-                    <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
-                      Talent Acquisition & Human Resources Division · Corporate Operations
-                    </p>
-                    <p style={{ margin: 0, fontSize: '0.68rem', color: '#94a3b8' }}>
-                      Cyber Towers, Hi-Tech City, Hyderabad - 500081 · hr@vrpigroup.com
-                    </p>
+                    <div style={{ fontWeight: 'bold', fontSize: '0.95rem', color: '#1e293b', textDecoration: 'underline' }}>VR PI TECH SOLUTIONS LLP</div>
+                    <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: '3px' }}>Head Quarters : 2-27-163, Gandhi Nagar, Near Jammi Chettu, Wanaparthy, Telangana, India - 509103.</div>
+                    <div style={{ fontSize: '0.75rem', color: '#475569' }}>Email: talentacquisition@vrpigroup.co.in | Phone: (+91) 879-094-6714</div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <span style={{ fontSize: '0.68rem', fontWeight: 800, background: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: '4px', display: 'inline-block', marginBottom: '4px' }}>
-                      REF: VRPI/HR/CL-2026/{(previewCallLetterCandidate.id || 'CAND').slice(-5).toUpperCase()}
-                    </span>
-                    <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>
-                      Date: {format(new Date(), 'dd MMMM yyyy')}
-                    </p>
-                  </div>
+                  <img src="/call_letter_logo.png" style={{ height: '40px', width: 'auto', objectFit: 'contain' }} alt="VR PI Logo" />
                 </div>
 
-                {/* Candidate Addressee */}
-                <div style={{ marginBottom: '1.25rem', background: '#f8fafc', padding: '0.85rem 1.15rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0' }}>
-                  <p style={{ margin: '0 0 2px 0', fontSize: '0.72rem', fontWeight: 800, color: '#4f46e5', textTransform: 'uppercase' }}>To Candidate:</p>
-                  <h3 style={{ margin: '0 0 2px 0', fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
-                    {previewCallLetterCandidate.firstName} {previewCallLetterCandidate.lastName}
-                  </h3>
-                  <p style={{ margin: 0, fontSize: '0.75rem', color: '#475569' }}>
-                    Email: <strong>{previewCallLetterCandidate.email}</strong> · Phone: <strong>{previewCallLetterCandidate.phone || 'N/A'}</strong>
-                  </p>
-                  <p style={{ margin: '2px 0 0 0', fontSize: '0.72rem', color: '#64748b' }}>
-                    Candidate ID / Code: #{getCandidateCode(previewCallLetterCandidate)}
-                  </p>
+                <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '1.25rem', marginBottom: '1.5rem', textDecoration: 'underline', letterSpacing: '0.5px' }}>
+                  LETTER OF INTENT
                 </div>
 
-                {/* Letter Subject */}
-                <div style={{ marginBottom: '1.25rem' }}>
-                  <p style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.88rem', margin: 0, borderLeft: '4px solid #4f46e5', paddingLeft: '10px' }}>
-                    SUB: OFFICIAL CALL LETTER FOR FINAL INTERVIEW & APPOINTMENT - {previewCallLetterCandidate.jobTitle.toUpperCase()}
-                  </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.25rem', fontSize: '0.88rem' }}>
+                  <div><strong>Date:</strong> {format(new Date(), 'dd/MM/yyyy')}</div>
+                  <div><strong>Ref no.:</strong> {previewCallLetterCandidate.callLetterReferenceNo || `${new Date().getFullYear()}-${String((new Date().getFullYear() + 1) % 100).padStart(2, '0')}/${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}/${getCandidateCode(previewCallLetterCandidate).padStart(3, '0')}`}</div>
                 </div>
 
-                {/* Letter Body */}
-                <p style={{ margin: '0 0 0.85rem 0' }}>
-                  Dear <strong>{previewCallLetterCandidate.firstName}</strong>,
-                </p>
-                <p style={{ margin: '0 0 0.85rem 0', color: '#334155' }}>
-                  We are pleased to inform you that you have successfully completed the recruitment assessment and credential verification process for the position of <strong>{previewCallLetterCandidate.jobTitle}</strong> at VRPI Group.
-                </p>
-                <p style={{ margin: '0 0 1.25rem 0', color: '#334155' }}>
-                  This Call Letter serves as your official invite for in-person reporting, document validation, and formal offer discussion. Kindly review your scheduled reporting details below:
+                <div style={{ marginBottom: '1.25rem', fontSize: '0.88rem', lineHeight: '1.5' }}>
+                  To<br />
+                  Mr/Ms/Mrs. <strong>{previewCallLetterCandidate.firstName} {previewCallLetterCandidate.lastName}</strong>
+                </div>
+
+                <div style={{ textAlign: 'center', fontWeight: 'bold', margin: '1.25rem 0', fontSize: '0.95rem' }}>
+                  Sub: Offer Letter
+                </div>
+
+                <div style={{ marginBottom: '1rem', fontSize: '0.88rem' }}>
+                  Dear <strong>{previewCallLetterCandidate.firstName} {previewCallLetterCandidate.lastName}</strong>,
+                </div>
+
+                <p style={{ margin: '0 0 1rem 0', textAlign: 'justify', color: '#111827' }}>
+                  We are pleased to offer you the post of <strong>{previewCallLetterCandidate.callLetterDesignation || (previewCallLetterCandidate.jobTitle || '').replace(/\s*\([^)]*Google\s*Form[^)]*\)/gi, '').replace(/\s*\(Google Form Recruitment\)/gi, '').replace(/Google Form Recruitment/gi, '').trim() || '(Designation - Role)'}</strong> based at <strong>{previewCallLetterCandidate.callLetterVenue || callLetterForm.venue || '(Location)'}</strong>.
                 </p>
 
-                {/* Structured Reporting Schedule Table */}
-                <div style={{ border: '1.5px solid #cbd5e1', borderRadius: '0.85rem', overflow: 'hidden', marginBottom: '1.25rem' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-                    <tbody>
-                      <tr style={{ borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
-                        <td style={{ padding: '8px 12px', fontWeight: 800, color: '#475569', width: '35%' }}>Reporting Date</td>
-                        <td style={{ padding: '8px 12px', fontWeight: 800, color: '#0f172a' }}>
-                          {previewCallLetterCandidate.callLetterReportingDate || callLetterForm.reportingDate || format(new Date(Date.now() + 3 * 86400000), 'dd MMMM yyyy')}
-                        </td>
-                      </tr>
-                      <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                        <td style={{ padding: '8px 12px', fontWeight: 800, color: '#475569' }}>Reporting Time</td>
-                        <td style={{ padding: '8px 12px', fontWeight: 700, color: '#0f172a' }}>
-                          {previewCallLetterCandidate.callLetterTime || callLetterForm.reportingTime || '09:30 AM'}
-                        </td>
-                      </tr>
-                      <tr style={{ borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
-                        <td style={{ padding: '8px 12px', fontWeight: 800, color: '#475569' }}>Reporting Venue / Mode</td>
-                        <td style={{ padding: '8px 12px', fontWeight: 700, color: '#0f172a' }}>
-                          {previewCallLetterCandidate.callLetterVenue || callLetterForm.venue}
-                        </td>
-                      </tr>
-                      <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                        <td style={{ padding: '8px 12px', fontWeight: 800, color: '#475569' }}>HR Coordinator</td>
-                        <td style={{ padding: '8px 12px', fontWeight: 600, color: '#334155' }}>
-                          {previewCallLetterCandidate.callLetterHrContact || callLetterForm.hrContact}
-                        </td>
-                      </tr>
-                      <tr style={{ background: '#f8fafc' }}>
-                        <td style={{ padding: '8px 12px', fontWeight: 800, color: '#475569' }}>Special Instructions</td>
-                        <td style={{ padding: '8px 12px', color: '#475569' }}>
-                          {previewCallLetterCandidate.callLetterNotes || callLetterForm.notes}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+                <p style={{ margin: '0 0 1rem 0', textAlign: 'justify', color: '#111827' }}>
+                  The compensation structure is enclosed for your reference as Annexure.
+                </p>
+
+                <p style={{ margin: '0 0 1rem 0', textAlign: 'justify', color: '#111827' }}>
+                  Your employment with the Company will be subject to strict adherence to the policies and procedures of the Company.
+                </p>
+
+                <p style={{ margin: '0 0 1rem 0', textAlign: 'justify', color: '#111827' }}>
+                  You will be on probation for six months.
+                </p>
+
+                <p style={{ margin: '0 0 1rem 0', textAlign: 'justify', color: '#111827' }}>
+                  This offer is subjected to background verification and medical fitness.
+                </p>
+
+                <p style={{ margin: '0 0 1rem 0', textAlign: 'justify', color: '#111827' }}>
+                  On acceptance of the terms of conditions as per this offer letter, you will be able to terminate your employment with the Company by giving one (1) month notice to the Company and vice versa. You shall not be eligible to avail leave during the notice period.
+                </p>
+
+                <p style={{ margin: '0 0 1rem 0', textAlign: 'justify', color: '#111827' }}>
+                  We welcome you to join the Company and would be happy if you can sign the duplicate copy of this letter in token of your acceptance of the offer of employment with the Company.
+                </p>
+
+                <p style={{ margin: '0 0 1.25rem 0', textAlign: 'justify', color: '#111827' }}>
+                  If you have any question, please clarify from the undersigned.
+                </p>
+
+                <div style={{ marginTop: '1.5rem', marginBottom: '2rem', lineHeight: '1.5', fontSize: '0.88rem' }}>
+                  With regards,<br />
+                  <strong>Talent Acquisition Team</strong><br />
+                  HR - Head
                 </div>
 
-                {/* Requirements & Checklist */}
-                <div style={{ background: '#f0fdf4', padding: '0.85rem 1rem', borderRadius: '0.75rem', border: '1px solid #bbf7d0', marginBottom: '1.25rem', fontSize: '0.75rem' }}>
-                  <p style={{ margin: '0 0 4px 0', fontWeight: 800, color: '#166534' }}>Documents to Carry on Reporting Day:</p>
-                  <ul style={{ margin: 0, paddingLeft: '1.2rem', color: '#14532d', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                    <li>Original Government ID Proof (Aadhaar / Passport / Voter ID) along with 2 photocopies</li>
-                    <li>Educational Degrees, Consolidated Marksheets & Provisional Certificates</li>
-                    <li>Past experience certificates and recent 3 months payslips (if applicable)</li>
-                    <li>Two (2) passport-size color photographs</li>
-                  </ul>
+                <div style={{ textAlign: 'center', fontWeight: 'bold', textDecoration: 'underline', margin: '2rem 0 1.25rem 0', fontSize: '1rem', letterSpacing: '0.5px' }}>
+                  ANNEXURE
                 </div>
 
-                {/* Sign-off */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid #e2e8f0' }}>
-                  <div>
-                    <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>Authorized by:</p>
-                    <p style={{ margin: '4px 0 0 0', fontWeight: 800, color: '#0f172a', fontSize: '0.85rem' }}>Talent Acquisition Lead</p>
-                    <p style={{ margin: 0, fontSize: '0.7rem', color: '#64748b' }}>VRP Infra & Tech Group HR Division</p>
-                  </div>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ border: '1.5px dashed #4f46e5', borderRadius: '50%', width: '56px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 4px auto', background: '#eef2ff' }}>
-                      <span style={{ fontSize: '0.55rem', fontWeight: 900, color: '#4338ca', textAlign: 'center', lineHeight: '1.1' }}>VRPI<br/>SEAL</span>
-                    </div>
-                    <span style={{ fontSize: '0.62rem', color: '#94a3b8', fontWeight: 700 }}>VERIFIED & ISSUED</span>
-                  </div>
+                <div style={{ marginBottom: '1.25rem', fontSize: '0.88rem', lineHeight: '1.8' }}>
+                  The gross salary of the employee for every month is as follows:<br /><br />
+                  <strong>Net Salary/Monthly:</strong> ₹ {previewCallLetterCandidate.offerSalary !== undefined && previewCallLetterCandidate.offerSalary !== null && Number(previewCallLetterCandidate.offerSalary) > 0 ? Number(previewCallLetterCandidate.offerSalary).toLocaleString('en-IN') : ''}<br />
+                  <strong>Amount in words:</strong> {previewCallLetterCandidate.offerSalary !== undefined && previewCallLetterCandidate.offerSalary !== null && Number(previewCallLetterCandidate.offerSalary) > 0 ? numberToWordsINR(Number(previewCallLetterCandidate.offerSalary)) : ''}
+                </div>
+
+                <div style={{ margin: '1.25rem 0', fontSize: '0.88rem', textAlign: 'justify', color: '#111827' }}>
+                  I accept the aforesaid terms &amp; conditions and this offer of employment. I shall keep the contents of this document confidential.
+                </div>
+
+                <div style={{ marginTop: '1.5rem', fontSize: '0.88rem', lineHeight: '2.2' }}>
+                  I will join on ________________.<br />
+                  Name: <strong>{previewCallLetterCandidate.firstName} {previewCallLetterCandidate.lastName}</strong><br />
+                  Signature: ___________________ .<br />
+                  Date: _________________________ .
                 </div>
               </div>
 
@@ -6574,6 +7398,14 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                   style={{ fontSize: '0.75rem', height: '36px', padding: '0 16px', fontWeight: 700 }}
                 >
                   Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadCallLetter(previewCallLetterCandidate)}
+                  className="rec-btn-outline"
+                  style={{ fontSize: '0.75rem', height: '36px', padding: '0 16px', fontWeight: 700, gap: '6px', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff' }}
+                >
+                  <Download className="h-4 w-4" /> Download Letter
                 </button>
                 <button
                   type="button"

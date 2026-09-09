@@ -1,8 +1,244 @@
 import { Response } from 'express'
+import PDFDocument from 'pdfkit'
 import { prisma } from '../config/database'
 import { AuthRequest } from '../middleware/auth.middleware'
 import { sendError, sendSuccess } from '../utils/response.utils'
 import { interviewService, generateTeamsMeetingLink } from '../services/interview.service'
+import { notificationService } from '../services/notification.service'
+import { callLetterLogoBase64 } from '../assets/callLetterLogo.base64'
+
+function numberToWordsINR(num?: number | null): string {
+  if (!num || isNaN(num) || num <= 0) return ''
+  const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen']
+  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
+
+  const convert = (n: number): string => {
+    if (n < 20) return a[n]
+    if (n < 100) return b[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + a[n % 10] : '')
+    if (n < 1000) return a[Math.floor(n / 100)] + ' Hundred' + (n % 100 !== 0 ? ' and ' + convert(n % 100) : '')
+    if (n < 100000) return convert(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 !== 0 ? ' ' + convert(n % 1000) : '')
+    if (n < 10000000) return convert(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 !== 0 ? ' ' + convert(n % 100000) : '')
+    return convert(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 !== 0 ? ' ' + convert(n % 10000000) : '')
+  }
+
+  return convert(Math.floor(num)) + ' Rupees Only'
+}
+
+function generateCallLetterPDF(data: {
+  formattedDate: string
+  refNumber: string
+  candName: string
+  candRole: string
+  locationStr: string
+  formattedSalaryNum: string
+  salaryInWords: string
+}): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: 'A4',
+        margins: { top: 25, bottom: 25, left: 45, right: 45 },
+        autoFirstPage: true
+      })
+
+      const chunks: Buffer[] = []
+      doc.on('data', chunk => chunks.push(chunk))
+      doc.on('end', () => resolve(Buffer.concat(chunks)))
+      doc.on('error', err => reject(err))
+
+      // Logo on top right
+      try {
+        const logoBuffer = Buffer.from(callLetterLogoBase64, 'base64')
+        doc.image(logoBuffer, 550 - 80, 22, { width: 80 })
+      } catch (_) {}
+
+      // Company text on header
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(10)
+        .fillColor('#1e293b')
+        .text('VR PI TECH SOLUTIONS LLP', 45, 25)
+        .font('Helvetica')
+        .fontSize(7.5)
+        .fillColor('#475569')
+        .text('Head Quarters : 2-27-163, Gandhi Nagar, Near Jammi Chettu, Wanaparthy, Telangana, India - 509103.', 45, 38)
+        .text('Email: talentacquisition@vrpigroup.co.in  |  Phone: (+91) 879-094-6714', 45, 48)
+
+      // Divider line
+      doc
+        .strokeColor('#cbd5e1')
+        .lineWidth(0.75)
+        .moveTo(45, 62)
+        .lineTo(550, 62)
+        .stroke()
+
+      // Reset text color
+      doc.fillColor('#000000')
+
+      // Header: LETTER OF INTENT
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(12)
+        .text('LETTER OF INTENT', 45, 74, { align: 'center', underline: true })
+        .moveDown(0.7)
+
+      // Meta: Date (left) and Ref no. (right)
+      const metaY = doc.y
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(9.5)
+        .text('Date: ', 45, metaY, { continued: true })
+        .font('Helvetica')
+        .text(data.formattedDate)
+
+      // Measure width of ref number
+      const refLabel = 'Ref no.: '
+      const refVal = data.refNumber || ''
+      const totalRefWidth = doc.font('Helvetica-Bold').widthOfString(refLabel) + doc.font('Helvetica').widthOfString(refVal)
+      const refX = Math.max(260, 550 - totalRefWidth)
+
+      doc
+        .font('Helvetica-Bold')
+        .text(refLabel, refX, metaY, { continued: true })
+        .font('Helvetica')
+        .text(refVal)
+
+      doc.x = 45
+      doc.y = metaY + 20
+
+      // Addressee
+      doc
+        .font('Helvetica')
+        .fontSize(9.5)
+        .text('To')
+        .text('Mr / Ms / Mrs. ', { continued: true })
+        .font('Helvetica-Bold')
+        .text(data.candName)
+        .moveDown(0.7)
+
+      // Subject
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(10)
+        .text('Sub: Offer Letter', { align: 'center' })
+        .moveDown(0.7)
+
+      // Salutation
+      doc
+        .font('Helvetica')
+        .fontSize(9.5)
+        .text('Dear ', { continued: true })
+        .font('Helvetica-Bold')
+        .text(data.candName, { continued: true })
+        .font('Helvetica')
+        .text(',')
+        .moveDown(0.6)
+
+      // Body paragraphs with clean paragraph separation and natural word spacing
+      const lineGap = 2
+
+      doc
+        .font('Helvetica')
+        .fontSize(9.5)
+        .text('We are pleased to offer you the post of ', { continued: true, lineGap, align: 'left' })
+        .font('Helvetica-Bold')
+        .text(data.candRole, { continued: true })
+        .font('Helvetica')
+        .text(' based at ', { continued: true })
+        .font('Helvetica-Bold')
+        .text(data.locationStr, { continued: true })
+        .font('Helvetica')
+        .text('.')
+        .moveDown(0.65)
+
+      doc
+        .text('The compensation structure is enclosed for your reference as Annexure.', { lineGap, align: 'left' })
+        .moveDown(0.65)
+
+      doc
+        .text('Your employment with the Company will be subject to strict adherence to the policies and procedures of the Company.', { lineGap, align: 'left' })
+        .moveDown(0.65)
+
+      doc
+        .text('You will be on probation for six months.', { lineGap, align: 'left' })
+        .moveDown(0.65)
+
+      doc
+        .text('This offer is subjected to background verification and medical fitness.', { lineGap, align: 'left' })
+        .moveDown(0.65)
+
+      doc
+        .text('On acceptance of the terms of conditions as per this offer letter, you will be able to terminate your employment with the Company by giving one (1) month notice to the Company and vice versa. You shall not be eligible to avail leave during the notice period.', { lineGap, align: 'left' })
+        .moveDown(0.65)
+
+      doc
+        .text('We welcome you to join the Company and would be happy if you can sign the duplicate copy of this letter in token of your acceptance of the offer of employment with the Company.', { lineGap, align: 'left' })
+        .moveDown(0.65)
+
+      doc
+        .text('If you have any question, please clarify from the undersigned.', { lineGap, align: 'left' })
+        .moveDown(0.75)
+
+      // Signoff
+      doc
+        .text('With regards,')
+        .font('Helvetica-Bold')
+        .text('Talent Acquisition Team')
+        .font('Helvetica')
+        .text('HR - Head')
+        .moveDown(0.85)
+
+      // ANNEXURE
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(11)
+        .text('ANNEXURE', { align: 'center', underline: true })
+        .moveDown(0.65)
+
+      doc
+        .font('Helvetica')
+        .fontSize(9.5)
+        .text('The gross salary of the employee for every month is as follows:', { lineGap, align: 'left' })
+        .moveDown(0.4)
+
+      doc
+        .font('Helvetica-Bold')
+        .text('Net Salary/Monthly: ', 45, doc.y, { continued: true })
+        .font('Helvetica')
+        .text(data.formattedSalaryNum ? `Rs. ${data.formattedSalaryNum}` : 'Rs.')
+        .moveDown(0.4)
+
+      doc
+        .font('Helvetica-Bold')
+        .text('Amount in words: ', 45, doc.y, { continued: true })
+        .font('Helvetica')
+        .text(data.salaryInWords ? `${data.salaryInWords}` : ' ')
+        .moveDown(0.7)
+
+      doc
+        .font('Helvetica')
+        .fontSize(9)
+        .text('I accept the aforesaid terms & conditions and this offer of employment. I shall keep the contents of this document confidential.', 45, doc.y, { lineGap: 1.5, align: 'left', width: 505 })
+        .moveDown(0.7)
+
+      doc
+        .text('I will join on ________________.')
+        .moveDown(0.35)
+        .font('Helvetica-Bold')
+        .text('Name: ', { continued: true })
+        .text(data.candName)
+        .moveDown(0.35)
+        .font('Helvetica')
+        .text('Signature: ___________________ .')
+        .moveDown(0.35)
+        .text('Date: _________________________ .')
+
+      doc.end()
+    } catch (err) {
+      reject(err)
+    }
+  })
+}
 
 export const recruitmentController = {
   // Get all jobs and applicants
@@ -1157,5 +1393,343 @@ export const recruitmentController = {
     } catch (error: any) {
       return sendError(res, error.message || 'Error fetching live Google Form responses', 500)
     }
+  },
+
+  // Public real-time Document Uploads Google Sheet parser
+  async fetchLiveDocumentSheetData(req: AuthRequest, res: Response) {
+    try {
+      const sheetId = (process.env.GOOGLE_DOCS_SHEET_ID || '1jz7d2yAaLfzgGPMpOO7GzHamvHVIspk82Y86IED_raY').trim()
+      const gid = '510736051'
+      const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`
+
+      const fetchCsv = (targetUrl: string): Promise<string> => {
+        return new Promise((resolve, reject) => {
+          const https = require('https')
+          https.get(targetUrl, (httpRes: any) => {
+            if (httpRes.statusCode >= 300 && httpRes.statusCode < 400 && httpRes.headers.location) {
+              return fetchCsv(httpRes.headers.location).then(resolve).catch(reject)
+            }
+            if (httpRes.statusCode !== 200) {
+              return reject(new Error(`Document Sheet HTTP ${httpRes.statusCode}`))
+            }
+            let data = ''
+            httpRes.on('data', (chunk: any) => { data += chunk })
+            httpRes.on('end', () => resolve(data))
+          }).on('error', reject)
+        })
+      }
+
+      const csvText = await fetchCsv(csvUrl)
+      
+      const parseCSV = (text: string) => {
+        const rows: string[][] = []
+        let currentRow: string[] = []
+        let currentField = ''
+        let inQuotes = false
+        for (let i = 0; i < text.length; i++) {
+          const char = text[i]
+          const nextChar = text[i + 1]
+          if (char === '"') {
+            if (inQuotes && nextChar === '"') {
+              currentField += '"'
+              i++
+            } else {
+              inQuotes = !inQuotes
+            }
+          } else if (char === ',' && !inQuotes) {
+            currentRow.push(currentField)
+            currentField = ''
+          } else if ((char === '\r' || char === '\n') && !inQuotes) {
+            if (char === '\r' && nextChar === '\n') i++
+            currentRow.push(currentField)
+            if (currentRow.some(f => f.trim())) rows.push(currentRow)
+            currentRow = []
+            currentField = ''
+          } else {
+            currentField += char
+          }
+        }
+        if (currentField || currentRow.length) {
+          currentRow.push(currentField)
+          if (currentRow.some(f => f.trim())) rows.push(currentRow)
+        }
+        return rows
+      }
+
+      const rows = parseCSV(csvText)
+      if (rows.length < 2) {
+        return sendSuccess(res, { applicants: [], count: 0 }, 'No document records found in Google Sheet')
+      }
+
+      const headers = rows[0].map(h => h.trim())
+      const applicants: any[] = []
+
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r]
+        let timestamp = ''
+        let candidateType = ''
+        let fullName = ''
+        let email = ''
+        let phone = ''
+        const docs: any[] = []
+
+        row.forEach((val, idx) => {
+          const v = (val || '').trim()
+          const h = (headers[idx] || '').trim()
+          const hl = h.toLowerCase()
+          if (!v) return
+
+          if (hl.includes('timestamp') || hl.includes('date') || hl.includes('time')) {
+            if (!timestamp) timestamp = v
+          } else if (hl.includes('option') || hl.includes('type') || v === 'Experienced' || v === 'Freshers') {
+            candidateType = v
+          } else if (hl.includes('name')) {
+            fullName = v
+          } else if (hl.includes('email') || hl.includes('mail') || (v.includes('@') && !v.includes('http'))) {
+            email = v
+          } else if (hl.includes('phone') || hl.includes('mobile') || hl.includes('contact')) {
+            phone = v
+          } else if (v.startsWith('http') || v.includes('drive.google.com')) {
+            let docTitle = h
+            let docType = 'document'
+            if (hl.includes('photo')) { docTitle = 'Passport Size Photo'; docType = 'photo' }
+            else if (hl.includes('aadhaar')) { docTitle = 'Aadhaar Card'; docType = 'aadhaar' }
+            else if (hl.includes('pan')) { docTitle = 'PAN Card'; docType = 'pan' }
+            else if (hl.includes('10th')) { docTitle = '10th Marksheet / SSC'; docType = 'marksheet_10' }
+            else if (hl.includes('12th')) { docTitle = '12th Marksheet / Intermediate'; docType = 'marksheet_12' }
+            else if (hl.includes('degree') || hl.includes('b.tech')) { docTitle = 'Degree / B.Tech Marksheet'; docType = 'degree' }
+            else if (hl.includes('internship') || hl.includes('training')) { docTitle = 'Internship / Training Certificate'; docType = 'internship' }
+            else if (hl.includes('relieving') || hl.includes('service') || hl.includes('experience')) { docTitle = 'Relieving / Experience Certificate'; docType = 'experience' }
+            else if (hl.includes('uan') || hl.includes('universal')) { docTitle = 'Universal Account Number (UAN)'; docType = 'uan' }
+            else if (hl.includes('form 16') || hl.includes('form16')) { docTitle = 'Provisional Form 16'; docType = 'form16' }
+            else if (hl.includes('police') || hl.includes('pvc')) { docTitle = 'Police Verification Certificate (PVC)'; docType = 'pvc' }
+
+            docs.push({ title: docTitle, url: v, type: docType, rawHeader: h })
+          } else if (!fullName && v.length > 2 && !v.includes('http') && !v.includes('@')) {
+            fullName = v
+          }
+        })
+
+        if (!fullName && docs.length === 0) continue
+
+        applicants.push({
+          id: `sheet-doc-row-${r}`,
+          fullName: fullName || `Applicant ${r}`,
+          email: email || '',
+          phone: phone || '',
+          timestamp: timestamp || '',
+          candidateType: candidateType || (docs.some(d => d.type === 'uan' || d.type === 'experience' || d.type === 'form16') ? 'Experienced' : 'Freshers'),
+          docsCount: docs.length,
+          documents: docs
+        })
+      }
+
+      return sendSuccess(res, { applicants, count: applicants.length }, 'Fetched live document sheet records successfully')
+    } catch (error: any) {
+      return sendError(res, error.message || 'Error fetching live document responses', 500)
+    }
+  },
+
+  // Dispatch real-time Call Letter Email to Candidate
+  async sendCallLetterDirect(req: AuthRequest, res: Response) {
+    try {
+      const {
+        candidateId,
+        candidateName,
+        candidateEmail,
+        jobTitle,
+        referenceNo,
+        reportingDate,
+        reportingTime,
+        venue,
+        salary,
+        hrEmail,
+        hrPhone,
+        notes
+      } = req.body
+
+      if (!candidateEmail || !candidateEmail.includes('@')) {
+        return sendError(res, 'Valid candidate email is required', 400)
+      }
+
+      const tenantId = req.tenantId ?? req.user?.tenantId
+      const tenant = tenantId ? await prisma.tenant.findUnique({ where: { id: tenantId } }) : null
+      const companyName = tenant?.name || 'VRPI Group'
+
+      const candName = candidateName || 'Candidate'
+      const candRole = (jobTitle || '')
+        .replace(/\s*\([^)]*Google\s*Form[^)]*\)/gi, '')
+        .replace(/\s*\(Google Form Recruitment\)/gi, '')
+        .replace(/Google Form Recruitment/gi, '')
+        .trim() || '(Designation - Role)'
+
+      const dateObj = new Date()
+      const currentYear = dateObj.getFullYear()
+      const nextYearShort = String((currentYear + 1) % 100).padStart(2, '0')
+      const financialYear = `${currentYear}-${nextYearShort}`
+      const monthDate = `${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`
+      const defaultSlNo = Math.floor(100 + Math.random() * 900)
+      const refNumber = referenceNo || `${financialYear}/${monthDate}/${defaultSlNo}`
+
+      const repDate = reportingDate || dateObj.toISOString().split('T')[0]
+      const locationStr = venue || '(Location)'
+      
+      const parsedNum = salary !== undefined && salary !== null && String(salary).trim() !== '' ? (typeof salary === 'number' ? salary : Number(String(salary).replace(/[^0-9.]/g, ''))) : null
+      const hasSalary = parsedNum !== null && !isNaN(parsedNum) && parsedNum > 0
+      const formattedSalaryNum = hasSalary ? parsedNum.toLocaleString('en-IN') : ''
+      const salaryInWords = hasSalary ? numberToWordsINR(parsedNum) : ''
+
+      const formattedDate = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+
+      const subject = `Letter of Intent / Offer Letter - ${candName} [Ref no.: ${refNumber}]`
+
+      const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; color: #0f172a; line-height: 1.65; }
+          .container { max-width: 620px; margin: 25px auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 35px; box-shadow: 0 4px 16px rgba(0,0,0,0.04); }
+          .greeting { font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 12px; }
+          .p-text { font-size: 14px; color: #334155; margin-bottom: 14px; line-height: 1.6; }
+          .action-box { background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #6366f1; border-radius: 8px; padding: 18px 22px; margin: 20px 0; }
+          .action-title { font-size: 14.5px; font-weight: 800; color: #1e1b4b; margin-bottom: 10px; }
+          .action-list { margin: 0; padding-left: 20px; font-size: 13.5px; color: #334155; }
+          .action-list li { margin-bottom: 6px; }
+          .link-btn { display: inline-block; margin: 12px 0 6px 0; padding: 10px 20px; background: #4f46e5; color: #ffffff !important; font-weight: 700; font-size: 13.5px; text-decoration: none; border-radius: 6px; }
+          .doc-note { font-size: 13px; font-weight: 600; color: #475569; margin-top: 10px; }
+          .signoff { margin-top: 25px; padding-top: 20px; border-top: 1px solid #f1f5f9; font-size: 13.5px; line-height: 1.5; color: #1e293b; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="greeting">Dear ${candName},</div>
+          
+          <p class="p-text">Greetings from <strong>VR PI TECH SOLUTIONS</strong> !</p>
+          
+          <p class="p-text">We are pleased to inform you that you have been selected for <strong>${candRole}</strong> at <strong>VR PI TECH SOLUTIONS</strong>. Please find the Offer/Call Letter attached to this email. We request you to carefully review the terms and conditions mentioned in the letter.</p>
+          
+          <div class="action-box">
+            <div class="action-title">Required Action</div>
+            <p class="p-text" style="margin-bottom: 8px;">If you accept the offer, please:</p>
+            <ol class="action-list">
+              <li>Review the attached Offer/Call Letter.</li>
+              <li>Sign the document in the designated space.</li>
+              <li>Save the signed document in PDF format.</li>
+              <li>Upload the signed Offer/Call Letter through the recruitment form using the link below:</li>
+            </ol>
+            <div style="margin: 14px 0 8px 0;">
+              <a href="https://docs.google.com/forms/d/e/1FAIpQLSdWlHM3eZBVCXy78iKx4ajxi2O7xlzEHe7B8wQowGxiG_PsmA/viewform?usp=header" class="link-btn" target="_blank">Open Google Recruitment Form</a>
+            </div>
+            <div class="doc-note">📄 <strong>Document to upload:</strong> Signed Offer/Call Letter – PDF preferred</div>
+          </div>
+          
+          <p class="p-text"><strong>Please complete the above process within a week.</strong></p>
+          
+          <p class="p-text">Your signed document will be treated as confirmation of your acceptance of the offer, subject to the terms and conditions mentioned in the Offer/Call Letter.</p>
+          
+          <p class="p-text">If you have any questions or require clarification regarding the offer, please contact the HR team at <a href="mailto:vamshikrishna@vrpigroup.co.in" style="color: #4f46e5; font-weight: 600;">vamshikrishna@vrpigroup.co.in</a> .</p>
+          
+          <p class="p-text">We look forward to welcoming you to <strong>VR PI TECH SOLUTIONS</strong> and wish you a successful journey with us.</p>
+          
+          <div class="signoff">
+            Best Regards,<br>
+            <strong>Vamshi Krishna</strong><br>
+            Human Resources<br>
+            <strong>VR PI TECH SOLUTIONS</strong><br>
+            <a href="mailto:vamshikrishna@vrpigroup.co.in" style="color: #4f46e5;">vamshikrishna@vrpigroup.co.in</a>
+          </div>
+        </div>
+      </body>
+      </html>
+      `
+
+      const text = `Dear ${candName},
+
+Greetings from VR PI TECH SOLUTIONS !
+
+We are pleased to inform you that you have been selected for ${candRole} at VR PI TECH SOLUTIONS. Please find the Offer/Call Letter attached to this email. We request you to carefully review the terms and conditions mentioned in the letter.
+
+Required Action
+If you accept the offer, please:
+1. Review the attached Offer/Call Letter.
+2. Sign the document in the designated space.
+3. Save the signed document in PDF format.
+4. Upload the signed Offer/Call Letter through the recruitment form using the link below.
+
+Google Form: https://docs.google.com/forms/d/e/1FAIpQLSdWlHM3eZBVCXy78iKx4ajxi2O7xlzEHe7B8wQowGxiG_PsmA/viewform?usp=header
+Document to upload: Signed Offer/Call Letter – PDF preferred
+
+Please complete the above process within a week.
+
+Your signed document will be treated as confirmation of your acceptance of the offer, subject to the terms and conditions mentioned in the Offer/Call Letter.
+
+If you have any questions or require clarification regarding the offer, please contact the HR team at vamshikrishna@vrpigroup.co.in .
+
+We look forward to welcoming you to VR PI TECH SOLUTIONS and wish you a successful journey with us.
+
+Best Regards,
+Vamshi Krishna
+Human Resources
+VR PI TECH SOLUTIONS
+vamshikrishna@vrpigroup.co.in`
+
+      // Generate PDF attachment
+      let attachments: any[] | undefined = undefined
+      try {
+        const pdfBuffer = await generateCallLetterPDF({
+          formattedDate,
+          refNumber,
+          candName,
+          candRole,
+          locationStr,
+          formattedSalaryNum,
+          salaryInWords
+        })
+
+        const sanitizedCandName = candName.replace(/[^a-zA-Z0-9]/g, '_')
+        const sanitizedRef = refNumber.replace(/[^a-zA-Z0-9]/g, '_')
+        attachments = [
+          {
+            filename: `Call_Letter_${sanitizedCandName}_${sanitizedRef}.pdf`,
+            content: pdfBuffer,
+            contentType: 'application/pdf'
+          }
+        ]
+      } catch (pdfErr: any) {
+        console.error('[RecruitmentController] Non-fatal error creating Call Letter PDF attachment:', pdfErr)
+      }
+
+      // Send the real-time email with PDF attachment
+      const result = await notificationService.sendEmail(
+        candidateEmail,
+        subject,
+        html,
+        text,
+        attachments,
+        `VR PI TECH SOLUTIONS HR`
+      )
+
+      // If this corresponds to an application in database, update its status
+      if (candidateId && !candidateId.startsWith('cand-') && !candidateId.startsWith('sheet-row-')) {
+        try {
+          await prisma.jobApplication.update({
+            where: { id: candidateId },
+            data: {
+              status: 'CALL_LETTER'
+            }
+          })
+        } catch (dbErr: any) {
+          console.error('[RecruitmentController] Non-fatal DB update error on call letter:', dbErr.message)
+        }
+      }
+
+      return sendSuccess(res, { ...result, referenceNo: refNumber, sentTo: candidateEmail }, 'Call Letter successfully dispatched via real-time email')
+    } catch (error: any) {
+      console.error('[RecruitmentController] Failed to send Call Letter email:', error.message || error)
+      return sendError(res, error.message || 'Failed to send Call Letter email', 500)
+    }
   }
 }
+
