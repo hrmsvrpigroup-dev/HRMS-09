@@ -1530,6 +1530,135 @@ export const recruitmentController = {
     }
   },
 
+  // Public real-time Received Call Letter Google Sheet parser
+  async fetchLiveReceivedCallLetterData(req: AuthRequest, res: Response) {
+    try {
+      const sheetId = (process.env.GOOGLE_RECEIVED_CALL_LETTER_SHEET_ID || '1nFaAEv_99akWqw_FwyXPSDQnBLGDXNwYtBjb5oIw0q8').trim()
+      const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`
+
+      const fetchCsv = (targetUrl: string): Promise<string> => {
+        return new Promise((resolve, reject) => {
+          const https = require('https')
+          https.get(targetUrl, (httpRes: any) => {
+            if (httpRes.statusCode >= 300 && httpRes.statusCode < 400 && httpRes.headers.location) {
+              return fetchCsv(httpRes.headers.location).then(resolve).catch(reject)
+            }
+            if (httpRes.statusCode !== 200) {
+              return reject(new Error(`Received Call Letter Sheet HTTP ${httpRes.statusCode}`))
+            }
+            let data = ''
+            httpRes.on('data', (chunk: any) => { data += chunk })
+            httpRes.on('end', () => resolve(data))
+          }).on('error', reject)
+        })
+      }
+
+      const csvText = await fetchCsv(csvUrl)
+      
+      const parseCSV = (text: string) => {
+        const rows: string[][] = []
+        let currentRow: string[] = []
+        let currentField = ''
+        let inQuotes = false
+        for (let i = 0; i < text.length; i++) {
+          const char = text[i]
+          const nextChar = text[i + 1]
+          if (char === '"') {
+            if (inQuotes && nextChar === '"') {
+              currentField += '"'
+              i++
+            } else {
+              inQuotes = !inQuotes
+            }
+          } else if (char === ',' && !inQuotes) {
+            currentRow.push(currentField)
+            currentField = ''
+          } else if ((char === '\r' || char === '\n') && !inQuotes) {
+            if (char === '\r' && nextChar === '\n') i++
+            currentRow.push(currentField)
+            if (currentRow.some(f => f.trim())) rows.push(currentRow)
+            currentRow = []
+            currentField = ''
+          } else {
+            currentField += char
+          }
+        }
+        if (currentField || currentRow.length) {
+          currentRow.push(currentField)
+          if (currentRow.some(f => f.trim())) rows.push(currentRow)
+        }
+        return rows
+      }
+
+      const rows = parseCSV(csvText)
+      if (rows.length < 2) {
+        return sendSuccess(res, { applicants: [], count: 0 }, 'No received call letter records found in Google Sheet')
+      }
+
+      const headers = rows[0].map(h => h.trim())
+      const applicants: any[] = []
+
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r]
+        let timestamp = ''
+        let fullName = ''
+        let email = ''
+        let phone = ''
+        let acceptance = ''
+        let questions = ''
+        const docs: any[] = []
+
+        row.forEach((val, idx) => {
+          const v = (val || '').trim()
+          const h = (headers[idx] || '').trim()
+          const hl = h.toLowerCase()
+          if (!v) return
+
+          if (hl.includes('timestamp') || hl.includes('date') || hl.includes('time')) {
+            if (!timestamp) timestamp = v
+          } else if (hl.includes('name')) {
+            fullName = v
+          } else if (hl.includes('email') || hl.includes('mail') || (v.includes('@') && !v.includes('http'))) {
+            email = v
+          } else if (hl.includes('phone') || hl.includes('mobile') || hl.includes('contact')) {
+            phone = v
+          } else if (hl.includes('accept') || hl.includes('status') || hl.includes('call') || hl.includes('offer')) {
+            if (v.startsWith('http') || v.includes('drive.google.com')) {
+              acceptance = 'Signed & Uploaded'
+              docs.push({ title: 'Signed Call Letter Document', url: v, type: 'signed_call_letter', rawHeader: h })
+            } else {
+              acceptance = v
+            }
+          } else if (hl.includes('question') || hl.includes('remark') || hl.includes('comment') || hl.includes('note')) {
+            questions = v
+          } else if (v.startsWith('http') || v.includes('drive.google.com')) {
+            docs.push({ title: h || 'Uploaded Document', url: v, type: 'document', rawHeader: h })
+          } else if (!fullName && v.length > 2 && !v.includes('http') && !v.includes('@')) {
+            fullName = v
+          }
+        })
+
+        if (!fullName && !email && docs.length === 0) continue
+
+        applicants.push({
+          id: `sheet-cl-rec-row-${r}`,
+          fullName: fullName || `Applicant ${r}`,
+          email: email || '',
+          phone: phone || '',
+          timestamp: timestamp || '',
+          acceptance: acceptance || 'Signed & Accepted',
+          questions: questions || '',
+          docsCount: docs.length,
+          documents: docs
+        })
+      }
+
+      return sendSuccess(res, { applicants, count: applicants.length }, 'Fetched live received call letter sheet records successfully')
+    } catch (error: any) {
+      return sendError(res, error.message || 'Error fetching live received call letter responses', 500)
+    }
+  },
+
   // Dispatch real-time Call Letter Email to Candidate
   async sendCallLetterDirect(req: AuthRequest, res: Response) {
     try {

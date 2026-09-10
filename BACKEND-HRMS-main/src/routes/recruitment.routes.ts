@@ -10,6 +10,7 @@ const router = Router()
 // Public real-time Google Form/Sheet response poll routes
 router.get('/live-google-responses', recruitmentController.fetchLiveSheetData)
 router.get('/live-document-responses', recruitmentController.fetchLiveDocumentSheetData)
+router.get('/live-received-call-letter-responses', recruitmentController.fetchLiveReceivedCallLetterData)
 
 router.use(authenticate, authorize('ADMIN', 'HR'), tenantIsolation)
 router.get('/jobs', recruitmentController.jobs)
