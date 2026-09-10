@@ -416,5 +416,130 @@ export const interviewService = {
     cleanRecentInviteDispatches();
 
     return finalResult;
+  },
+
+  async sendDocumentUploadEmail(params: DocumentUploadInviteParams) {
+    const {
+      candidateName,
+      candidateEmail,
+      formUrl = DOCUMENT_UPLOAD_FORM_URL,
+      tenantName = 'VR PI Tech Solutions'
+    } = params;
+
+    if (!candidateEmail || !candidateEmail.includes('@') || candidateEmail.includes('@example.com')) {
+      console.log('[InterviewService] No valid recipient email for document upload invite.');
+      return { success: false, reason: 'No valid candidate email' };
+    }
+
+    const emailSubject = `VR PI | Congratulations! Interview Cleared – Upload Documents for Verification`;
+
+    const plainTextBody = `Dear ${candidateName || 'Candidate'},\n\nGreetings from VR PI!\n\nCongratulations! We are delighted to inform you that you have successfully cleared the interview round with VR PI.\n\nAs the next step in our recruitment and onboarding process, please upload your mandatory verification documents using our official document upload form below:\n\nDocument Upload Link: ${formUrl}\n\nPlease keep the following documents ready before filling out the form:\n1. Government Photo ID Proof (Aadhaar Card / PAN Card / Passport)\n2. Educational Certificates / Degree & Marksheets\n3. Previous Experience / Relieving Letters (if applicable)\n4. Recent Passport Size Photograph\n5. Bank Details / Cancelled Cheque\n\nKindly submit your documents at your earliest convenience so that our verification team can proceed with issuing your official Call Letter.\n\nBest Regards,\nHR Team\nVR PI\nvamshikrishna@vrpigroup.co.in`;
+
+    const htmlBody = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${emailSubject}</title>
+      </head>
+      <body style="margin:0; padding:0; background-color:#f8fafc; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color:#1e293b; line-height:1.6;">
+        <div style="max-width:620px; margin:24px auto; background:#ffffff; border-radius:16px; overflow:hidden; border:1px solid #e2e8f0; box-shadow:0 10px 25px -5px rgba(0,0,0,0.05);">
+          
+          <!-- Header Banner -->
+          <div style="background:linear-gradient(135deg, #065f46 0%, #047857 50%, #10b981 100%); padding:28px 32px; color:#ffffff;">
+            <div style="display:inline-block; background:rgba(255,255,255,0.2); padding:5px 12px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; margin-bottom:10px;">
+              🎉 Stage Cleared · Document Verification
+            </div>
+            <h1 style="margin:0; font-size:22px; font-weight:800; color:#ffffff;">Congratulations on Clearing the Interview!</h1>
+            <p style="margin:6px 0 0 0; font-size:13px; color:#d1fae5;">Talent Acquisition · VR PI</p>
+          </div>
+
+          <!-- Body Content -->
+          <div style="padding:32px;">
+            <p style="font-size:15px; margin:0 0 16px 0; color:#0f172a;">Dear <strong>${candidateName || 'Candidate'}</strong>,</p>
+            
+            <p style="font-size:15px; margin:0 0 16px 0; color:#0f172a;">Greetings from <strong>VR PI</strong>!</p>
+            
+            <p style="font-size:15px; margin:0 0 20px 0; color:#334155; line-height:1.6;">
+              We are pleased to inform you that you have <strong>successfully passed the interview round</strong>! We were very impressed with your performance and are excited to move your profile to the next stage.
+            </p>
+
+            <p style="font-size:15px; margin:0 0 20px 0; color:#334155; line-height:1.6;">
+              To proceed with your onboarding and the issuance of your official Call Letter, please submit your verification documents through our official submission form below:
+            </p>
+
+            <!-- Document Form Action Card -->
+            <div style="background:#f0fdf4; border:1.5px solid #86efac; border-radius:12px; padding:22px 20px; margin:24px 0; text-align:center;">
+              <p style="margin:0 0 14px 0; font-weight:800; color:#166534; font-size:16px;">Mandatory Document Submission Form</p>
+              <div style="margin-bottom:16px;">
+                <a href="${formUrl}" target="_blank" style="display:inline-block; background:linear-gradient(135deg, #10b981 0%, #059669 100%); color:#ffffff; font-size:15px; font-weight:700; text-decoration:none; padding:13px 32px; border-radius:8px; box-shadow:0 4px 14px rgba(16, 185, 129, 0.35);">
+                  📂 Upload Verification Documents
+                </a>
+              </div>
+              <p style="margin:0; font-size:12px; color:#4b5563; word-break:break-all;">
+                Direct Form Link: <a href="${formUrl}" target="_blank" style="color:#059669; font-weight:600;">${formUrl}</a>
+              </p>
+            </div>
+
+            <!-- Required Documents Checklist -->
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #10b981; border-radius:8px; padding:18px 20px; margin:22px 0;">
+              <p style="margin:0 0 10px 0; font-weight:800; color:#0f172a; font-size:14px;">Documents to keep ready:</p>
+              <ul style="margin:0; padding-left:20px; font-size:13.5px; color:#334155; line-height:1.8;">
+                <li>Government Photo ID Proof (Aadhaar Card / PAN Card / Passport)</li>
+                <li>Educational Certificates (Degree / Diploma / Marksheets)</li>
+                <li>Previous Employment / Experience / Relieving Letters (if applicable)</li>
+                <li>Recent Passport-size Photograph</li>
+                <li>Bank Account Proof (Cancelled Cheque / Bank Passbook)</li>
+              </ul>
+            </div>
+
+            <p style="font-size:14px; margin:20px 0 0 0; color:#475569; line-height:1.6;">
+              Please complete the submission at your earliest convenience so that our verification team can promptly verify your proofs and generate your official Call Letter.
+            </p>
+
+            <div style="margin-top:28px; padding-top:20px; border-top:1px solid #f1f5f9;">
+              <p style="margin:0; font-size:14px; font-weight:700; color:#0f172a;">Best Regards,</p>
+              <p style="margin:4px 0 0 0; font-size:14px; font-weight:800; color:#10b981;">HR Team</p>
+              <p style="margin:2px 0 0 0; font-size:13px; color:#64748b;">VR PI Tech Solutions</p>
+              <a href="mailto:vamshikrishna@vrpigroup.co.in" style="color:#059669; text-decoration:none; font-size:13px; font-weight:600;">vamshikrishna@vrpigroup.co.in</a>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div style="background:#f8fafc; border-top:1px solid #e2e8f0; padding:14px 32px; text-align:center; font-size:11px; color:#94a3b8;">
+            VR PI Group HRMS · Official Recruitment Notification · Please do not reply directly to this automated email.
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    try {
+      console.log(`[InterviewService] Sending Document Upload email invite to: ${candidateEmail}`);
+      const res = await notificationService.sendEmail(
+        candidateEmail,
+        emailSubject,
+        htmlBody,
+        plainTextBody,
+        undefined,
+        'VR PI TECH SOLUTIONS HR'
+      );
+      return { success: true, email: candidateEmail, res };
+    } catch (err: any) {
+      console.error(`[InterviewService ERROR] Failed to send document upload email to ${candidateEmail}:`, err.message || err);
+      return { success: false, email: candidateEmail, error: err.message || String(err) };
+    }
   }
 };
+
+export const DOCUMENT_UPLOAD_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSf9WXwNo7CbnrUWFYAr7_gA21anOlX5fjWTsh3oK-koTkjdoA/viewform?usp=header';
+
+export interface DocumentUploadInviteParams {
+  candidateName: string;
+  candidateEmail: string;
+  formUrl?: string;
+  jobTitle?: string;
+  tenantName?: string;
+}
+

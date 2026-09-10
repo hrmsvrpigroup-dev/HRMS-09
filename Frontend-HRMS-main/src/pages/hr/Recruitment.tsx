@@ -13,7 +13,7 @@ import {
   ArrowUpRight, Activity, Layers, Settings, RefreshCw, ChevronDown,
   BookOpen, FileText, BarChart2, PieChart as PieChartIcon, Cpu, Copy, ExternalLink,
   FileCode, Video, FileSpreadsheet, Package, Paperclip, AlertTriangle, File, Check, X,
-  MailCheck, Printer, Building2, Trash2, FastForward, ArrowLeft
+  MailCheck, Printer, Building2, Trash2, FastForward, ArrowLeft, FileCheck
 } from 'lucide-react';
 import api from '../../api/axios';
 import { format } from 'date-fns';
@@ -353,15 +353,46 @@ Best Regards,
 vamshikrishna@vrpigroup.co.in`;
 }
 
+export function getDocumentUploadInvitationText(c: any): string {
+  const candName = c?.firstName ? `${c.firstName} ${c.lastName || ''}`.trim() : (c?.name || 'Candidate');
+  const formUrl = "https://docs.google.com/forms/d/e/1FAIpQLSf9WXwNo7CbnrUWFYAr7_gA21anOlX5fjWTsh3oK-koTkjdoA/viewform?usp=header";
+
+  return `Dear ${candName},
+
+Greetings from VR PI!
+
+Congratulations! We are delighted to inform you that you have successfully cleared the interview round with VR PI.
+
+As the next step in our recruitment and onboarding process, please upload your mandatory verification documents using our official document upload form below:
+
+Document Upload Link:
+${formUrl}
+
+Documents to keep ready:
+1. Government Photo ID Proof (Aadhaar Card / PAN Card / Passport)
+2. Educational Certificates (Degree / Diploma / Marksheets)
+3. Previous Employment / Experience / Relieving Letters (if applicable)
+4. Recent Passport-size Photograph
+5. Bank Account Proof (Cancelled Cheque / Bank Passbook)
+
+Kindly submit your documents at your earliest convenience so that our verification team can proceed with issuing your official Call Letter.
+
+Best Regards,
+**HR Team**
+**VR PI**
+vamshikrishna@vrpigroup.co.in`;
+}
+
 // ─── 9 Pipeline Stages Config ──────────────────────────────────────────
 
 const STAGES = [
   { step: '1', key: 'stage-5', title: 'Shortlisting', desc: 'Review best matches', icon: StarHalf, color: 'bg-sky-50 text-sky-600 border-sky-200', activeBg: 'bg-sky-600 text-white border-sky-600' },
   { step: '2', key: 'stage-6', title: 'Interviews', desc: 'Schedule & conduct', icon: Calendar, color: 'bg-amber-50 text-amber-600 border-amber-200', activeBg: 'bg-amber-600 text-white border-amber-600' },
-  { step: '3', key: 'stage-8', title: 'Documents', desc: 'Collect & verify', icon: FolderOpen, color: 'bg-green-50 text-green-600 border-green-200', activeBg: 'bg-green-600 text-white border-green-600' },
-  { step: '4', key: 'stage-call-letter', title: 'Call Letter', desc: 'Issue call letter', icon: MailCheck, color: 'bg-purple-50 text-purple-600 border-purple-200', activeBg: 'bg-purple-600 text-white border-purple-600' },
-  { step: '5', key: 'stage-7', title: 'Offer', desc: 'Extend offer', icon: Award, color: 'bg-orange-50 text-orange-600 border-orange-200', activeBg: 'bg-orange-600 text-white border-orange-600' },
-  { step: '6', key: 'stage-9', title: 'Onboarding', desc: 'Welcome new hire', icon: UserPlus, color: 'bg-teal-50 text-teal-600 border-teal-200', activeBg: 'bg-teal-600 text-white border-teal-600' },
+  { step: '3', key: 'stage-8', title: 'Documents', desc: 'Request & upload link', icon: FolderOpen, color: 'bg-blue-50 text-blue-600 border-blue-200', activeBg: 'bg-blue-600 text-white border-blue-600' },
+  { step: '4', key: 'stage-documents-received', title: 'Documents Received', desc: 'Verify proofs & audit', icon: FileCheck, color: 'bg-emerald-50 text-emerald-600 border-emerald-200', activeBg: 'bg-emerald-600 text-white border-emerald-600' },
+  { step: '5', key: 'stage-call-letter', title: 'Call Letter', desc: 'Issue call letter', icon: MailCheck, color: 'bg-purple-50 text-purple-600 border-purple-200', activeBg: 'bg-purple-600 text-white border-purple-600' },
+  { step: '6', key: 'stage-7', title: 'Offer', desc: 'Extend offer', icon: Award, color: 'bg-orange-50 text-orange-600 border-orange-200', activeBg: 'bg-orange-600 text-white border-orange-600' },
+  { step: '7', key: 'stage-9', title: 'Onboarding', desc: 'Welcome new hire', icon: UserPlus, color: 'bg-teal-50 text-teal-600 border-teal-200', activeBg: 'bg-teal-600 text-white border-teal-600' },
 ];
 
 const SOURCE_FILLS: Record<string, string> = {
@@ -420,7 +451,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   const isInterviewScheduleRoute = location.pathname.includes('/hr/interview-schedule');
   const [activeTab, setActiveTabState] = useState<string>(() => {
     const saved = localStorage.getItem('hrms_recruitment_active_tab');
-    if (saved && ['dashboard', 'stage-2', 'stage-5', 'stage-6', 'stage-8', 'stage-call-letter', 'stage-7', 'stage-9', 'candidates'].includes(saved)) {
+    if (saved && ['dashboard', 'stage-2', 'stage-5', 'stage-6', 'stage-8', 'stage-documents-received', 'stage-call-letter', 'stage-received-call-letter', 'stage-7', 'stage-9', 'candidates'].includes(saved)) {
       return saved;
     }
     return defaultTab || (isInterviewScheduleRoute ? 'stage-6' : 'dashboard');
@@ -472,6 +503,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   });
   const googleFormUrl = "https://docs.google.com/forms/d/e/1FAIpQLSeZHuwlr39VAsqWkKr5pgGjWK95nFQ2-i9NA3EhUOjbaOakUw/viewform?usp=header";
   const googleFormEmbedUrl = "https://docs.google.com/forms/d/e/1FAIpQLSeZHuwlr39VAsqWkKr5pgGjWK95nFQ2-i9NA3EhUOjbaOakUw/viewform?embedded=true";
+  const googleDocUploadFormUrl = "https://docs.google.com/forms/d/e/1FAIpQLSf9WXwNo7CbnrUWFYAr7_gA21anOlX5fjWTsh3oK-koTkjdoA/viewform?usp=header";
   const googleSheetUrl = "https://docs.google.com/spreadsheets/d/1lQJhC2BRKi-ut7XerrcptvLwiRpJvxGbZGZaS9WzWpg/edit?resourcekey=&gid=1809928383#gid=1809928383";
   const googleDocSheetUrl = "https://docs.google.com/spreadsheets/d/1jz7d2yAaLfzgGPMpOO7GzHamvHVIspk82Y86IED_raY/edit?resourcekey=&gid=510736051#gid=510736051";
   const googleReceivedCallLetterSheetUrl = "https://docs.google.com/spreadsheets/d/1nFaAEv_99akWqw_FwyXPSDQnBLGDXNwYtBjb5oIw0q8/edit?usp=sharing";
@@ -633,24 +665,29 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   };
 
   const handleAcceptFormApplicant = async (c: any) => {
-    const applicantEmail = c.email || c.id;
+    const candEmail = (c.email || c.id || '').trim();
+    const candEmailLower = candEmail.toLowerCase();
+    const nameToShow = `${c.firstName || c.name || 'Applicant'} ${c.lastName || ''}`.trim();
+
+    // 1. Optimistic update of formApplicantStatuses
     setFormApplicantStatuses(prev => {
-      const updated = { ...prev, [applicantEmail]: 'accepted' as const };
+      const updated = { 
+        ...prev, 
+        [candEmail]: 'accepted' as const,
+        [candEmailLower]: 'accepted' as const,
+        ...(c.id ? { [c.id]: 'accepted' as const } : {})
+      };
       try {
         localStorage.setItem('hrms_form_applicant_statuses', JSON.stringify(updated));
       } catch (_) {}
       return updated;
     });
 
-    const nameParts = (c.firstName || c.name || 'Applicant').split(' ');
-    const fName = c.firstName || nameParts[0] || 'Applicant';
-    const lName = c.lastName || nameParts.slice(1).join(' ') || '';
-
     const newCand: Candidate = {
       id: c.id || `cand-form-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      firstName: fName,
-      lastName: lName,
-      email: c.email || `applicant_${Date.now()}@example.com`,
+      firstName: c.firstName || (c.name ? c.name.split(' ')[0] : 'Applicant'),
+      lastName: c.lastName || (c.name ? c.name.split(' ').slice(1).join(' ') : ''),
+      email: candEmail || `applicant_${Date.now()}@example.com`,
       phone: c.phone || c.mobile || 'N/A',
       stage: 'Shortlisting',
       source: c.source || 'Google Form',
@@ -658,23 +695,24 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       experience: c.experience || c.qualification || 'Degree',
       location: c.location || 'WNP',
       graduationYear: c.graduationYear || '-',
-      appliedDate: c.appliedAt || format(new Date(), 'yyyy-MM-dd'),
+      appliedDate: c.appliedAt || c.timestamp || format(new Date(), 'yyyy-MM-dd'),
       matchScore: c.matchScore || 85,
       skills: c.skills || ['Google Form', c.qualification || 'Degree'],
       avatarColor: 'bg-emerald-100 text-emerald-600 border-emerald-200',
       resumeUrl: c.resumeUrl || c.resumeLink,
-      attachmentImages: c.attachmentImages || (c.resumeUrl ? [c.resumeUrl] : [])
+      attachmentImages: c.attachmentImages || (c.resumeUrl ? [c.resumeUrl] : (c.resumeLink ? [c.resumeLink] : []))
     };
 
     setCandidates(prevCandidates => {
       const exists = prevCandidates.some(cand => 
-        (c.email && cand.email === c.email) || (c.id && cand.id === c.id)
+        (candEmail && cand.email && cand.email.toLowerCase() === candEmailLower) || 
+        (c.id && cand.id === c.id)
       );
 
       let updatedList: Candidate[];
       if (exists) {
         updatedList = prevCandidates.map(cand => {
-          if ((c.email && cand.email === c.email) || (c.id && cand.id === c.id)) {
+          if ((candEmail && cand.email && cand.email.toLowerCase() === candEmailLower) || (c.id && cand.id === c.id)) {
             return { ...cand, stage: 'Shortlisting' };
           }
           return cand;
@@ -687,40 +725,50 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       return updatedList;
     });
 
-    if (c.id && !c.id.startsWith('cand-shiva-') && !c.id.startsWith('cand-live-')) {
-      try {
-        await api.patch(`/recruitment/applications/${c.id}/status`, { status: 'SHORTLISTED' });
-      } catch (err) {
-        console.warn('Backend status update error:', err);
+    // 2. Persist to Backend Database so ALL computers and users receive it immediately
+    try {
+      await api.post('/recruitment/applications', {
+        id: c.id,
+        name: nameToShow,
+        email: candEmail,
+        phone: c.phone || c.mobile || 'N/A',
+        experience: c.experience || c.qualification || 'Degree',
+        source: c.source || 'Google Form',
+        skills: c.skills || ['Google Form', c.qualification || 'Degree'],
+        resumeUrl: c.resumeUrl || c.resumeLink || 'uploaded-resume.pdf',
+        attachmentImages: c.attachmentImages || (c.resumeUrl ? [c.resumeUrl] : (c.resumeLink ? [c.resumeLink] : [])),
+        jobId: selectedJobId || (jobs[0] ? jobs[0].id : ''),
+        status: 'SHORTLISTED'
+      });
+      if (c.id && !c.id.startsWith('cand-') && !c.id.startsWith('sheet-')) {
+        await api.patch(`/recruitment/applications/${c.id}/status`, { status: 'SHORTLISTED', email: candEmail });
       }
-    } else {
-      try {
-        const res = await api.post('/recruitment/applications', {
-          name: `${c.firstName || c.name || 'Applicant'} ${c.lastName || ''}`.trim(),
-          email: c.email || `applicant_${Date.now()}@example.com`,
-          phone: c.phone || c.mobile || 'N/A',
-          experience: c.experience || c.qualification || 'Degree',
-          source: c.source || 'Google Form',
-          skills: c.skills || ['Google Form'],
-          jobId: selectedJobId || (jobs[0] ? jobs[0].id : '')
-        });
-        if (res.data?.data?.id) {
-          await api.patch(`/recruitment/applications/${res.data.data.id}/status`, { status: 'SHORTLISTED' });
-        }
-      } catch (err) {
-        console.warn('Backend application sync notice:', err);
-      }
+    } catch (err) {
+      console.warn('Backend application accept sync notice:', err);
     }
 
-    const nameToShow = `${c.firstName || c.name || 'Applicant'} ${c.lastName || ''}`.trim();
-    alert(`✅ Application accepted! ${nameToShow} has been moved to the Shortlist tab.`);
+    // 3. Re-sync latest recruitment dataset
+    try {
+      await loadRecruitmentData();
+    } catch (_) {}
+
+    // 4. Automatically switch to the Shortlisting tab
     setActiveTab('stage-5');
+    alert(`✅ Application accepted! ${nameToShow} has been moved to the Shortlist tab.`);
   };
 
   const handleDeclineFormApplicant = async (c: any) => {
-    const applicantEmail = c.email || c.id;
+    const candEmail = (c.email || c.id || '').trim();
+    const candEmailLower = candEmail.toLowerCase();
+    const nameToShow = `${c.firstName || c.name || 'Applicant'} ${c.lastName || ''}`.trim();
+
     setFormApplicantStatuses(prev => {
-      const updated = { ...prev, [applicantEmail]: 'declined' as const };
+      const updated = { 
+        ...prev, 
+        [candEmail]: 'declined' as const,
+        [candEmailLower]: 'declined' as const,
+        ...(c.id ? { [c.id]: 'declined' as const } : {})
+      };
       try {
         localStorage.setItem('hrms_form_applicant_statuses', JSON.stringify(updated));
       } catch (_) {}
@@ -729,7 +777,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
     setCandidates(prevCandidates => {
       const updatedList = prevCandidates.map(cand => {
-        if ((c.email && cand.email === c.email) || (c.id && cand.id === c.id)) {
+        if ((candEmail && cand.email && cand.email.toLowerCase() === candEmailLower) || (c.id && cand.id === c.id)) {
           return { ...cand, stage: 'Rejected' };
         }
         return cand;
@@ -739,15 +787,31 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       return updatedList;
     });
 
-    if (c.id && !c.id.startsWith('cand-shiva-') && !c.id.startsWith('cand-live-')) {
-      try {
-        await api.patch(`/recruitment/applications/${c.id}/status`, { status: 'REJECTED' });
-      } catch (err) {
-        console.warn('Backend status update error:', err);
+    try {
+      await api.post('/recruitment/applications', {
+        id: c.id,
+        name: nameToShow,
+        email: candEmail,
+        phone: c.phone || c.mobile || 'N/A',
+        experience: c.experience || c.qualification || 'Degree',
+        source: c.source || 'Google Form',
+        skills: c.skills || ['Google Form'],
+        resumeUrl: c.resumeUrl || c.resumeLink || 'uploaded-resume.pdf',
+        attachmentImages: c.attachmentImages || (c.resumeUrl ? [c.resumeUrl] : (c.resumeLink ? [c.resumeLink] : [])),
+        jobId: selectedJobId || (jobs[0] ? jobs[0].id : ''),
+        status: 'REJECTED'
+      });
+      if (c.id && !c.id.startsWith('cand-') && !c.id.startsWith('sheet-')) {
+        await api.patch(`/recruitment/applications/${c.id}/status`, { status: 'REJECTED', email: candEmail });
       }
+    } catch (err) {
+      console.warn('Backend application decline sync notice:', err);
     }
 
-    const nameToShow = `${c.firstName || c.name || 'Applicant'} ${c.lastName || ''}`.trim();
+    try {
+      await loadRecruitmentData();
+    } catch (_) {}
+
     alert(`❌ Application declined for ${nameToShow}.`);
   };
 
@@ -826,21 +890,67 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     jobId: ''
   });
 
-  // Helper to auto-generate video interview meeting URL
-  const generateTeamsMeetingUrl = async (topic: string = 'Interview Session') => {
+  // Persistent candidate meeting link map (ensures each person has exactly ONE dedicated meeting link)
+  const getStoredCandidateMeetingLinks = (): Record<string, string> => {
     try {
-      const res = await api.post('/recruitment/generate-teams-link', { topic });
+      const raw = localStorage.getItem('hrms_candidate_teams_links');
+      return raw ? JSON.parse(raw) : {};
+    } catch (_) {
+      return {};
+    }
+  };
+
+  const getMeetingLinkForCandidate = (cand?: Candidate | null): string => {
+    if (!cand) return '';
+    if (cand.interviewLink && cand.interviewLink.trim()) return cand.interviewLink.trim();
+    const links = getStoredCandidateMeetingLinks();
+    const key = (cand.email || cand.id || '').toLowerCase().trim();
+    if (key && links[key]) return links[key];
+    if (cand.id && links[cand.id]) return links[cand.id];
+    return '';
+  };
+
+  const saveMeetingLinkForCandidate = (cand: Candidate | { id?: string; email?: string } | null, link: string) => {
+    if (!cand || !link || !link.trim()) return;
+    try {
+      const links = getStoredCandidateMeetingLinks();
+      if (cand.email) links[cand.email.toLowerCase().trim()] = link.trim();
+      if (cand.id) links[cand.id] = link.trim();
+      localStorage.setItem('hrms_candidate_teams_links', JSON.stringify(links));
+    } catch (_) {}
+  };
+
+  // Helper to auto-generate or retrieve dedicated video interview meeting URL (1 per person)
+  const generateTeamsMeetingUrl = async (topic: string = 'Interview Session', candidate?: Candidate | null) => {
+    // 1. Check if candidate already has an existing link
+    if (candidate) {
+      const existing = getMeetingLinkForCandidate(candidate);
+      if (existing) return existing;
+    }
+
+    try {
+      const res = await api.post('/recruitment/generate-teams-link', { 
+        topic,
+        candidateEmail: candidate?.email,
+        candidateId: candidate?.id
+      });
       if (res.data?.data?.link) {
-        return res.data.data.link;
+        const link = res.data.data.link;
+        if (candidate) saveMeetingLinkForCandidate(candidate, link);
+        return link;
       }
     } catch (_) {}
+
     const tenantId = '25276fbe-5e30-46cc-b2b0-f5d73c1ae006';
     const randPart = Array.from(crypto.getRandomValues(new Uint8Array(16)))
       .map(b => (b % 36).toString(36))
       .join('');
     const orgId = `${Math.random().toString(36).substring(2, 10)}-${Math.random().toString(36).substring(2, 6)}-4${Math.random().toString(36).substring(2, 5)}-a${Math.random().toString(36).substring(2, 5)}-${Math.random().toString(36).substring(2, 14)}`;
     const context = encodeURIComponent(JSON.stringify({ Tid: tenantId, Oid: orgId }));
-    return `https://teams.microsoft.com/l/meetup-join/19%3ameeting_${randPart}%40thread.v2/0?context=${context}`;
+    const generatedLink = `https://teams.microsoft.com/l/meetup-join/19%3ameeting_${randPart}%40thread.v2/0?context=${context}`;
+    
+    if (candidate) saveMeetingLinkForCandidate(candidate, generatedLink);
+    return generatedLink;
   };
 
   // Stage 6 Interview form & calendar state
@@ -863,19 +973,19 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   });
 
   const openAddSlotModal = (dateStr: string) => {
+    const existingLink = getMeetingLinkForCandidate(selectedCandidate);
     setInterviewForm({
       date: dateStr,
       time: '',
       type: '',
       interviewer: '',
       interviewerEmail: '',
-      candidateEmail: '',
+      candidateEmail: selectedCandidate?.email || '',
       taggedEmails: [],
-      link: '',
+      link: existingLink,
       sendEmailInvite: true
     });
 
-    setSelectedCandidate(null);
     setShowScheduleModal(true);
   };
 
@@ -941,9 +1051,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   const [onboardingInviteResult, setOnboardingInviteResult] = useState<any>(null);
 
   // Load backend recruitment data
-  const loadRecruitmentData = async () => {
+  const loadRecruitmentData = async (showLoadingSpinner = false) => {
     try {
-      setLoading(true);
+      if (showLoadingSpinner && candidates.length === 0) {
+        setLoading(true);
+      }
       const res = await api.get('/recruitment/jobs');
       const responseData = res.data.data;
 
@@ -977,7 +1089,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         responseData.forEach((job: any) => {
           if (job.applications) {
             job.applications.forEach((app: any) => {
-              if (app.email && (app.email.includes('applicant_') || app.email.includes('@example.com') || app.email.includes('employee_'))) {
+              if (app.email && (app.email.includes('applicant_') || app.email.includes('@example.com') || app.email.includes('employee_')) && !app.interviewDate && app.status === 'APPLIED') {
                 return;
               }
               const nameParts = (app.name || 'Applicant').split(' ');
@@ -986,21 +1098,26 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               
               // Stage mapper
               let stage = app.status;
-              if (app.status === 'AI_SCREENING') stage = 'AI Screening';
-              else if (app.status === 'SHORTLISTED') stage = 'Shortlisting';
-              else if (app.status === 'INTERVIEW') stage = 'Interviews';
-              else if (app.status === 'DOCUMENTS') stage = 'Documents';
-              else if (app.status === 'CALL_LETTER' || app.status === 'Call Letter') stage = 'Call Letter';
-              else if (app.status === 'OFFER') stage = 'Offer';
-              else if (app.status === 'HIRED') stage = 'Onboarding';
-              else if (app.status === 'REJECTED') stage = 'Rejected';
+              if (app.status === 'AI_SCREENING' || app.status === 'AI Screening') stage = 'AI Screening';
+              else if (app.status === 'SHORTLISTED' || app.status === 'Shortlisting' || app.status === 'ACCEPTED' || app.status === 'accepted') stage = 'Shortlisting';
+              else if (app.status === 'CALL_LETTER' || app.status === 'Call Letter' || app.status === 'call_letter' || app.documentsVerified) stage = 'Call Letter';
+              else if (app.status === 'RECEIVED_CALL_LETTER' || app.status === 'Received Call Letter' || app.status === 'received_call_letter') stage = 'Received Call Letter';
+              else if (app.status === 'OFFER' || app.status === 'Offer') stage = 'Offer';
+              else if (app.status === 'HIRED' || app.status === 'Onboarding' || app.status === 'ONBOARDING') stage = 'Onboarding';
+              else if (app.status === 'REJECTED' || app.status === 'Rejected' || app.status === 'DECLINED' || app.status === 'declined') stage = 'Rejected';
+              else if (app.status === 'DOCUMENTS' || app.status === 'Documents') stage = 'Documents';
+              else if (app.status === 'INTERVIEW' || app.status === 'Interviews' || app.status === 'SCHEDULED' || app.status === 'scheduled') stage = 'Interviews';
               else stage = 'Applications';
+
+              const rawInterviewDate = app.interviewDate 
+                ? (typeof app.interviewDate === 'string' ? app.interviewDate.slice(0, 10) : format(new Date(app.interviewDate), 'yyyy-MM-dd'))
+                : undefined;
 
               allCandidates.push({
                 id: app.id,
                 firstName,
                 lastName,
-                email: app.email || '',
+                email: app.email ? app.email.trim() : '',
                 phone: app.phone || 'N/A',
                 stage,
                 source: app.source || 'Career Page',
@@ -1012,7 +1129,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                 avatarColor: AVATAR_COLORS[colorIdx++ % AVATAR_COLORS.length],
                 attachmentImages: app.attachmentImages || [],
                 resumeUrl: app.resumeUrl || undefined,
-                interviewDate: app.interviewDate ? (typeof app.interviewDate === 'string' ? app.interviewDate.split('T')[0] : format(new Date(app.interviewDate), 'yyyy-MM-dd')) : undefined,
+                interviewDate: rawInterviewDate,
                 interviewTime: app.interviewTime,
                 interviewType: app.interviewType,
                 interviewer: app.interviewer,
@@ -1042,6 +1159,62 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
           if (savedStr) storedStatuses = JSON.parse(savedStr);
         } catch (_) {}
 
+        // Pre-populate statuses from database candidates so all machines immediately reflect the current accepted/scheduled status
+        allCandidates.forEach(cand => {
+          if (!cand.email && !cand.id) return;
+          const em = cand.email ? cand.email.trim() : '';
+          const emLower = em.toLowerCase();
+          const id = cand.id ? cand.id.trim() : '';
+
+          let mappedStatus = '';
+          if (cand.stage === 'Call Letter' || cand.documentsVerified) {
+            mappedStatus = 'call_letter';
+          } else if (cand.stage === 'Received Call Letter') {
+            mappedStatus = 'received_call_letter';
+          } else if (cand.stage === 'Offer') {
+            mappedStatus = 'offer';
+          } else if (cand.stage === 'Onboarding') {
+            mappedStatus = 'onboarded';
+          } else if (cand.stage === 'Rejected') {
+            mappedStatus = 'declined';
+          } else if (cand.stage === 'Documents') {
+            mappedStatus = 'documents';
+          } else if (cand.stage === 'Interviews' || cand.interviewDate) {
+            mappedStatus = 'scheduled';
+          } else if (cand.stage === 'Shortlisting' || cand.stage === 'AI Screening') {
+            mappedStatus = 'accepted';
+          }
+
+          if (mappedStatus) {
+            if (em) {
+              storedStatuses[em] = mappedStatus;
+              storedStatuses[emLower] = mappedStatus;
+            }
+            if (id) {
+              storedStatuses[id] = mappedStatus;
+            }
+            if (cand.firstName) {
+              storedStatuses[`${cand.firstName} ${cand.lastName || ''}`.trim().toLowerCase()] = mappedStatus;
+            }
+          }
+        });
+
+        // Database storedStatuses MUST OVERWRITE local machine's stale state
+        setFormApplicantStatuses(prev => ({ ...prev, ...storedStatuses }));
+        try {
+          localStorage.setItem('hrms_form_applicant_statuses', JSON.stringify(storedStatuses));
+        } catch (_) {}
+
+        // Keep local shortlist & scheduled cache updated on this machine
+        const currentDbShortlisted = allCandidates.filter(c => c.stage === 'Shortlisting');
+        if (currentDbShortlisted.length > 0) {
+          saveStoredShortlistedCandidates(currentDbShortlisted);
+        }
+        const currentDbScheduled = allCandidates.filter(c => c.stage === 'Interviews');
+        if (currentDbScheduled.length > 0) {
+          saveStoredScheduledInterviews(currentDbScheduled);
+        }
+
         const deletedList = getDeletedApplicants();
         const isCandidateDeleted = (candId?: string, candEmail?: string) => {
           if (candId && deletedList.includes(candId)) return true;
@@ -1058,54 +1231,72 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
           if (liveSheetRes.data?.data?.responses?.length > 0) {
             const sheetRows = liveSheetRes.data.data.responses;
             sheetRows.forEach((r: any) => {
-              if (r.email && !isCandidateDeleted(r.id, r.email) && !allCandidates.some(c => c.email === r.email)) {
-                const isAccepted = storedStatuses[r.email] === 'accepted';
-                const isDeclined = storedStatuses[r.email] === 'declined';
-                
-                let nameStr = r.fullName || 'Applicant';
-                let phoneStr = r.mobile || 'N/A';
-                let locationStr = r.location || 'WNP';
-                let expStr = r.qualification || 'Degree';
+              if (!r.email) return;
+              const rEmailTrim = r.email.trim();
+              const rEmailLower = rEmailTrim.toLowerCase();
+              if (isCandidateDeleted(r.id, rEmailTrim)) return;
 
-                // Self-correct if fields were swapped
-                if (phoneStr && /[a-zA-Z]/.test(phoneStr)) {
-                  if (!nameStr || nameStr === 'Applicant') {
-                    nameStr = phoneStr;
-                    phoneStr = 'N/A';
-                  }
-                }
-                if (locationStr && /^\+?\d{10,12}$/.test(locationStr.replace(/[\s-]/g, ''))) {
-                  if (!phoneStr || phoneStr === 'N/A' || /[a-zA-Z]/.test(phoneStr)) {
-                    phoneStr = locationStr;
-                    locationStr = 'WNP';
-                  }
-                }
-                if (expStr && ['mbnr', 'hyd', 'wnp', 'npl', 'hyderabad', 'wanaparthy', 'mahabubnagar'].includes(expStr.toLowerCase())) {
-                  if (!locationStr || locationStr === 'WNP' || locationStr === 'N/A') {
-                    locationStr = expStr.toUpperCase();
-                    expStr = 'Degree';
-                  }
-                }
+              // Check if candidate already exists in database
+              const existingCand = allCandidates.find(c => 
+                (c.email && c.email.trim().toLowerCase() === rEmailLower) || 
+                (c.id && r.id && c.id === r.id)
+              );
 
-                allCandidates.push({
-                  id: r.id || `cand-live-${Date.now()}`,
-                  firstName: nameStr.split(' ')[0] || nameStr,
-                  lastName: nameStr.split(' ').slice(1).join(' ') || '',
-                  email: r.email,
-                  phone: phoneStr,
-                  stage: isAccepted ? 'Shortlisting' : isDeclined ? 'Rejected' : 'Applications',
-                  source: 'Google Form',
-                  jobTitle: 'Google Form Recruitment',
-                  experience: expStr,
-                  location: locationStr,
-                  appliedDate: r.timestamp || '24/08/2026 10:58:33',
-                  resumeUrl: r.resumeLink,
-                  attachmentImages: [r.resumeLink],
-                  matchScore: 85,
-                  skills: ['Google Form'],
-                  avatarColor: AVATAR_COLORS[colorIdx++ % AVATAR_COLORS.length]
-                });
+              if (existingCand) {
+                // Enrich existing DB candidate with sheet details if missing
+                if (!existingCand.resumeUrl && r.resumeLink) existingCand.resumeUrl = r.resumeLink;
+                if ((!existingCand.phone || existingCand.phone === 'N/A') && r.mobile) existingCand.phone = r.mobile;
+                if (!existingCand.location && r.location) existingCand.location = r.location;
+                return;
               }
+
+              const isScheduled = storedStatuses[rEmailTrim] === 'scheduled' || storedStatuses[rEmailLower] === 'scheduled';
+              const isAccepted = storedStatuses[rEmailTrim] === 'accepted' || storedStatuses[rEmailLower] === 'accepted';
+              const isDeclined = storedStatuses[rEmailTrim] === 'declined' || storedStatuses[rEmailLower] === 'declined';
+              
+              let nameStr = r.fullName || 'Applicant';
+              let phoneStr = r.mobile || 'N/A';
+              let locationStr = r.location || 'WNP';
+              let expStr = r.qualification || 'Degree';
+
+              // Self-correct if fields were swapped
+              if (phoneStr && /[a-zA-Z]/.test(phoneStr)) {
+                if (!nameStr || nameStr === 'Applicant') {
+                  nameStr = phoneStr;
+                  phoneStr = 'N/A';
+                }
+              }
+              if (locationStr && /^\+?\d{10,12}$/.test(locationStr.replace(/[\s-]/g, ''))) {
+                if (!phoneStr || phoneStr === 'N/A' || /[a-zA-Z]/.test(phoneStr)) {
+                  phoneStr = locationStr;
+                  locationStr = 'WNP';
+                }
+              }
+              if (expStr && ['mbnr', 'hyd', 'wnp', 'npl', 'hyderabad', 'wanaparthy', 'mahabubnagar'].includes(expStr.toLowerCase())) {
+                if (!locationStr || locationStr === 'WNP' || locationStr === 'N/A') {
+                  locationStr = expStr.toUpperCase();
+                  expStr = 'Degree';
+                }
+              }
+
+              allCandidates.push({
+                id: r.id || `cand-live-${Date.now()}`,
+                firstName: nameStr.split(' ')[0] || nameStr,
+                lastName: nameStr.split(' ').slice(1).join(' ') || '',
+                email: rEmailTrim,
+                phone: phoneStr,
+                stage: isScheduled ? 'Interviews' : isAccepted ? 'Shortlisting' : isDeclined ? 'Rejected' : 'Applications',
+                source: 'Google Form',
+                jobTitle: 'Google Form Recruitment',
+                experience: expStr,
+                location: locationStr,
+                appliedDate: r.timestamp || '24/08/2026 10:58:33',
+                resumeUrl: r.resumeLink,
+                attachmentImages: [r.resumeLink],
+                matchScore: 85,
+                skills: ['Google Form'],
+                avatarColor: AVATAR_COLORS[colorIdx++ % AVATAR_COLORS.length]
+              });
             });
           }
         } catch (_) {}
@@ -1113,9 +1304,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         // Merge default fallback applicants (ensuring any accepted/declined ones retain their state)
         DEFAULT_FALLBACK_APPLICANTS.forEach(fb => {
           if (isCandidateDeleted(fb.id, fb.email)) return;
-          const isAccepted = storedStatuses[fb.email] === 'accepted' || storedStatuses[fb.id] === 'accepted' || storedStatuses[fb.email.toLowerCase()] === 'accepted';
-          const isDeclined = storedStatuses[fb.email] === 'declined' || storedStatuses[fb.id] === 'declined' || storedStatuses[fb.email.toLowerCase()] === 'declined';
-          const exists = allCandidates.some(c => (c.email && c.email.toLowerCase() === fb.email.toLowerCase()) || c.id === fb.id);
+          const fbEmailLower = fb.email.toLowerCase();
+          const isScheduled = storedStatuses[fb.email] === 'scheduled' || storedStatuses[fb.id] === 'scheduled' || storedStatuses[fbEmailLower] === 'scheduled';
+          const isAccepted = storedStatuses[fb.email] === 'accepted' || storedStatuses[fb.id] === 'accepted' || storedStatuses[fbEmailLower] === 'accepted';
+          const isDeclined = storedStatuses[fb.email] === 'declined' || storedStatuses[fb.id] === 'declined' || storedStatuses[fbEmailLower] === 'declined';
+          const exists = allCandidates.some(c => (c.email && c.email.toLowerCase() === fbEmailLower) || c.id === fb.id);
           if (!exists) {
             allCandidates.push({
               id: fb.id,
@@ -1123,7 +1316,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               lastName: fb.lastName,
               email: fb.email,
               phone: fb.phone,
-              stage: isAccepted ? 'Shortlisting' : isDeclined ? 'Rejected' : 'Applications',
+              stage: isScheduled ? 'Interviews' : isAccepted ? 'Shortlisting' : isDeclined ? 'Rejected' : 'Applications',
               source: fb.source,
               jobTitle: fb.jobTitle,
               experience: fb.experience,
@@ -1151,7 +1344,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
           if (idx >= 0) {
             allCandidates[idx] = {
               ...allCandidates[idx],
-              stage: allCandidates[idx].stage === 'Call Letter' || allCandidates[idx].stage === 'Offer' || allCandidates[idx].stage === 'Onboarding' ? allCandidates[idx].stage : (si.stage || allCandidates[idx].stage),
+              stage: allCandidates[idx].stage === 'Call Letter' || allCandidates[idx].stage === 'Offer' || allCandidates[idx].stage === 'Onboarding' ? allCandidates[idx].stage : (si.stage || allCandidates[idx].stage || 'Interviews'),
               interviewDate: si.interviewDate || allCandidates[idx].interviewDate,
               interviewTime: si.interviewTime || allCandidates[idx].interviewTime,
               interviewType: si.interviewType || allCandidates[idx].interviewType,
@@ -1192,7 +1385,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
             if (cand.stage !== 'Call Letter' && cand.stage !== 'Received Call Letter' && cand.stage !== 'Offer' && cand.stage !== 'Onboarding') {
               cand.stage = 'Documents';
             }
-          } else if (status === 'scheduled') {
+          } else if (status === 'scheduled' || cand.interviewDate) {
             if (cand.stage !== 'Documents' && cand.stage !== 'Call Letter' && cand.stage !== 'Received Call Letter' && cand.stage !== 'Offer' && cand.stage !== 'Onboarding') {
               cand.stage = 'Interviews';
             }
@@ -1361,13 +1554,14 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   };
 
   useEffect(() => {
-    loadRecruitmentData();
+    loadRecruitmentData(true);
     pollLiveSheetResponses();
     pollLiveDocumentResponses();
     pollLiveReceivedCallLetterResponses();
 
-    // Auto-update live Google Sheet submissions and sync status every 3 seconds in real time
+    // Auto-update recruitment data and live Google Sheet responses every 3 seconds so all computers stay in exact lockstep sync
     const intervalId = setInterval(() => {
+      loadRecruitmentData(false);
       pollLiveSheetResponses();
       pollLiveDocumentResponses();
       pollLiveReceivedCallLetterResponses();
@@ -1375,6 +1569,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
     return () => clearInterval(intervalId);
   }, []);
+
+  // Also immediately refresh recruitment data silently whenever activeTab changes
+  useEffect(() => {
+    loadRecruitmentData(false);
+  }, [activeTab]);
 
   // Update candidate status backend & local storage
   const updateCandidateStage = async (candidateId: string, status: string) => {
@@ -1671,13 +1870,15 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     }
 
     const targetCand = candidates.find(c => c.id === candidateId || c.email === candidateId);
-    let meetingLink = (interviewForm.link || '').trim();
+    let meetingLink = (interviewForm.link || '').trim() || getMeetingLinkForCandidate(targetCand);
     const candName = targetCand ? `${targetCand.firstName} ${targetCand.lastName}`.trim() : 'Candidate';
     const targetCandEmail = interviewForm.candidateEmail || targetCand?.email || (candidateId.includes('@') ? candidateId : '');
 
     if (!meetingLink) {
-      meetingLink = await generateTeamsMeetingUrl(`Interview: ${candName} - ${targetCand?.jobTitle || 'Role'}`);
+      meetingLink = await generateTeamsMeetingUrl(`Interview: ${candName}`, targetCand);
       setInterviewForm(prev => ({ ...prev, link: meetingLink }));
+    } else if (targetCand) {
+      saveMeetingLinkForCandidate(targetCand, meetingLink);
     }
 
     const updatedScheduledCand: Candidate = {
@@ -1824,12 +2025,13 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         return updated;
       });
 
-      // Update Backend DB permanently
+      // Update Backend DB permanently & send Document Upload Form email if passed
       try {
+        const candName = targetCand ? `${targetCand.firstName} ${targetCand.lastName}`.trim() : undefined;
         await api.patch(`/recruitment/applications/${candidateId}/interview`, { 
           decision,
           candidateEmail: candEmail,
-          candidateName: targetCand ? `${targetCand.firstName} ${targetCand.lastName}`.trim() : undefined
+          candidateName: candName
         });
         await loadRecruitmentData();
       } catch (err) {
@@ -1837,7 +2039,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       }
 
       if (decision === 'pass') {
-        alert(`🎉 Interview passed for ${targetCand ? targetCand.firstName + ' ' + targetCand.lastName : 'Candidate'}! Profile moved to Stage 8: Document Verification tab.`);
+        const candDisplayName = targetCand ? `${targetCand.firstName} ${targetCand.lastName}`.trim() : 'Candidate';
+        alert(`🎉 Interview passed for ${candDisplayName}!\n\nCandidate profile moved to Stage 4: Documents tab.`);
         setActiveTab('stage-8');
       } else {
         alert(`❌ Candidate ${targetCand ? targetCand.firstName + ' ' + targetCand.lastName : ''} marked as rejected.`);
@@ -1908,6 +2111,22 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       setActiveTab('stage-8');
     } catch (err) {
       alert('Failed to move candidate to Documents tab.');
+    }
+  };
+
+  // Direct send/resend Document Upload invitation email
+  const handleSendDocUploadInviteEmail = async (candidate: Candidate) => {
+    try {
+      const candidateEmail = candidate.email;
+      const candidateName = `${candidate.firstName} ${candidate.lastName}`.trim();
+      await api.post('/recruitment/send-document-upload-invite', {
+        candidateEmail,
+        candidateName,
+        formUrl: googleDocUploadFormUrl
+      });
+      alert(`📧 Document Upload invitation email sent successfully to ${candidateName} (${candidateEmail})!`);
+    } catch (err: any) {
+      alert(`Failed to send email: ${err?.response?.data?.message || err.message}`);
     }
   };
 
@@ -2181,7 +2400,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       if (!target && candidateObj) {
         target = candidateObj;
       }
-      const candEmail = target?.email || (candidateId.includes('@') ? candidateId : undefined);
+      const candEmail = (target?.email || (candidateId.includes('@') ? candidateId : undefined) || '').trim();
+      const candName = target?.customName || (target ? `${target.firstName || ''} ${target.lastName || ''}`.trim() : (candidateObj?.fullName || candidateObj?.name || 'Candidate'));
+      const nameKey = (candidateObj?.fullName || candName).toLowerCase().trim();
+      const code = getCandidateCode(target);
 
       // 1. Synchronously update formApplicantStatuses in localStorage & React state
       let updatedStatuses: { [key: string]: any } = {};
@@ -2200,6 +2422,19 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       if (target?.id) {
         updatedStatuses[target.id] = 'call_letter';
       }
+      if (candidateObj?.id) {
+        updatedStatuses[candidateObj.id] = 'call_letter';
+      }
+      if (nameKey) {
+        updatedStatuses[nameKey] = 'call_letter';
+      }
+      if (candName) {
+        updatedStatuses[candName.toLowerCase().trim()] = 'call_letter';
+      }
+      if (code) {
+        updatedStatuses[code] = 'call_letter';
+      }
+
       try {
         localStorage.setItem('hrms_form_applicant_statuses', JSON.stringify(updatedStatuses));
       } catch (_) {}
@@ -2211,12 +2446,12 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       const updatedScheduled = currentScheduled.map(c => {
         if (c.id === candidateId || (candEmail && c.email && c.email.toLowerCase() === candEmail.toLowerCase())) {
           existsInScheduled = true;
-          return { ...c, stage: 'Call Letter', documentsVerified: true };
+          return { ...c, stage: 'Call Letter', documentsVerified: true, customName: candName };
         }
         return c;
       });
       if (!existsInScheduled && target) {
-        updatedScheduled.unshift({ ...target, stage: 'Call Letter', documentsVerified: true });
+        updatedScheduled.unshift({ ...target, stage: 'Call Letter', documentsVerified: true, customName: candName });
       }
       saveStoredScheduledInterviews(updatedScheduled);
 
@@ -2226,44 +2461,68 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       const updatedShortlisted = currentShortlisted.map(c => {
         if (c.id === candidateId || (candEmail && c.email && c.email.toLowerCase() === candEmail.toLowerCase())) {
           existsInShortlisted = true;
-          return { ...c, stage: 'Call Letter', documentsVerified: true };
+          return { ...c, stage: 'Call Letter', documentsVerified: true, customName: candName };
         }
         return c;
       });
       if (!existsInShortlisted && target) {
-        updatedShortlisted.unshift({ ...target, stage: 'Call Letter', documentsVerified: true });
+        updatedShortlisted.unshift({ ...target, stage: 'Call Letter', documentsVerified: true, customName: candName });
       }
       saveStoredShortlistedCandidates(updatedShortlisted);
 
       // 4. Update React state immediately
+      const newCandObj: Candidate = {
+        ...(target ? (target as any) : {
+          id: candidateId,
+          firstName: candName.split(' ')[0] || 'Candidate',
+          lastName: candName.split(' ').slice(1).join(' ') || '',
+          email: candEmail,
+          phone: candidateObj?.phone || 'N/A',
+          source: 'Google Form (Documents)',
+          jobTitle: 'Selected Candidate',
+          experience: candidateObj?.candidateType || 'Experienced',
+          location: 'Hyderabad / Wanaparthy',
+          appliedDate: format(new Date(), 'yyyy-MM-dd'),
+          matchScore: 90,
+          skills: ['Verified Credentials']
+        }),
+        customName: candName,
+        stage: 'Call Letter',
+        documentsVerified: true
+      };
+
       setCandidates(prev => {
         let found = false;
         const mapped = prev.map(c => {
           if (c.id === candidateId || (candEmail && c.email && c.email.toLowerCase() === candEmail.toLowerCase()) || (target?.id && c.id === target.id)) {
             found = true;
-            return { ...c, stage: 'Call Letter', documentsVerified: true };
+            return { ...c, stage: 'Call Letter', documentsVerified: true, customName: candName };
           }
           return c;
         });
-        if (!found && target) {
-          return [{ ...target, stage: 'Call Letter', documentsVerified: true }, ...mapped];
+        if (!found) {
+          return [newCandObj, ...mapped];
         }
         return mapped;
       });
 
-      // 5. Update backend if real database candidate
-      if (candidateId && !candidateId.startsWith('cand-') && !candidateId.startsWith('sheet-row-') && !candidateId.startsWith('sheet-doc-')) {
-        try {
-          await api.patch(`/recruitment/applications/${candidateId}/documents-verify`, {
-            verified: true
-          });
-        } catch (err) {
-          console.warn('Backend documents-verify warning:', err);
-        }
+      // 5. Update backend permanently so all machines and users stay in exact sync
+      try {
+        await api.patch(`/recruitment/applications/${candidateId}/documents-verify`, {
+          verified: true,
+          email: candEmail,
+          name: candName,
+          phone: target?.phone || candidateObj?.phone,
+          candidateType: target?.candidateType || candidateObj?.candidateType,
+          attachmentImages: target?.attachmentImages || candidateObj?.attachmentImages || candidateObj?.documents
+        });
+      } catch (err) {
+        console.warn('Backend documents-verify notice:', err);
       }
 
-      alert('✅ Documents verified and approved! Moving candidate to Stage 5: Call Letter.');
+      alert(`✅ Documents verified & approved for ${candName}! Moving to Stage 6: Call Letter.`);
       await loadRecruitmentData();
+      await pollLiveDocumentResponses();
       setActiveTab('stage-call-letter');
     } catch (err) {
       alert('Failed to verify documents.');
@@ -2597,7 +2856,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
         <div class="annexure-box">
           The gross salary of the employee for every month is as follows:<br>
-          <strong>Net Salary/Monthly:</strong> ₹ ${formattedSalary}<br>
+          <strong>Gross Salary/Monthly:</strong> ₹ ${formattedSalary}<br>
           <strong>Amount in words:</strong> ${salaryWords}
         </div>
 
@@ -3039,10 +3298,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     { value: 'stage-5', label: '2. Shortlisting', icon: StarHalf },
     { value: 'stage-6', label: '3. Interviews', icon: Calendar },
     { value: 'stage-8', label: '4. Documents', icon: FolderOpen },
-    { value: 'stage-call-letter', label: '5. Call Letter', icon: MailCheck },
-    { value: 'stage-received-call-letter', label: '6. Received Call Letter', icon: Inbox },
-    { value: 'stage-7', label: '7. Offer', icon: Award },
-    { value: 'stage-9', label: '8. Onboarding', icon: UserPlus },
+    { value: 'stage-documents-received', label: '5. Documents Received', icon: FileCheck },
+    { value: 'stage-call-letter', label: '6. Call Letter', icon: MailCheck },
+    { value: 'stage-received-call-letter', label: '7. Received Call Letter', icon: Inbox },
+    { value: 'stage-7', label: '8. Offer', icon: Award },
+    { value: 'stage-9', label: '9. Onboarding', icon: UserPlus },
     { value: 'candidates', label: 'All Applicants', icon: Users },
   ];
 
@@ -3075,7 +3335,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               onChange={e => setSearchQuery(e.target.value)}
             />
           </div>
-          <button className="rec-icon-btn" id="rec-refresh-btn" onClick={loadRecruitmentData}>
+          <button className="rec-icon-btn" id="rec-refresh-btn" onClick={() => loadRecruitmentData(true)} title="Refresh recruitment data">
             <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
           </button>
         </div>
@@ -3467,7 +3727,43 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                             )
                         ).filter(c => !isCandidateDeleted(c.id, c.email));
                         const filteredFallbacks = DEFAULT_FALLBACK_APPLICANTS.filter(fb => !isCandidateDeleted(fb.id, fb.email));
-                        const rowsToRender = formRows.length > 0 ? formRows : filteredFallbacks;
+                        const rawRows = formRows.length > 0 ? formRows : filteredFallbacks;
+
+                        // Filter out any candidates who have been accepted or declined so they vanish from the job posting tab
+                        const rowsToRender = rawRows.filter((c: any) => {
+                          const emailKey = (c.email || '').toLowerCase().trim();
+                          const matchedDbCand = candidates.find(cand => 
+                            (cand.email && cand.email.toLowerCase().trim() === emailKey) || 
+                            (c.id && cand.id === c.id)
+                          );
+                          const dbStage = matchedDbCand?.stage;
+
+                          const isRowAccepted = formApplicantStatuses[c.email] === 'accepted' || 
+                            formApplicantStatuses[c.id] === 'accepted' || 
+                            (emailKey && formApplicantStatuses[emailKey] === 'accepted') ||
+                            (matchedDbCand && ['Shortlisting', 'AI Screening', 'Interviews', 'Documents', 'Call Letter', 'Received Call Letter', 'Offer', 'Onboarding'].includes(dbStage || ''));
+                          const isRowDeclined = formApplicantStatuses[c.email] === 'declined' || 
+                            formApplicantStatuses[c.id] === 'declined' || 
+                            (emailKey && formApplicantStatuses[emailKey] === 'declined') ||
+                            (matchedDbCand && dbStage === 'Rejected');
+
+                          // Only pending/unreviewed applications remain visible
+                          return !isRowAccepted && !isRowDeclined;
+                        });
+
+                        if (rowsToRender.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={9} style={{ textAlign: 'center', padding: '2.5rem 1.5rem', color: '#64748b' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                                  <CheckCircle className="h-7 w-7 text-emerald-500" />
+                                  <p style={{ margin: 0, fontWeight: 700, fontSize: '0.85rem', color: '#0f172a' }}>All applicant responses reviewed</p>
+                                  <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>Accepted candidates have been moved to the Shortlisting tab. New applicant submissions will appear here automatically.</p>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        }
 
                         return rowsToRender.map((c: any) => {
                           let driveUrl = c.resumeUrl || 'https://drive.google.com/open?id=1KHGMjppH53O9yfI9Wj0fmUpOAjjytA7z';
@@ -3483,21 +3779,13 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                             }
                           }
 
-                          const emailKey = (c.email || '').toLowerCase();
-                          const isRowAccepted = formApplicantStatuses[c.email] === 'accepted' || 
-                            formApplicantStatuses[c.id] === 'accepted' || 
-                            (emailKey && formApplicantStatuses[emailKey] === 'accepted');
-                          const isRowDeclined = formApplicantStatuses[c.email] === 'declined' || 
-                            formApplicantStatuses[c.id] === 'declined' || 
-                            (emailKey && formApplicantStatuses[emailKey] === 'declined');
-
                           return (
                             <tr key={c.id || c.email} style={{ background: '#ffffff', borderBottom: '1px solid #e9d5ff', height: '44px', color: '#1e293b' }}>
-                              <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 600, color: '#475569' }}>{c.appliedAt || '24/08/2026 10:58:33'}</td>
+                              <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 600, color: '#475569' }}>{c.appliedAt || '-'}</td>
                               <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 700, color: '#6b21a8' }}>{c.email}</td>
-                              <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 800, color: '#0f172a' }}>{c.firstName || c.name || 'Shiva'} {c.lastName || 'Prasad'}</td>
-                              <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 700, color: '#334155' }}>{c.phone || '9949020175'}</td>
-                              <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 600, color: '#475569' }}>{c.location || 'WNP'}</td>
+                              <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 800, color: '#0f172a' }}>{c.name || `${c.firstName || ''} ${c.lastName || ''}`.trim() || 'Applicant'}</td>
+                              <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 700, color: '#334155' }}>{c.phone || '-'}</td>
+                              <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 600, color: '#475569' }}>{c.location || '-'}</td>
                               <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 600, color: '#475569' }}>{c.experience || c.qualification || '-'}</td>
                               <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 600, color: '#475569' }}>{c.graduationYear || '-'}</td>
                               <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
@@ -3511,42 +3799,22 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 </a>
                               </td>
                               <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'center' }}>
-                                {isRowAccepted ? (
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                                    <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '4px 10px', borderRadius: '99px', background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                      <CheckCircle className="h-3.5 w-3.5 text-emerald-600" /> Accepted
-                                    </span>
-                                    <button
-                                      onClick={() => setActiveTab('stage-5')}
-                                      className="rec-btn-outline"
-                                      style={{ fontSize: '0.65rem', height: '26px', padding: '0 8px', color: '#0369a1', borderColor: '#bae6fd', background: '#f0f9ff' }}
-                                      title="Go to Shortlist tab"
-                                    >
-                                      View in Shortlist →
-                                    </button>
-                                  </div>
-                                ) : isRowDeclined ? (
-                                  <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '4px 10px', borderRadius: '99px', background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    <XCircle className="h-3.5 w-3.5 text-red-600" /> Declined
-                                  </span>
-                                ) : (
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                                    <button 
-                                      onClick={() => handleAcceptFormApplicant(c)}
-                                      className="rec-btn-primary" 
-                                      style={{ fontSize: '0.68rem', height: '28px', padding: '0 10px', background: '#16a34a', borderColor: '#15803d', gap: '4px' }}
-                                    >
-                                      <Check className="h-3.5 w-3.5" /> Accept
-                                    </button>
-                                    <button 
-                                      onClick={() => handleDeclineFormApplicant(c)}
-                                      className="rec-btn-outline" 
-                                      style={{ fontSize: '0.68rem', height: '28px', padding: '0 10px', color: '#dc2626', borderColor: '#fca5a5', background: '#fef2f2', gap: '4px' }}
-                                    >
-                                      <X className="h-3.5 w-3.5" /> Decline
-                                    </button>
-                                  </div>
-                                )}
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                  <button 
+                                    onClick={() => handleAcceptFormApplicant(c)}
+                                    className="rec-btn-primary" 
+                                    style={{ fontSize: '0.68rem', height: '28px', padding: '0 10px', background: '#16a34a', borderColor: '#15803d', gap: '4px' }}
+                                  >
+                                    <Check className="h-3.5 w-3.5" /> Accept
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDeclineFormApplicant(c)}
+                                    className="rec-btn-outline" 
+                                    style={{ fontSize: '0.68rem', height: '28px', padding: '0 10px', color: '#dc2626', borderColor: '#fca5a5', background: '#fef2f2', gap: '4px' }}
+                                  >
+                                    <X className="h-3.5 w-3.5" /> Decline
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -3677,7 +3945,41 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                               attachmentImages: ['https://drive.google.com/open?id=1rnDWuhRDVf4WvyNmNyknoMCVaeyNnGtr']
                             }
                           ].filter(fb => !isCandidateDeleted(fb.id, fb.email));
-                          const rowsToRender = formRows.length > 0 ? formRows : fallbackRows;
+                          const rawRows = formRows.length > 0 ? formRows : fallbackRows;
+
+                          const rowsToRender = rawRows.filter((c: any) => {
+                            const emailKey = (c.email || '').toLowerCase().trim();
+                            const matchedDbCand = candidates.find(cand => 
+                              (cand.email && cand.email.toLowerCase().trim() === emailKey) || 
+                              (c.id && cand.id === c.id)
+                            );
+                            const dbStage = matchedDbCand?.stage;
+
+                            const isRowAccepted = formApplicantStatuses[c.email] === 'accepted' || 
+                              formApplicantStatuses[c.id] === 'accepted' || 
+                              (emailKey && formApplicantStatuses[emailKey] === 'accepted') ||
+                              (matchedDbCand && ['Shortlisting', 'AI Screening', 'Interviews', 'Documents', 'Call Letter', 'Received Call Letter', 'Offer', 'Onboarding'].includes(dbStage || ''));
+                            const isRowDeclined = formApplicantStatuses[c.email] === 'declined' || 
+                              formApplicantStatuses[c.id] === 'declined' || 
+                              (emailKey && formApplicantStatuses[emailKey] === 'declined') ||
+                              (matchedDbCand && dbStage === 'Rejected');
+
+                            return !isRowAccepted && !isRowDeclined;
+                          });
+
+                          if (rowsToRender.length === 0) {
+                            return (
+                              <tr>
+                                <td colSpan={9} style={{ textAlign: 'center', padding: '2.5rem 1.5rem', color: '#64748b' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                                    <CheckCircle className="h-7 w-7 text-emerald-500" />
+                                    <p style={{ margin: 0, fontWeight: 700, fontSize: '0.85rem', color: '#0f172a' }}>All live applicant submissions reviewed</p>
+                                    <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>Accepted candidates have been moved to the Shortlisting tab. New submissions will appear here automatically.</p>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          }
 
                           return rowsToRender.map((c: any) => {
                             let driveUrl = c.resumeUrl || 'https://drive.google.com/open?id=1KHGMjppH53O9yfI9Wj0fmUpOAjjytA7z';
@@ -3695,11 +3997,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
                             return (
                               <tr key={c.id || c.email} style={{ background: '#ffffff', borderBottom: '1px solid #e9d5ff', height: '44px', color: '#1e293b' }}>
-                                <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 600, color: '#475569' }}>{c.appliedAt || '24/08/2026 10:58:33'}</td>
+                                <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 600, color: '#475569' }}>{c.appliedAt || '-'}</td>
                                 <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 700, color: '#6b21a8' }}>{c.email}</td>
-                                <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 800, color: '#0f172a' }}>{c.firstName || c.name || 'Shiva'} {c.lastName || 'Prasad'}</td>
-                                <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 700, color: '#334155' }}>{c.phone || '9949020175'}</td>
-                                <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 600, color: '#475569' }}>{c.location || 'WNP'}</td>
+                                <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 800, color: '#0f172a' }}>{c.name || `${c.firstName || ''} ${c.lastName || ''}`.trim() || 'Applicant'}</td>
+                                <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 700, color: '#334155' }}>{c.phone || '-'}</td>
+                                <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 600, color: '#475569' }}>{c.location || '-'}</td>
                                 <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 600, color: '#475569' }}>{c.qualification || '-'}</td>
                                 <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 600, color: '#475569' }}>{c.graduationYear || '-'}</td>
                                 <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
@@ -3713,42 +4015,22 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   </a>
                                 </td>
                                 <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'center' }}>
-                                  {formApplicantStatuses[c.email] === 'accepted' ? (
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                                      <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '4px 10px', borderRadius: '99px', background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                        <CheckCircle className="h-3.5 w-3.5 text-emerald-600" /> Accepted
-                                      </span>
-                                      <button
-                                        onClick={() => setActiveTab('stage-5')}
-                                        className="rec-btn-outline"
-                                        style={{ fontSize: '0.65rem', height: '26px', padding: '0 8px', color: '#0369a1', borderColor: '#bae6fd', background: '#f0f9ff' }}
-                                        title="Go to Shortlist tab"
-                                      >
-                                        View in Shortlist →
-                                      </button>
-                                    </div>
-                                  ) : formApplicantStatuses[c.email] === 'declined' ? (
-                                    <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '4px 10px', borderRadius: '99px', background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                      <XCircle className="h-3.5 w-3.5 text-red-600" /> Declined
-                                    </span>
-                                  ) : (
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                                      <button 
-                                        onClick={() => handleAcceptFormApplicant(c)}
-                                        className="rec-btn-primary" 
-                                        style={{ fontSize: '0.68rem', height: '28px', padding: '0 10px', background: '#16a34a', borderColor: '#15803d', gap: '4px' }}
-                                      >
-                                        <Check className="h-3.5 w-3.5" /> Accept
-                                      </button>
-                                      <button 
-                                        onClick={() => handleDeclineFormApplicant(c)}
-                                        className="rec-btn-outline" 
-                                        style={{ fontSize: '0.68rem', height: '28px', padding: '0 10px', color: '#dc2626', borderColor: '#fca5a5', background: '#fef2f2', gap: '4px' }}
-                                      >
-                                        <X className="h-3.5 w-3.5" /> Decline
-                                      </button>
-                                    </div>
-                                  )}
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                    <button 
+                                      onClick={() => handleAcceptFormApplicant(c)}
+                                      className="rec-btn-primary" 
+                                      style={{ fontSize: '0.68rem', height: '28px', padding: '0 10px', background: '#16a34a', borderColor: '#15803d', gap: '4px' }}
+                                    >
+                                      <Check className="h-3.5 w-3.5" /> Accept
+                                    </button>
+                                    <button 
+                                      onClick={() => handleDeclineFormApplicant(c)}
+                                      className="rec-btn-outline" 
+                                      style={{ fontSize: '0.68rem', height: '28px', padding: '0 10px', color: '#dc2626', borderColor: '#fca5a5', background: '#fef2f2', gap: '4px' }}
+                                    >
+                                      <X className="h-3.5 w-3.5" /> Decline
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -4099,10 +4381,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
               const isShortlistCandidate = (c: Candidate, status?: string) => {
                 const s = status || formApplicantStatuses[c.email] || formApplicantStatuses[c.id] || (c.email ? formApplicantStatuses[c.email.toLowerCase()] : undefined);
-                if (s === 'documents' || s === 'call_letter' || s === 'call-letter' || s === 'callletter' || s === 'offer' || s === 'onboarded' || s === 'declined') {
+                if (s === 'documents' || s === 'call_letter' || s === 'call-letter' || s === 'callletter' || s === 'received_call_letter' || s === 'offer' || s === 'onboarded' || s === 'declined') {
                   return false;
                 }
-                if (c.stage === 'Documents' || c.stage === 'Call Letter' || c.stage === 'Offer' || c.stage === 'Onboarding' || c.stage === 'Rejected') {
+                if (c.stage === 'Documents' || c.stage === 'Call Letter' || c.stage === 'Received Call Letter' || c.stage === 'Offer' || c.stage === 'Onboarding' || c.stage === 'Rejected') {
                   return false;
                 }
                 return true;
@@ -4111,10 +4393,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               // 1. candidates from state (stage is Shortlisting, AI Screening, or accepted in statuses)
               candidates.forEach(c => {
                 if (isCandidateDeleted(c.id, c.email)) return;
-                const emailKey = (c.email || '').toLowerCase();
+                const emailKey = (c.email || '').toLowerCase().trim();
                 const status = formApplicantStatuses[c.email] || formApplicantStatuses[c.id] || (emailKey ? formApplicantStatuses[emailKey] : undefined);
-                const isAccepted = status === 'accepted';
-                if ((c.stage === 'Shortlisting' || c.stage === 'AI Screening' || isAccepted) && isShortlistCandidate(c, status)) {
+                const isAccepted = status === 'accepted' || c.stage === 'Shortlisting' || c.stage === 'AI Screening';
+                if (isAccepted && isShortlistCandidate(c, status)) {
                   const key = emailKey || c.id;
                   map.set(key, {
                     ...c,
@@ -4127,7 +4409,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               const storedShortlisted = getStoredShortlistedCandidates();
               storedShortlisted.forEach(sc => {
                 if (isCandidateDeleted(sc.id, sc.email)) return;
-                const key = (sc.email || sc.id).toLowerCase();
+                const key = (sc.email || sc.id).toLowerCase().trim();
                 if (!map.has(key) && isShortlistCandidate(sc)) {
                   map.set(key, { ...sc, stage: 'Shortlisting' });
                 }
@@ -4277,7 +4559,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   onClick={async () => {
                                     setSelectedCandidate(c);
                                     const candName = `${c.firstName} ${c.lastName}`.trim();
-                                    const autoLink = await generateTeamsMeetingUrl(`VRPI Interview: ${candName} - ${c.jobTitle || 'Role'}`);
+                                    let autoLink = getMeetingLinkForCandidate(c);
+                                    if (!autoLink) {
+                                      autoLink = await generateTeamsMeetingUrl(`VRPI Interview: ${candName}`, c);
+                                    }
                                     setInterviewForm({
                                       date: format(new Date(), 'yyyy-MM-dd'),
                                       time: '',
@@ -4326,113 +4611,308 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               );
             })()}
 
-            {/* ════════════════ STAGE 6: INTERVIEWS (ULTRA-PREMIUM UI) ════════════════ */}
+            {/* ════════════════ STAGE 6: INTERVIEWS (COMPACT UNIFIED DASHBOARD) ════════════════ */}
             {activeTab === 'stage-6' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
-                {/* ── Top Executive Summary Metric Cards ── */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {/* ── Top Executive Summary Metric Cards (Compact) ── */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
                   {/* Card 1: Total Scheduled Slots */}
-                  <div style={{ background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)', border: '1px solid #e2e8f0', borderRadius: '1.25rem', padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', boxShadow: '0 4px 15px rgba(15, 23, 42, 0.03)' }}>
-                    <div style={{ padding: '0.75rem', background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', borderRadius: '0.85rem', color: '#fff', boxShadow: '0 6px 14px rgba(99, 102, 241, 0.35)', display: 'flex' }}>
-                      <Calendar className="h-6 w-6" />
+                  <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '0.85rem', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', boxShadow: '0 2px 8px rgba(15, 23, 42, 0.03)' }}>
+                    <div style={{ padding: '0.5rem', background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', borderRadius: '0.65rem', color: '#fff', display: 'flex' }}>
+                      <Calendar className="h-4 w-4" />
                     </div>
                     <div>
-                      <p style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Scheduled Slots</p>
-                      <h3 style={{ fontSize: '1.5rem', fontWeight: 900, color: '#0f172a', margin: '2px 0 0 0', letterSpacing: '-0.02em' }}>
+                      <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Scheduled Slots</p>
+                      <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
                         {candidates.filter(c => c.stage === 'Interviews').length}
                       </h3>
                     </div>
                   </div>
 
                   {/* Card 2: Today's Sessions */}
-                  <div style={{ background: 'linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)', border: '1px solid #bbf7d0', borderRadius: '1.25rem', padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.04)' }}>
-                    <div style={{ padding: '0.75rem', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '0.85rem', color: '#fff', boxShadow: '0 6px 14px rgba(16, 185, 129, 0.35)', display: 'flex' }}>
-                      <Clock className="h-6 w-6" />
+                  <div style={{ background: '#ffffff', border: '1px solid #bbf7d0', borderRadius: '0.85rem', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', boxShadow: '0 2px 8px rgba(16, 185, 129, 0.03)' }}>
+                    <div style={{ padding: '0.5rem', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '0.65rem', color: '#fff', display: 'flex' }}>
+                      <Clock className="h-4 w-4" />
                     </div>
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <p style={{ fontSize: '0.72rem', fontWeight: 700, color: '#047857', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Today's Sessions</p>
-                        <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10b981', display: 'inline-block', boxShadow: '0 0 8px #10b981' }}></span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#047857', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Today's Sessions</p>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
                       </div>
-                      <h3 style={{ fontSize: '1.5rem', fontWeight: 900, color: '#064e3b', margin: '2px 0 0 0', letterSpacing: '-0.02em' }}>
+                      <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#064e3b', margin: 0, letterSpacing: '-0.02em' }}>
                         {candidates.filter(c => c.stage === 'Interviews' && c.interviewDate && c.interviewDate.startsWith(format(new Date(), 'yyyy-MM-dd'))).length}
                       </h3>
                     </div>
                   </div>
 
                   {/* Card 3: Tech & Coding Rounds */}
-                  <div style={{ background: 'linear-gradient(135deg, #ffffff 0%, #faf5ff 100%)', border: '1px solid #e9d5ff', borderRadius: '1.25rem', padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', boxShadow: '0 4px 15px rgba(168, 85, 247, 0.04)' }}>
-                    <div style={{ padding: '0.75rem', background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)', borderRadius: '0.85rem', color: '#fff', boxShadow: '0 6px 14px rgba(168, 85, 247, 0.35)', display: 'flex' }}>
-                      <Cpu className="h-6 w-6" />
+                  <div style={{ background: '#ffffff', border: '1px solid #e9d5ff', borderRadius: '0.85rem', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', boxShadow: '0 2px 8px rgba(168, 85, 247, 0.03)' }}>
+                    <div style={{ padding: '0.5rem', background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)', borderRadius: '0.65rem', color: '#fff', display: 'flex' }}>
+                      <Cpu className="h-4 w-4" />
                     </div>
                     <div>
-                      <p style={{ fontSize: '0.72rem', fontWeight: 700, color: '#7e22ce', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Tech Rounds</p>
-                      <h3 style={{ fontSize: '1.5rem', fontWeight: 900, color: '#581c87', margin: '2px 0 0 0', letterSpacing: '-0.02em' }}>
+                      <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#7e22ce', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Tech Rounds</p>
+                      <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#581c87', margin: 0, letterSpacing: '-0.02em' }}>
                         {candidates.filter(c => c.stage === 'Interviews' && (c.interviewType?.includes('Technical') || c.interviewType?.includes('Coding'))).length}
                       </h3>
                     </div>
                   </div>
 
                   {/* Card 4: Offers Extended */}
-                  <div style={{ background: 'linear-gradient(135deg, #ffffff 0%, #fff7ed 100%)', border: '1px solid #fed7aa', borderRadius: '1.25rem', padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', boxShadow: '0 4px 15px rgba(249, 115, 22, 0.04)' }}>
-                    <div style={{ padding: '0.75rem', background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', borderRadius: '0.85rem', color: '#fff', boxShadow: '0 6px 14px rgba(249, 115, 22, 0.35)', display: 'flex' }}>
-                      <Award className="h-6 w-6" />
+                  <div style={{ background: '#ffffff', border: '1px solid #fed7aa', borderRadius: '0.85rem', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', boxShadow: '0 2px 8px rgba(249, 115, 22, 0.03)' }}>
+                    <div style={{ padding: '0.5rem', background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', borderRadius: '0.65rem', color: '#fff', display: 'flex' }}>
+                      <Award className="h-4 w-4" />
                     </div>
                     <div>
-                      <p style={{ fontSize: '0.72rem', fontWeight: 700, color: '#c2410c', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Offers Passed</p>
-                      <h3 style={{ fontSize: '1.5rem', fontWeight: 900, color: '#7c2d12', margin: '2px 0 0 0', letterSpacing: '-0.02em' }}>
+                      <p style={{ fontSize: '0.68rem', fontWeight: 700, color: '#c2410c', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>Offers Passed</p>
+                      <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#7c2d12', margin: 0, letterSpacing: '-0.02em' }}>
                         {candidates.filter(c => c.stage === 'Offer' || c.stage === 'Onboarding' || c.stage === 'Documents').length}
                       </h3>
                     </div>
                   </div>
                 </div>
 
-                {/* ── Top Header & Calendar Controls ── */}
-                <div className="rec-card" style={{ padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)', border: '1px solid #e2e8f0', borderRadius: '1.25rem', boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.05)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1.25rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '1.25rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                      <div style={{ padding: '0.75rem', background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)', borderRadius: '1rem', color: '#fff', boxShadow: '0 6px 16px rgba(79, 70, 229, 0.35)', display: 'flex' }}>
-                        <Calendar className="h-7 w-7" />
+                {/* ── 1. Scheduled Interviews Table Section (At Top) ── */}
+                <div className="rec-card" style={{ padding: '1.25rem 1.5rem', background: '#ffffff', borderRadius: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 20px -4px rgba(15, 23, 42, 0.04)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.85rem' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <h2 className="rec-section-title" style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>Active Scheduled Interviews</h2>
+                        <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '2px 8px', borderRadius: '99px', background: '#e0e7ff', color: '#4338ca', border: '1px solid #c7d2fe' }}>
+                          {candidates.filter(c => c.stage === 'Interviews').length} Active
+                        </span>
+                      </div>
+                      <p className="rec-section-sub" style={{ margin: '2px 0 0 0', color: '#64748b', fontSize: '0.75rem' }}>Launch Microsoft Teams video sessions, copy meeting URLs, and evaluate candidate interview outcomes</p>
+                    </div>
+                  </div>
+
+                  <div style={{ overflowX: 'auto', borderRadius: '0.75rem', border: '1px solid #f1f5f9' }}>
+                    <table className="rec-table" style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                          <th style={{ padding: '10px 14px', fontSize: '0.7rem', fontWeight: 800, color: '#475569', letterSpacing: '0.04em', textTransform: 'uppercase', textAlign: 'left', minWidth: '180px' }}>Candidate Details</th>
+                          <th style={{ padding: '10px 12px', fontSize: '0.7rem', fontWeight: 800, color: '#475569', letterSpacing: '0.04em', textTransform: 'uppercase', textAlign: 'left', minWidth: '85px' }}>ID</th>
+                          <th style={{ padding: '10px 14px', fontSize: '0.7rem', fontWeight: 800, color: '#475569', letterSpacing: '0.04em', textTransform: 'uppercase', textAlign: 'left', minWidth: '125px' }}>Date & Time</th>
+                          <th style={{ padding: '10px 14px', fontSize: '0.7rem', fontWeight: 800, color: '#475569', letterSpacing: '0.04em', textTransform: 'uppercase', textAlign: 'left', minWidth: '130px' }}>Interview Panel</th>
+                          <th style={{ padding: '10px 14px', fontSize: '0.7rem', fontWeight: 800, color: '#475569', letterSpacing: '0.04em', textTransform: 'uppercase', textAlign: 'left', minWidth: '175px' }}>Meeting Room</th>
+                          <th style={{ padding: '10px 12px', fontSize: '0.7rem', fontWeight: 800, color: '#475569', letterSpacing: '0.04em', textTransform: 'uppercase', textAlign: 'center', minWidth: '100px' }}>Status</th>
+                          <th style={{ padding: '10px 14px', fontSize: '0.7rem', fontWeight: 800, color: '#475569', letterSpacing: '0.04em', textTransform: 'uppercase', textAlign: 'right', minWidth: '210px' }}>Evaluation Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {candidates.filter(c => c.stage === 'Interviews').length === 0 ? (
+                          <tr>
+                            <td colSpan={7} style={{ textAlign: 'center', padding: '2.5rem 1.5rem', color: '#94a3b8', fontSize: '0.8rem' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                                <Calendar className="h-7 w-7 text-slate-300" />
+                                <p style={{ margin: 0, fontWeight: 700, color: '#64748b' }}>No active interviews scheduled yet</p>
+                                <p style={{ margin: 0, fontSize: '0.72rem', color: '#94a3b8' }}>Select any date cell on the calendar below or click "+ Schedule Slot" to get started.</p>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : (
+                          candidates.filter(c => c.stage === 'Interviews').map(c => {
+                            const candCode = getCandidateCode(c);
+                            const meetLink = c.interviewLink || '';
+
+                            return (
+                              <tr key={c.id} className="rec-table-row" style={{ borderBottom: '1px solid #f1f5f9', background: '#ffffff', transition: 'background 0.15s ease' }}>
+                                {/* Candidate Details */}
+                                <td style={{ padding: '12px 14px', verticalAlign: 'middle' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.75rem', flexShrink: 0, boxShadow: '0 2px 5px rgba(79, 70, 229, 0.25)' }}>
+                                      {c.firstName.charAt(0)}
+                                    </div>
+                                    <div style={{ overflow: 'hidden' }}>
+                                      <p style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a', margin: 0, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{c.firstName} {c.lastName}</p>
+                                      <p style={{ fontSize: '0.68rem', color: '#64748b', margin: '1px 0 0 0', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{c.email || c.phone || 'Google Form Applicant'}</p>
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* Candidate ID */}
+                                <td style={{ padding: '12px 12px', verticalAlign: 'middle' }}>
+                                  <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '0.72rem', color: '#4338ca', background: '#eef2ff', padding: '2px 8px', borderRadius: '5px', border: '1px solid #c7d2fe', display: 'inline-block' }}>
+                                    #{candCode}
+                                  </span>
+                                </td>
+
+                                {/* Date & Time */}
+                                <td style={{ padding: '12px 14px', verticalAlign: 'middle' }}>
+                                  {c.interviewDate ? (
+                                    <div>
+                                      <p style={{ fontSize: '0.75rem', fontWeight: 800, color: '#4f46e5', margin: 0, display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
+                                        <Calendar className="h-3 w-3 text-indigo-500 flex-shrink-0" /> {c.interviewDate}
+                                      </p>
+                                      <p style={{ fontSize: '0.68rem', color: '#64748b', margin: '2px 0 0 0', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
+                                        <Clock className="h-3 w-3 text-slate-400 flex-shrink-0" /> {c.interviewTime || '11:30 AM'}
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <span style={{ fontSize: '0.68rem', color: '#94a3b8', fontStyle: 'italic' }}>Pending slot</span>
+                                  )}
+                                </td>
+
+                                {/* Interview Panel */}
+                                <td style={{ padding: '12px 14px', verticalAlign: 'middle' }}>
+                                  <p style={{ fontSize: '0.78rem', fontWeight: 800, color: '#1e293b', margin: 0, whiteSpace: 'nowrap' }}>{c.interviewer || 'Priyanka'}</p>
+                                  <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#4338ca', background: '#e0e7ff', padding: '1px 6px', borderRadius: '4px', marginTop: '2px', display: 'inline-block', whiteSpace: 'nowrap' }}>
+                                    {c.interviewType || 'HR Screening'}
+                                  </span>
+                                </td>
+
+                                {/* Meeting Room */}
+                                <td style={{ padding: '12px 14px', verticalAlign: 'middle' }}>
+                                  {meetLink ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                      <a
+                                        href={meetLink}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="rec-btn-primary"
+                                        style={{
+                                          fontSize: '0.7rem',
+                                          height: '28px',
+                                          padding: '0 10px',
+                                          gap: '5px',
+                                          background: 'linear-gradient(135deg, #464EB8 0%, #5B5FC7 100%)',
+                                          textDecoration: 'none',
+                                          borderRadius: '0.45rem',
+                                          boxShadow: '0 2px 6px rgba(70, 78, 184, 0.3)',
+                                          fontWeight: 700,
+                                          whiteSpace: 'nowrap',
+                                          display: 'inline-flex',
+                                          alignItems: 'center'
+                                        }}
+                                        title="Open Microsoft Teams Meeting"
+                                      >
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                                          <path d="M16.5 6a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" fill="#A4ACF8"/>
+                                          <path d="M14 7h5a3 3 0 0 1 3 3v4.5a1.5 1.5 0 0 1-1.5 1.5H18v-4a2.5 2.5 0 0 0-2.5-2.5H14V7Z" fill="#A4ACF8"/>
+                                          <path d="M10 7a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" fill="#FFFFFF"/>
+                                          <path d="M4.5 8.5A2.5 2.5 0 0 0 2 11v4.5A2.5 2.5 0 0 0 4.5 18H10a3 3 0 0 0 3-3v-4a2.5 2.5 0 0 0-2.5-2.5h-6Z" fill="#FFFFFF" fillOpacity="0.9"/>
+                                          <rect x="2" y="9.5" width="8" height="8" rx="1.5" fill="#4B53BC"/>
+                                          <path d="M7.2 11.2H4.8v1.2h.7v3h1.2v-3h.7v-1.2Z" fill="#FFFFFF"/>
+                                        </svg>
+                                        Join Teams
+                                      </a>
+                                      <button
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(meetLink);
+                                          alert('✅ Meeting link copied to clipboard!');
+                                        }}
+                                        className="rec-btn-outline"
+                                        style={{ height: '28px', width: '28px', padding: 0, borderRadius: '0.45rem', justifyContent: 'center', borderColor: '#cbd5e1', background: '#f8fafc' }}
+                                        title="Copy Meeting URL"
+                                      >
+                                        <Copy className="h-3 w-3 text-slate-600" />
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(getInterviewInvitationText(c));
+                                          alert('✅ Formatted VRPI Interview Invitation email copied to clipboard!');
+                                        }}
+                                        className="rec-btn-outline"
+                                        style={{ height: '28px', width: '28px', padding: 0, borderRadius: '0.45rem', justifyContent: 'center', borderColor: '#c7d2fe', background: '#eef2ff' }}
+                                        title="Copy Formatted Email Invite Text"
+                                      >
+                                        <Mail className="h-3 w-3 text-indigo-600" />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <span style={{ fontSize: '0.68rem', color: '#94a3b8', fontStyle: 'italic' }}>No link</span>
+                                  )}
+                                </td>
+
+                                {/* Status */}
+                                <td style={{ padding: '12px 12px', textAlign: 'center', verticalAlign: 'middle' }}>
+                                  <span style={{ fontSize: '0.65rem', padding: '3px 8px', background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a', borderRadius: '99px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
+                                    <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#d97706' }}></span> Scheduled
+                                  </span>
+                                </td>
+
+                                {/* Evaluation Actions */}
+                                <td style={{ textAlign: 'right', padding: '12px 14px', verticalAlign: 'middle' }}>
+                                  <div style={{ display: 'inline-flex', gap: '5px', alignItems: 'center', justifyContent: 'flex-end' }}>
+                                    <button
+                                      onClick={() => setInspectCandidate(c)}
+                                      className="rec-btn-outline"
+                                      title="Live Track Candidate Step-by-Step Recruitment Progress"
+                                      style={{ fontSize: '0.65rem', color: '#6366f1', borderColor: '#c7d2fe', background: '#f8fafc', padding: '0 8px', height: '28px', borderRadius: '0.45rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}
+                                    >
+                                      <Search className="h-3 w-3" /> Track
+                                    </button>
+                                    <button
+                                      onClick={() => handleInterviewDecision(c.id, 'fail')}
+                                      className="rec-btn-outline"
+                                      style={{ fontSize: '0.65rem', color: '#dc2626', borderColor: '#fca5a5', background: '#fef2f2', padding: '0 8px', height: '28px', borderRadius: '0.45rem', fontWeight: 700, whiteSpace: 'nowrap' }}
+                                    >
+                                      Reject
+                                    </button>
+                                    <button
+                                      onClick={() => handleInterviewDecision(c.id, 'pass')}
+                                      className="rec-btn-primary"
+                                      style={{ fontSize: '0.65rem', padding: '0 10px', height: '28px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '0.45rem', fontWeight: 800, boxShadow: '0 2px 6px rgba(16, 185, 129, 0.25)', whiteSpace: 'nowrap' }}
+                                    >
+                                      Pass & Extend Offer
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* ── 2. Compact Streamlined Calendar Container (Below Table) ── */}
+                <div className="rec-card" style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.85rem', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '1rem', boxShadow: '0 4px 15px rgba(15, 23, 42, 0.03)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ padding: '0.45rem', background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)', borderRadius: '0.65rem', color: '#fff', display: 'flex' }}>
+                        <Calendar className="h-4 w-4" />
                       </div>
                       <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <h2 className="rec-section-title" style={{ fontSize: '1.35rem', fontWeight: 800, margin: 0, color: '#0f172a', letterSpacing: '-0.02em' }}>Interactive Interview Calendar</h2>
-                          <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '99px', background: '#e0e7ff', color: '#4338ca', border: '1px solid #c7d2fe' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <h2 className="rec-section-title" style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>Interactive Interview Calendar</h2>
+                          <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 6px', borderRadius: '99px', background: '#e0e7ff', color: '#4338ca', border: '1px solid #c7d2fe' }}>
                             Stage 6
                           </span>
                         </div>
-                        <p className="rec-section-sub" style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '0.85rem' }}>Select any calendar date or "+ Slot" button to setup video meetings and assign interview panels</p>
+                        <p className="rec-section-sub" style={{ margin: '1px 0 0 0', color: '#64748b', fontSize: '0.72rem' }}>Select date or "+ Slot" to setup video meetings and assign interview panels</p>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                       {/* Month Switcher Controls */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '0.75rem', padding: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '2px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '0.6rem', padding: '2px 4px' }}>
                         <button
                           onClick={() => setCurrentCalMonth(new Date(currentCalMonth.getFullYear(), currentCalMonth.getMonth() - 1, 1))}
                           className="rec-btn-outline"
-                          style={{ height: '32px', width: '32px', padding: 0, border: 0, borderRadius: '0.5rem', justifyContent: 'center' }}
+                          style={{ height: '26px', width: '26px', padding: 0, border: 0, borderRadius: '0.4rem', justifyContent: 'center' }}
                           title="Previous Month"
                         >
-                          <ChevronLeft className="h-4 w-4 text-slate-700" />
+                          <ChevronLeft className="h-3.5 w-3.5 text-slate-700" />
                         </button>
-                        <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', padding: '0 12px', minWidth: '140px', textAlign: 'center', letterSpacing: '-0.01em' }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0f172a', padding: '0 8px', minWidth: '110px', textAlign: 'center' }}>
                           {format(currentCalMonth, 'MMMM yyyy')}
                         </span>
                         <button
                           onClick={() => setCurrentCalMonth(new Date(currentCalMonth.getFullYear(), currentCalMonth.getMonth() + 1, 1))}
                           className="rec-btn-outline"
-                          style={{ height: '32px', width: '32px', padding: 0, border: 0, borderRadius: '0.5rem', justifyContent: 'center' }}
+                          style={{ height: '26px', width: '26px', padding: 0, border: 0, borderRadius: '0.4rem', justifyContent: 'center' }}
                           title="Next Month"
                         >
-                          <ChevronRight className="h-4 w-4 text-slate-700" />
+                          <ChevronRight className="h-3.5 w-3.5 text-slate-700" />
                         </button>
                       </div>
 
                       <button
                         onClick={() => setCurrentCalMonth(new Date())}
                         className="rec-btn-outline"
-                        style={{ fontSize: '0.8rem', height: '38px', padding: '0 14px', borderRadius: '0.75rem', background: '#ffffff', borderColor: '#cbd5e1', color: '#334155', fontWeight: 700 }}
+                        style={{ fontSize: '0.75rem', height: '30px', padding: '0 10px', borderRadius: '0.6rem', background: '#ffffff', borderColor: '#cbd5e1', color: '#334155', fontWeight: 700 }}
                       >
                         Today
                       </button>
@@ -4455,25 +4935,25 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                         }}
                         className="rec-btn-primary"
                         style={{
-                          fontSize: '0.82rem',
-                          height: '38px',
-                          padding: '0 16px',
-                          borderRadius: '0.75rem',
-                          gap: '6px',
+                          fontSize: '0.75rem',
+                          height: '30px',
+                          padding: '0 12px',
+                          borderRadius: '0.6rem',
+                          gap: '5px',
                           background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #7c3aed 100%)',
-                          boxShadow: '0 4px 14px rgba(79, 70, 229, 0.4)',
+                          boxShadow: '0 2px 8px rgba(79, 70, 229, 0.3)',
                           fontWeight: 700
                         }}
                       >
-                        <Plus className="h-4 w-4" /> Schedule Interview Slot
+                        <Plus className="h-3.5 w-3.5" /> Schedule Slot
                       </button>
                     </div>
                   </div>
 
-                  {/* ── Interactive Calendar Month Grid ── */}
-                  <div style={{ background: '#ffffff', borderRadius: '1rem', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 15px rgba(15, 23, 42, 0.03)' }}>
+                  {/* ── Compact Month Grid ── */}
+                  <div style={{ background: '#ffffff', borderRadius: '0.75rem', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                     {/* Day Headers (Sun-Sat) */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', textAlign: 'center', fontWeight: 800, fontSize: '0.75rem', color: '#475569', padding: '12px 0', letterSpacing: '0.05em' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'center', fontWeight: 800, fontSize: '0.68rem', color: '#475569', padding: '6px 0', letterSpacing: '0.04em' }}>
                       <div>SUN</div>
                       <div>MON</div>
                       <div>TUE</div>
@@ -4483,8 +4963,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                       <div>SAT</div>
                     </div>
 
-                    {/* Calendar Days Matrix */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridAutoRows: 'minmax(115px, auto)', gap: '1px', background: '#e2e8f0' }}>
+                    {/* Calendar Days Matrix (Compact 44px rows) */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridAutoRows: 'minmax(44px, auto)', gap: '1px', background: '#e2e8f0' }}>
                       {(() => {
                         const year = currentCalMonth.getFullYear();
                         const month = currentCalMonth.getMonth();
@@ -4547,39 +5027,38 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 background: isToday 
                                   ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(124, 58, 237, 0.03) 100%)' 
                                   : cell.isCurrentMonth ? '#ffffff' : '#f8fafc',
-                                padding: '10px 8px',
+                                padding: '4px 6px',
                                 display: 'flex',
                                 flexDirection: 'column',
-                                gap: '6px',
+                                gap: '3px',
                                 cursor: 'pointer',
-                                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                                border: isToday ? '2px solid #6366f1' : 'none',
-                                position: 'relative',
-                                boxShadow: isToday ? 'inset 0 0 0 1px rgba(99, 102, 241, 0.2)' : 'none'
+                                transition: 'all 0.15s ease',
+                                border: isToday ? '1.5px solid #6366f1' : 'none',
+                                position: 'relative'
                               }}
                               onMouseEnter={e => (e.currentTarget.style.background = isToday ? 'rgba(99, 102, 241, 0.12)' : cell.isCurrentMonth ? '#f0f9ff' : '#f1f5f9')}
                               onMouseLeave={e => (e.currentTarget.style.background = isToday ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(124, 58, 237, 0.03) 100%)' : cell.isCurrentMonth ? '#ffffff' : '#f8fafc')}
                             >
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <span style={{
-                                  fontSize: '0.8rem',
+                                  fontSize: '0.72rem',
                                   fontWeight: isToday ? 900 : cell.isCurrentMonth ? 700 : 500,
                                   color: isToday ? '#ffffff' : cell.isCurrentMonth ? '#0f172a' : '#94a3b8',
-                                  width: '24px',
-                                  height: '24px',
+                                  width: '20px',
+                                  height: '20px',
                                   borderRadius: '50%',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
                                   background: isToday ? 'linear-gradient(135deg, #6366f1, #4f46e5)' : 'transparent',
-                                  boxShadow: isToday ? '0 2px 6px rgba(99, 102, 241, 0.4)' : 'none'
+                                  boxShadow: isToday ? '0 1px 4px rgba(99, 102, 241, 0.4)' : 'none'
                                 }}>
                                   {cell.dayNum}
                                 </span>
 
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
                                   {isToday && (
-                                    <span style={{ fontSize: '0.55rem', fontWeight: 900, background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', color: '#fff', padding: '2px 6px', borderRadius: '99px', letterSpacing: '0.05em' }}>
+                                    <span style={{ fontSize: '0.5rem', fontWeight: 900, background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', color: '#fff', padding: '1px 4px', borderRadius: '4px' }}>
                                       TODAY
                                     </span>
                                   )}
@@ -4589,19 +5068,17 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                       openAddSlotModal(cell.dateStr);
                                     }}
                                     style={{
-                                      fontSize: '0.62rem',
+                                      fontSize: '0.55rem',
                                       fontWeight: 800,
                                       background: '#eff6ff',
                                       color: '#3b82f6',
                                       border: '1px solid #bfdbfe',
-                                      borderRadius: '6px',
-                                      padding: '2px 7px',
+                                      borderRadius: '4px',
+                                      padding: '1px 5px',
                                       cursor: 'pointer',
-                                      transition: 'all 0.15s ease'
+                                      lineHeight: '1.2'
                                     }}
-                                    onMouseEnter={e => { e.currentTarget.style.background = '#3b82f6'; e.currentTarget.style.color = '#fff'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = '#eff6ff'; e.currentTarget.style.color = '#3b82f6'; }}
-                                    title={`Add another interview slot for ${cell.dateStr}`}
+                                    title={`Add slot for ${cell.dateStr}`}
                                   >
                                     + Slot
                                   </button>
@@ -4609,19 +5086,19 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                               </div>
 
                               {/* Scheduled Interview Pills on Calendar */}
-                              <div className="custom-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '2px', overflowY: 'auto', maxHeight: '72px' }}>
+                              <div className="custom-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflowY: 'auto', maxHeight: '42px' }}>
                                 {dayInterviews.map(cand => {
                                   const isTech = cand.interviewType?.includes('Technical') || cand.interviewType?.includes('Coding');
                                   const isHR = cand.interviewType?.includes('HR') || cand.interviewType?.includes('Screening');
                                   const isFinal = cand.interviewType?.includes('Management') || cand.interviewType?.includes('Final');
 
                                   const bgGrad = isTech
-                                    ? 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)'
+                                    ? '#ecfdf5'
                                     : isHR
-                                    ? 'linear-gradient(135deg, #e0e7ff 0%, #ede9fe 100%)'
+                                    ? '#e0e7ff'
                                     : isFinal
-                                    ? 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)'
-                                    : 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)';
+                                    ? '#fffbeb'
+                                    : '#f0f9ff';
 
                                   const borderCol = isTech ? '#a7f3d0' : isHR ? '#c7d2fe' : isFinal ? '#fde68a' : '#bae6fd';
                                   const textCol = isTech ? '#047857' : isHR ? '#3730a3' : isFinal ? '#b45309' : '#0369a1';
@@ -4637,25 +5114,21 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                       style={{
                                         background: bgGrad,
                                         border: `1px solid ${borderCol}`,
-                                        borderRadius: '6px',
-                                        padding: '4px 8px',
-                                        fontSize: '0.65rem',
+                                        borderRadius: '4px',
+                                        padding: '1px 5px',
+                                        fontSize: '0.62rem',
                                         color: textCol,
                                         fontWeight: 800,
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '5px',
+                                        gap: '4px',
                                         whiteSpace: 'nowrap',
                                         overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
-                                        transition: 'all 0.15s ease'
+                                        textOverflow: 'ellipsis'
                                       }}
-                                      onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
-                                      onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
                                       title={`${cand.firstName} ${cand.lastName} (${cand.interviewTime || '11:30 AM'}) - ${cand.interviewType || 'Interview'}`}
                                     >
-                                      <Video className="h-3 w-3 flex-shrink-0" style={{ color: textCol }} />
+                                      <Video className="h-2.5 w-2.5 flex-shrink-0" style={{ color: textCol }} />
                                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                         {cand.interviewTime || '11:30 AM'} · {cand.firstName}
                                       </span>
@@ -4668,187 +5141,6 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                         });
                       })()}
                     </div>
-                  </div>
-                </div>
-
-                {/* ── Scheduled Interviews Table Section ── */}
-                <div className="rec-card" style={{ padding: '1.75rem', background: '#ffffff', borderRadius: '1.25rem', border: '1px solid #e2e8f0', boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.04)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <h2 className="rec-section-title" style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>Active Scheduled Interviews</h2>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '3px 10px', borderRadius: '99px', background: '#e0e7ff', color: '#4338ca', border: '1px solid #c7d2fe' }}>
-                          {candidates.filter(c => c.stage === 'Interviews').length} Active
-                        </span>
-                      </div>
-                      <p className="rec-section-sub" style={{ margin: '3px 0 0 0', color: '#64748b' }}>Launch Microsoft Teams video sessions, copy meeting URLs, and evaluate candidate interview outcomes</p>
-                    </div>
-                  </div>
-
-                  <div style={{ overflowX: 'auto' }}>
-                    <table className="rec-table" style={{ width: '100%' }}>
-                      <thead>
-                        <tr style={{ background: '#f8fafc' }}>
-                          <th style={{ padding: '12px 16px', borderRadius: '8px 0 0 8px' }}>Candidate Details</th>
-                          <th style={{ padding: '12px 16px' }}>Candidate ID</th>
-                          <th style={{ padding: '12px 16px' }}>Date & Time</th>
-                          <th style={{ padding: '12px 16px' }}>Interview Panel</th>
-                          <th style={{ padding: '12px 16px' }}>Meeting Link</th>
-                          <th style={{ padding: '12px 16px' }}>Status</th>
-                          <th style={{ textAlign: 'left', padding: '12px 16px', borderRadius: '0 8px 8px 0' }}>Evaluation Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {candidates.filter(c => c.stage === 'Interviews').length === 0 ? (
-                          <tr>
-                            <td colSpan={7} style={{ textAlign: 'center', padding: '3rem 1.5rem', color: '#94a3b8', fontSize: '0.82rem' }}>
-                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                                <Calendar className="h-8 w-8 text-slate-300" />
-                                <p style={{ margin: 0, fontWeight: 600, color: '#64748b' }}>No active interviews scheduled yet</p>
-                                <p style={{ margin: 0, fontSize: '0.75rem', color: '#94a3b8' }}>Select any date cell on the calendar above or click "+ Schedule Interview Slot" to get started.</p>
-                              </div>
-                            </td>
-                          </tr>
-                        ) : (
-                          candidates.filter(c => c.stage === 'Interviews').map(c => {
-                            const candCode = getCandidateCode(c);
-                            const meetLink = c.interviewLink || '';
-
-                            return (
-                              <tr key={c.id} className="rec-table-row" style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.15s ease' }}>
-                                <td style={{ padding: '14px 16px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.8rem', boxShadow: '0 2px 6px rgba(79, 70, 229, 0.25)' }}>
-                                      {c.firstName.charAt(0)}
-                                    </div>
-                                    <div>
-                                      <p style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>{c.firstName} {c.lastName}</p>
-                                      <p style={{ fontSize: '0.7rem', color: '#64748b', margin: '1px 0 0 0', fontWeight: 500 }}>{c.jobTitle}</p>
-                                    </div>
-                                  </div>
-                                </td>
-                                <td style={{ padding: '14px 16px' }}>
-                                  <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '0.75rem', color: '#4338ca', background: '#e0e7ff', padding: '3px 10px', borderRadius: '6px', border: '1px solid #c7d2fe' }}>
-                                    #{candCode}
-                                  </span>
-                                </td>
-                                <td style={{ padding: '14px 16px' }}>
-                                  {c.interviewDate ? (
-                                    <div>
-                                      <p style={{ fontSize: '0.78rem', fontWeight: 800, color: '#4f46e5', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <Calendar className="h-3.5 w-3.5 text-indigo-500" /> {c.interviewDate}
-                                      </p>
-                                      <p style={{ fontSize: '0.7rem', color: '#475569', margin: '2px 0 0 0', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <Clock className="h-3 w-3 text-slate-400" /> {c.interviewTime || '11:30 AM'}
-                                      </p>
-                                    </div>
-                                  ) : (
-                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontStyle: 'italic' }}>Pending slot</span>
-                                  )}
-                                </td>
-                                <td style={{ padding: '14px 16px' }}>
-                                  <p style={{ fontSize: '0.78rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>{c.interviewer || 'Sneha Nair'}</p>
-                                  <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748b', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', marginTop: '2px', display: 'inline-block' }}>
-                                    {c.interviewType || 'HR Screening'}
-                                  </span>
-                                </td>
-                                <td style={{ padding: '14px 16px' }}>
-                                  {meetLink ? (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                      <a
-                                        href={meetLink}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="rec-btn-primary"
-                                        style={{
-                                          fontSize: '0.72rem',
-                                          height: '32px',
-                                          padding: '0 12px',
-                                          gap: '6px',
-                                          background: 'linear-gradient(135deg, #464EB8 0%, #5B5FC7 100%)',
-                                          textDecoration: 'none',
-                                          borderRadius: '0.5rem',
-                                          boxShadow: '0 3px 8px rgba(70, 78, 184, 0.35)',
-                                          fontWeight: 700,
-                                          whiteSpace: 'nowrap',
-                                          display: 'inline-flex',
-                                          alignItems: 'center'
-                                        }}
-                                      >
-                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-                                          <path d="M16.5 6a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" fill="#A4ACF8"/>
-                                          <path d="M14 7h5a3 3 0 0 1 3 3v4.5a1.5 1.5 0 0 1-1.5 1.5H18v-4a2.5 2.5 0 0 0-2.5-2.5H14V7Z" fill="#A4ACF8"/>
-                                          <path d="M10 7a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" fill="#FFFFFF"/>
-                                          <path d="M4.5 8.5A2.5 2.5 0 0 0 2 11v4.5A2.5 2.5 0 0 0 4.5 18H10a3 3 0 0 0 3-3v-4a2.5 2.5 0 0 0-2.5-2.5h-6Z" fill="#FFFFFF" fillOpacity="0.9"/>
-                                          <rect x="2" y="9.5" width="8" height="8" rx="1.5" fill="#4B53BC"/>
-                                          <path d="M7.2 11.2H4.8v1.2h.7v3h1.2v-3h.7v-1.2Z" fill="#FFFFFF"/>
-                                        </svg>
-                                        Join Teams Meeting
-                                      </a>
-                                      <button
-                                        onClick={() => {
-                                          navigator.clipboard.writeText(meetLink);
-                                          alert('✅ Meeting link copied to clipboard!');
-                                        }}
-                                        className="rec-btn-outline"
-                                        style={{ height: '32px', width: '32px', padding: 0, borderRadius: '0.5rem', justifyContent: 'center', borderColor: '#cbd5e1' }}
-                                        title="Copy Meeting Link"
-                                      >
-                                        <Copy className="h-3.5 w-3.5 text-slate-600" />
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          navigator.clipboard.writeText(getInterviewInvitationText(c));
-                                          alert('✅ Formatted VRPI Interview Invitation email copied to clipboard!');
-                                        }}
-                                        className="rec-btn-outline"
-                                        style={{ height: '32px', padding: '0 8px', borderRadius: '0.5rem', justifyContent: 'center', borderColor: '#c7d2fe', background: '#eef2ff', color: '#4338ca', fontSize: '0.68rem', fontWeight: 700, gap: '4px' }}
-                                        title="Copy VRPI Interview Schedule Email Format"
-                                      >
-                                        <Mail className="h-3.5 w-3.5" /> Copy Invite
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontStyle: 'italic' }}>No link provided</span>
-                                  )}
-                                </td>
-                                <td style={{ padding: '14px 16px' }}>
-                                  <span style={{ fontSize: '0.68rem', padding: '4px 10px', background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a', borderRadius: '99px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#d97706' }}></span> Scheduled
-                                  </span>
-                                </td>
-                                <td style={{ textAlign: 'left', padding: '14px 16px' }}>
-                                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-start', alignItems: 'center' }}>
-                                    <button
-                                      onClick={() => setInspectCandidate(c)}
-                                      className="rec-btn-outline"
-                                      title="Live Track Candidate Step-by-Step Recruitment Progress"
-                                      style={{ fontSize: '0.68rem', color: '#6366f1', borderColor: '#c7d2fe', background: '#f8fafc', padding: '0 8px', height: '32px', borderRadius: '0.5rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px' }}
-                                    >
-                                      <Search className="h-3 w-3" /> Track
-                                    </button>
-                                    <button
-                                      onClick={() => handleInterviewDecision(c.id, 'fail')}
-                                      className="rec-btn-outline"
-                                      style={{ fontSize: '0.7rem', color: '#dc2626', borderColor: '#fca5a5', background: '#fef2f2', padding: '0 10px', height: '32px', borderRadius: '0.5rem', fontWeight: 700 }}
-                                    >
-                                      Reject
-                                    </button>
-                                    <button
-                                      onClick={() => handleInterviewDecision(c.id, 'pass')}
-                                      className="rec-btn-primary"
-                                      style={{ fontSize: '0.7rem', padding: '0 12px', height: '32px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '0.5rem', fontWeight: 700, boxShadow: '0 3px 8px rgba(16, 185, 129, 0.3)' }}
-                                    >
-                                      Pass & Extend Offer
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
                   </div>
                 </div>
 
@@ -4919,7 +5211,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   if (cand) {
                                     const candName = `${cand.firstName} ${cand.lastName}`.trim();
                                     setIsGeneratingTeamsLink(true);
-                                    const autoLink = await generateTeamsMeetingUrl(`VRPI Interview: ${candName} - ${cand.jobTitle || 'Role'}`);
+                                    const autoLink = await generateTeamsMeetingUrl(`VRPI Interview: ${candName}`, cand);
                                     setInterviewForm(prev => ({
                                       ...prev,
                                       candidateEmail: cand.email || '',
@@ -4939,7 +5231,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 <option value="">-- Select Candidate --</option>
                                 {candidates.filter(c => c.stage === 'Shortlisting' || c.stage === 'Interviews' || c.stage === 'Applications').map(c => (
                                   <option key={c.id} value={c.id}>
-                                    {c.firstName} {c.lastName} ({c.jobTitle}) - #{getCandidateCode(c)}
+                                    {c.firstName} {c.lastName} - #{getCandidateCode(c)}
                                   </option>
                                 ))}
                               </select>
@@ -5252,8 +5544,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                     onClick={async () => {
                                       setIsGeneratingTeamsLink(true);
                                       const candName = selectedCandidate ? `${selectedCandidate.firstName} ${selectedCandidate.lastName}` : 'Candidate';
-                                      const topic = `VRPI Interview: ${candName} - ${selectedCandidate?.jobTitle || interviewForm.type || 'Role'}`;
-                                      const newLink = await generateTeamsMeetingUrl(topic);
+                                      const topic = `VRPI Interview: ${candName}`;
+                                      const newLink = await generateTeamsMeetingUrl(topic, selectedCandidate);
                                       setInterviewForm(prev => ({ ...prev, link: newLink }));
                                       setIsGeneratingTeamsLink(false);
                                     }}
@@ -5374,7 +5666,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               </div>
             )}
 
-            {/* ════════════════ STAGE 8: DOCUMENTS (STAGE 4: DOCUMENT VERIFICATION) ════════════════ */}
+            {/* ════════════════ STAGE 8: DOCUMENTS (STAGE 4: DOCUMENT REQUESTS & PORTAL) ════════════════ */}
             {activeTab === 'stage-8' && (() => {
               // 1. Pipeline candidates in 'Documents' stage
               const pipelineDocs = candidates.filter(c => {
@@ -5384,12 +5676,231 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                 return c.stage === 'Documents' || s === 'documents';
               });
 
-              // 2. Map every live applicant record from the Google Sheet
+              // Also count received records for quick badge
+              const receivedCount = liveDocumentResponses.filter(r => !isCandidateDeleted(r.id, r.email)).length;
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                  {/* Google Form Integration Header Bar */}
+                  <div className="rec-card" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #ffffff 0%, #eff6ff 100%)', border: '1px solid #bfdbfe', borderRadius: '1.25rem', boxShadow: '0 10px 25px -5px rgba(59, 130, 246, 0.05)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ padding: '0.65rem', background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', borderRadius: '0.85rem', color: '#fff', boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)', display: 'flex' }}>
+                          <FolderOpen className="h-6 w-6" />
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <h2 className="rec-section-title" style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>Stage 4: Documents (Document Request & Portal)</h2>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '99px', background: '#dbeafe', color: '#1e40af', border: '1px solid #bfdbfe' }}>
+                              {pipelineDocs.length} Candidates Pending / Collecting
+                            </span>
+                          </div>
+                          <p className="rec-section-sub" style={{ margin: '3px 0 0 0', color: '#64748b' }}>
+                            Distribute candidate document submission form, track upload readiness, and audit received proofs in Stage 5.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(googleDocUploadFormUrl);
+                            alert('📋 Document Upload Google Form link copied to clipboard!');
+                          }}
+                          className="rec-btn-outline"
+                          style={{ fontSize: '0.72rem', height: '32px', padding: '0 12px', gap: '6px', color: '#2563eb', borderColor: '#bfdbfe', background: '#eff6ff', fontWeight: 700 }}
+                          title="Copy Google Form upload link to clipboard"
+                        >
+                          <Copy className="h-3.5 w-3.5" /> Copy Form Link
+                        </button>
+                        <a
+                          href={googleDocUploadFormUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rec-btn-outline"
+                          style={{ fontSize: '0.72rem', height: '32px', padding: '0 12px', gap: '6px', textDecoration: 'none', color: '#059669', borderColor: '#a7f3d0', background: '#ecfdf5', fontWeight: 700 }}
+                          title="Open official Google Form for candidate document submission"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" /> Open Upload Form
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('stage-documents-received')}
+                          className="rec-btn-primary"
+                          style={{ fontSize: '0.72rem', height: '32px', padding: '0 14px', gap: '6px', background: '#10b981', color: '#fff', fontWeight: 700 }}
+                        >
+                          <FileCheck className="h-3.5 w-3.5" /> Go to Documents Received ({receivedCount}) →
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Document Requirements Checklist Guide */}
+                  <div className="rec-card" style={{ padding: '1.25rem 1.5rem', background: '#ffffff', borderRadius: '1.25rem', border: '1px solid #e2e8f0' }}>
+                    <h3 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', margin: '0 0 0.75rem 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <CheckCircle className="h-4.5 w-4.5 text-emerald-600" /> Mandatory Candidate Documents Checklist
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
+                      {[
+                        { title: '1. Identity & Address Proof', desc: 'Aadhaar Card, PAN Card, or Passport' },
+                        { title: '2. Educational Certificates', desc: 'Degree, Provisional, SSC & Inter Marks' },
+                        { title: '3. Relieving / Experience', desc: 'Experience letter or resignation acceptance' },
+                        { title: '4. Financial Credentials', desc: 'Last 3 months payslips or bank statement' },
+                        { title: '5. Passport Photograph', desc: 'Recent professional passport size photo' },
+                      ].map((item, idx) => (
+                        <div key={idx} style={{ padding: '0.75rem', background: '#f8fafc', borderRadius: '0.75rem', border: '1px solid #e2e8f0' }}>
+                          <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 700, color: '#1e293b' }}>{item.title}</p>
+                          <p style={{ margin: '2px 0 0 0', fontSize: '0.7rem', color: '#64748b' }}>{item.desc}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Candidates In Stage 4 Documents List */}
+                  <div className="rec-card" style={{ padding: '1.5rem', background: '#ffffff', borderRadius: '1.25rem', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '8px' }}>
+                      <div>
+                        <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>Candidates in Document Stage ({pipelineDocs.length})</h3>
+                        <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '2px 0 0 0' }}>Candidates passed from Interview awaiting document upload or verified proofs</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('stage-documents-received')}
+                        className="rec-btn-outline"
+                        style={{ fontSize: '0.72rem', height: '30px', padding: '0 12px', gap: '6px', color: '#059669', borderColor: '#a7f3d0', background: '#ecfdf5', fontWeight: 700 }}
+                      >
+                        <FileCheck className="h-3.5 w-3.5" /> View All Received Documents ({receivedCount}) →
+                      </button>
+                    </div>
+
+                    {pipelineDocs.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '3rem 1.5rem', background: '#f8fafc', borderRadius: '1rem', border: '1px solid #e2e8f0', color: '#94a3b8', fontSize: '0.82rem' }}>
+                        <FolderOpen className="h-8 w-8 text-slate-300" style={{ margin: '0 auto 8px auto' }} />
+                        <p style={{ margin: 0, fontWeight: 700, color: '#64748b' }}>No candidates currently pending in Stage 4: Documents</p>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>Candidates who pass interviews will automatically move here and receive the Google Form link.</p>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '1.25rem' }}>
+                        {pipelineDocs.map(c => {
+                          const code = getCandidateCode(c);
+                          const hasSubmitted = liveDocumentResponses.some(r => 
+                            (r.email && c.email && r.email.toLowerCase() === c.email.toLowerCase()) ||
+                            r.id === c.id ||
+                            (`${c.firstName} ${c.lastName}`.trim().toLowerCase() === (r.fullName || '').trim().toLowerCase())
+                          ) || (c.attachmentImages && c.attachmentImages.length > 0);
+
+                          return (
+                            <div key={c.id} style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '1rem', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 2px 10px rgba(15, 23, 42, 0.03)' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.85rem' }}>
+                                    {c.firstName.charAt(0)}
+                                  </div>
+                                  <div>
+                                    <h4 style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>{c.firstName} {c.lastName}</h4>
+                                    <p style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, margin: '2px 0 0 0' }}>#{code} · {c.jobTitle || 'Role'}</p>
+                                  </div>
+                                </div>
+                                {hasSubmitted ? (
+                                  <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '3px 8px', borderRadius: '99px', background: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0' }}>
+                                    ✓ Submitted
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '3px 8px', borderRadius: '99px', background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a' }}>
+                                    ⏳ Pending Upload
+                                  </span>
+                                )}
+                              </div>
+
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.73rem', color: '#475569' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <Mail className="h-3.5 w-3.5 text-slate-400" />
+                                  <span style={{ fontWeight: 600 }}>{c.email || 'No email'}</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <Phone className="h-3.5 w-3.5 text-slate-400" />
+                                  <span>{c.phone || 'No phone'}</span>
+                                </div>
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: 'auto', paddingTop: '0.5rem', borderTop: '1px solid #f8fafc' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSendDocUploadInviteEmail(c)}
+                                  className="rec-btn-outline"
+                                  style={{ fontSize: '0.68rem', height: '28px', padding: '0 10px', gap: '4px', color: '#2563eb', borderColor: '#bfdbfe', background: '#eff6ff', fontWeight: 700 }}
+                                  title="Send Document Upload Google Form email to candidate"
+                                >
+                                  <Send className="h-3 w-3" /> Resend Email
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDriveUploadModal({
+                                      candidateId: c.id,
+                                      candidateName: `${c.firstName} ${c.lastName}`.trim(),
+                                      candidateEmail: c.email,
+                                      candidateCode: code,
+                                      docType: 'Additional Document',
+                                      docField: 'additional'
+                                    });
+                                    setDriveDocTitleInput('Google Drive Document');
+                                    setDriveLinkInput('');
+                                  }}
+                                  className="rec-btn-outline"
+                                  style={{ fontSize: '0.68rem', height: '28px', padding: '0 10px', gap: '4px', color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff', fontWeight: 700 }}
+                                  title="Attach document via Google Drive link"
+                                >
+                                  <Plus className="h-3 w-3" /> Add Drive Link
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveTab('stage-documents-received')}
+                                  className="rec-btn-primary"
+                                  style={{ fontSize: '0.68rem', height: '28px', padding: '0 10px', gap: '4px', background: '#10b981', color: '#ffffff', fontWeight: 700, marginLeft: 'auto' }}
+                                >
+                                  <FileCheck className="h-3 w-3" /> View Proofs →
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ════════════════ STAGE 5: DOCUMENTS RECEIVED (LIVE VERIFICATION & AUDIT - GOOGLE SHEET ONLY) ════════════════ */}
+            {activeTab === 'stage-documents-received' && (() => {
+              // 1. Map ONLY the live applicant records from the Google Sheet
               const sheetDocs: Candidate[] = liveDocumentResponses
                 .filter(r => !isCandidateDeleted(r.id, r.email))
                 .filter(r => {
-                  const s = (r.email && formApplicantStatuses[r.email]) || (r.email && formApplicantStatuses[r.email.toLowerCase()]) || (r.id && formApplicantStatuses[r.id]);
-                  if (s === 'call_letter' || s === 'call-letter' || s === 'callletter' || s === 'received_call_letter' || s === 'call_letter_received' || s === 'received-call-letter' || s === 'offer' || s === 'onboarded' || s === 'declined') return false;
+                  const emailKey = (r.email || '').toLowerCase().trim();
+                  const nameKey = (r.fullName || '').toLowerCase().trim();
+                  const matchedDbCand = candidates.find(c => 
+                    (emailKey && c.email && c.email.toLowerCase().trim() === emailKey) || 
+                    c.id === r.id || 
+                    (`${c.firstName} ${c.lastName}`.trim().toLowerCase() === nameKey)
+                  );
+                  const dbStage = matchedDbCand?.stage;
+                  const isVerified = matchedDbCand?.documentsVerified;
+
+                  const s = (emailKey && formApplicantStatuses[emailKey]) || 
+                            (r.email && formApplicantStatuses[r.email]) || 
+                            (r.id && formApplicantStatuses[r.id]) ||
+                            (nameKey && formApplicantStatuses[nameKey]);
+
+                  // If candidate has been verified and moved to Call Letter (or subsequent stages), vanish from Documents Received!
+                  if (s === 'call_letter' || s === 'call-letter' || s === 'callletter' || 
+                      s === 'received_call_letter' || s === 'call_letter_received' || s === 'received-call-letter' || 
+                      s === 'offer' || s === 'onboarded' || s === 'declined') return false;
+
+                  if (isVerified || dbStage === 'Call Letter' || dbStage === 'Received Call Letter' || dbStage === 'Offer' || dbStage === 'Onboarding' || dbStage === 'Rejected') return false;
+
                   return true;
                 })
                 .map((r, idx) => {
@@ -5436,13 +5947,9 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                   return baseCand;
                 });
 
-              // Merge unique by candidate key
+              // Strictly include ONLY candidate records that exist in the Google Sheet
               const map = new Map<string, Candidate>();
               sheetDocs.forEach(c => {
-                const key = (c.email || c.id || `${c.firstName}_${c.lastName}`).toLowerCase();
-                map.set(key, c);
-              });
-              pipelineDocs.forEach(c => {
                 const key = (c.email || c.id || `${c.firstName}_${c.lastName}`).toLowerCase();
                 if (!map.has(key)) {
                   map.set(key, c);
@@ -5458,16 +5965,16 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <div style={{ padding: '0.65rem', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '0.85rem', color: '#fff', boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)', display: 'flex' }}>
-                          <FolderOpen className="h-6 w-6" />
+                          <FileCheck className="h-6 w-6" />
                         </div>
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <h2 className="rec-section-title" style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>Stage 4: Document Verification</h2>
+                            <h2 className="rec-section-title" style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>Stage 5: Documents Received</h2>
                             <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '99px', background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0' }}>
-                              {documentCandidates.length} Candidates
+                              {documentCandidates.length} Candidate Submissions
                             </span>
                           </div>
-                          <p className="rec-section-sub" style={{ margin: '3px 0 0 0', color: '#64748b' }}>HR collects and verifies credential proofs before issuing official Call Letter</p>
+                          <p className="rec-section-sub" style={{ margin: '3px 0 0 0', color: '#64748b' }}>HR audits submitted credential proofs before approving and issuing official Call Letter</p>
                         </div>
                       </div>
 
@@ -5481,6 +5988,16 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                         >
                           <RefreshCw className="h-3.5 w-3.5" /> Sync Sheet
                         </button>
+                        <a
+                          href={googleDocUploadFormUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rec-btn-outline"
+                          style={{ fontSize: '0.72rem', height: '32px', padding: '0 12px', gap: '6px', textDecoration: 'none', color: '#059669', borderColor: '#a7f3d0', background: '#ecfdf5', fontWeight: 700 }}
+                          title="Open official Google Form for candidate document submission"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" /> Upload Form
+                        </a>
                         <a
                           href={googleDocSheetUrl}
                           target="_blank"
@@ -5501,7 +6018,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                       {documentCandidates.length === 0 ? (
                         <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '3.5rem 1.5rem', background: '#f8fafc', borderRadius: '1rem', border: '1px solid #e2e8f0', color: '#94a3b8', fontSize: '0.82rem' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                            <FolderOpen className="h-8 w-8 text-slate-300" />
+                            <FileCheck className="h-8 w-8 text-slate-300" />
                             <p style={{ margin: 0, fontWeight: 700, color: '#64748b' }}>No candidates currently pending Document Verification</p>
                             <p style={{ margin: 0, fontSize: '0.75rem', color: '#94a3b8' }}>Candidates who submit documents via Google Form will automatically appear here in real time.</p>
                           </div>
@@ -5537,7 +6054,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                     </span>
                                   )}
                                   <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '3px 8px', borderRadius: '99px', background: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0' }}>
-                                    Stage 4: Documents
+                                    5. Documents Received
                                   </span>
                                 </div>
                               </div>
@@ -5652,7 +6169,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   <UserCheck className="h-4.5 w-4.5" /> Verify & Move Candidate to Call Letter Stage
                                 </button>
                                 <p style={{ fontSize: '0.65rem', color: '#64748b', textAlign: 'center', marginTop: '6px', margin: '6px 0 0 0' }}>
-                                  Approving candidate credentials will transition profile to Stage 5: Call Letter
+                                  Approving candidate credentials will transition profile to Stage 6: Call Letter
                                 </p>
                               </div>
                             </div>
@@ -5668,10 +6185,19 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
             {/* ════════════════ STAGE CALL LETTER: STAGE 5 (NEW STEP BETWEEN DOCUMENTS & OFFER) ════════════════ */}
             {activeTab === 'stage-call-letter' && (() => {
               const callLetterCandidates = candidates.filter(c => {
-                const s = formApplicantStatuses[c.email] || (c.email ? formApplicantStatuses[c.email.toLowerCase()] : undefined) || (c.id ? formApplicantStatuses[c.id] : undefined);
+                const emailKey = (c.email || '').toLowerCase().trim();
+                const nameKey = `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase();
+                const code = getCandidateCode(c);
+
+                const s = (emailKey && formApplicantStatuses[emailKey]) || 
+                          (c.email && formApplicantStatuses[c.email]) || 
+                          (c.id && formApplicantStatuses[c.id]) ||
+                          (nameKey && formApplicantStatuses[nameKey]) ||
+                          (code && formApplicantStatuses[code]);
+
                 if (s === 'received_call_letter' || s === 'call_letter_received' || s === 'received-call-letter' || s === 'offer' || s === 'onboarded' || s === 'declined') return false;
                 if (c.stage === 'Received Call Letter' || c.stage === 'Offer' || c.stage === 'Onboarding' || c.stage === 'Rejected') return false;
-                return c.stage === 'Call Letter' || c.stage === 'call-letter' || s === 'call_letter' || s === 'call-letter' || s === 'callletter';
+                return c.stage === 'Call Letter' || c.stage === 'call-letter' || s === 'call_letter' || s === 'call-letter' || s === 'callletter' || c.documentsVerified;
               });
 
               return (
@@ -6649,25 +7175,47 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               // Add candidates state list
               candidates.forEach(c => {
                 if (isCandidateDeleted(c.id, c.email)) return;
-                const key = c.email || c.id;
-                const isAccepted = formApplicantStatuses[c.email] === 'accepted' || formApplicantStatuses[c.id] === 'accepted';
-                const isDeclined = formApplicantStatuses[c.email] === 'declined' || formApplicantStatuses[c.id] === 'declined';
+                const emailKey = (c.email || '').toLowerCase().trim();
+                const isAccepted = formApplicantStatuses[c.email] === 'accepted' || 
+                  formApplicantStatuses[c.id] === 'accepted' || 
+                  (emailKey && formApplicantStatuses[emailKey] === 'accepted') ||
+                  ['Shortlisting', 'AI Screening', 'Interviews', 'Documents', 'Call Letter', 'Received Call Letter', 'Offer', 'Onboarding'].includes(c.stage);
+                const isDeclined = formApplicantStatuses[c.email] === 'declined' || 
+                  formApplicantStatuses[c.id] === 'declined' || 
+                  (emailKey && formApplicantStatuses[emailKey] === 'declined') || 
+                  c.stage === 'Rejected';
+                
+                const key = emailKey || c.id;
                 map.set(key, {
                   ...c,
-                  stage: isAccepted ? 'Shortlisting' : isDeclined ? 'Rejected' : c.stage,
-                  accepted: isAccepted || c.stage === 'Shortlisting' || c.stage === 'Interviews' || c.stage === 'Offer' || c.stage === 'Onboarding',
-                  declined: isDeclined || c.stage === 'Rejected'
+                  stage: isAccepted ? (c.stage === 'Applications' || !c.stage ? 'Shortlisting' : c.stage) : isDeclined ? 'Rejected' : c.stage,
+                  accepted: isAccepted,
+                  declined: isDeclined
                 });
               });
 
               // Add live sheet responses
               liveSheetResponses.forEach(r => {
                 if (r.email && !isCandidateDeleted(r.id, r.email)) {
-                  const isAccepted = formApplicantStatuses[r.email] === 'accepted' || formApplicantStatuses[r.id] === 'accepted';
-                  const isDeclined = formApplicantStatuses[r.email] === 'declined' || formApplicantStatuses[r.id] === 'declined';
-                  if (!map.has(r.email)) {
+                  const emailKey = (r.email || '').toLowerCase().trim();
+                  const matchedCand = candidates.find(cand => 
+                    (cand.email && cand.email.toLowerCase().trim() === emailKey) || 
+                    (r.id && cand.id === r.id)
+                  );
+                  const dbStage = matchedCand?.stage;
+
+                  const isAccepted = formApplicantStatuses[r.email] === 'accepted' || 
+                    formApplicantStatuses[r.id] === 'accepted' || 
+                    (emailKey && formApplicantStatuses[emailKey] === 'accepted') ||
+                    (matchedCand && ['Shortlisting', 'AI Screening', 'Interviews', 'Documents', 'Call Letter', 'Received Call Letter', 'Offer', 'Onboarding'].includes(dbStage || ''));
+                  const isDeclined = formApplicantStatuses[r.email] === 'declined' || 
+                    formApplicantStatuses[r.id] === 'declined' || 
+                    (emailKey && formApplicantStatuses[emailKey] === 'declined') || 
+                    (matchedCand && dbStage === 'Rejected');
+
+                  if (!map.has(emailKey)) {
                     const nameParts = (r.fullName || 'Applicant').split(' ');
-                    map.set(r.email, {
+                    map.set(emailKey, {
                       id: r.id || `cand-live-${r.email}`,
                       firstName: nameParts[0] || 'Applicant',
                       lastName: nameParts.slice(1).join(' ') || '',
@@ -6691,15 +7239,24 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
               DEFAULT_FALLBACK_APPLICANTS.forEach(fb => {
                 if (isCandidateDeleted(fb.id, fb.email)) return;
-                const emailKey = fb.email.toLowerCase();
+                const emailKey = fb.email.toLowerCase().trim();
+                const matchedCand = candidates.find(cand => 
+                  (cand.email && cand.email.toLowerCase().trim() === emailKey) || 
+                  (fb.id && cand.id === fb.id)
+                );
+                const dbStage = matchedCand?.stage;
+
                 if (!map.has(fb.email) && !map.has(fb.id) && !map.has(emailKey)) {
                   const isAccepted = formApplicantStatuses[fb.email] === 'accepted' || 
                     formApplicantStatuses[fb.id] === 'accepted' || 
-                    formApplicantStatuses[emailKey] === 'accepted';
+                    formApplicantStatuses[emailKey] === 'accepted' ||
+                    (matchedCand && ['Shortlisting', 'AI Screening', 'Interviews', 'Documents', 'Call Letter', 'Received Call Letter', 'Offer', 'Onboarding'].includes(dbStage || ''));
                   const isDeclined = formApplicantStatuses[fb.email] === 'declined' || 
                     formApplicantStatuses[fb.id] === 'declined' || 
-                    formApplicantStatuses[emailKey] === 'declined';
-                  map.set(fb.email, {
+                    formApplicantStatuses[emailKey] === 'declined' ||
+                    (matchedCand && dbStage === 'Rejected');
+
+                  map.set(emailKey, {
                     ...fb,
                     stage: isAccepted ? 'Shortlisting' : isDeclined ? 'Rejected' : 'Applications',
                     accepted: isAccepted,
@@ -6879,7 +7436,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                         {(c.firstName || 'A').charAt(0)}{(c.lastName || '').charAt(0)}
                                       </div>
                                       <div>
-                                        <p style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0f172a' }}>{c.firstName || c.name || 'Applicant'} {c.lastName || ''}</p>
+                                        <p style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0f172a' }}>{c.name || `${c.firstName || ''} ${c.lastName || ''}`.trim() || 'Applicant'}</p>
                                         <p style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600 }}>{c.email}</p>
                                       </div>
                                     </div>
@@ -6890,10 +7447,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                     </span>
                                   </td>
                                   <td style={{ padding: '12px 16px', fontWeight: 700, color: '#334155', fontSize: '0.75rem' }}>
-                                    {c.phone || c.mobile || '9949020175'}
+                                    {c.phone || c.mobile || '-'}
                                   </td>
                                   <td style={{ padding: '12px 16px', fontWeight: 600, color: '#475569', fontSize: '0.75rem' }}>
-                                    {c.location || 'WNP'}
+                                    {c.location || '-'}
                                   </td>
                                   <td style={{ padding: '12px 16px', fontWeight: 600, color: '#475569', fontSize: '0.75rem' }}>
                                     {c.experience || c.qualification || '-'}
@@ -7951,7 +8508,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
                 <div style={{ marginBottom: '1.25rem', fontSize: '0.88rem', lineHeight: '1.8' }}>
                   The gross salary of the employee for every month is as follows:<br /><br />
-                  <strong>Net Salary/Monthly:</strong> ₹ {previewCallLetterCandidate.offerSalary !== undefined && previewCallLetterCandidate.offerSalary !== null && Number(previewCallLetterCandidate.offerSalary) > 0 ? Number(previewCallLetterCandidate.offerSalary).toLocaleString('en-IN') : ''}<br />
+                  <strong>Gross Salary/Monthly:</strong> ₹ {previewCallLetterCandidate.offerSalary !== undefined && previewCallLetterCandidate.offerSalary !== null && Number(previewCallLetterCandidate.offerSalary) > 0 ? Number(previewCallLetterCandidate.offerSalary).toLocaleString('en-IN') : ''}<br />
                   <strong>Amount in words:</strong> {previewCallLetterCandidate.offerSalary !== undefined && previewCallLetterCandidate.offerSalary !== null && Number(previewCallLetterCandidate.offerSalary) > 0 ? numberToWordsINR(Number(previewCallLetterCandidate.offerSalary)) : ''}
                 </div>
 

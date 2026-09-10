@@ -3,7 +3,7 @@ import PDFDocument from 'pdfkit'
 import { prisma } from '../config/database'
 import { AuthRequest } from '../middleware/auth.middleware'
 import { sendError, sendSuccess } from '../utils/response.utils'
-import { interviewService, generateTeamsMeetingLink } from '../services/interview.service'
+import { interviewService, generateTeamsMeetingLink, DOCUMENT_UPLOAD_FORM_URL } from '../services/interview.service'
 import { notificationService } from '../services/notification.service'
 import { callLetterLogoBase64 } from '../assets/callLetterLogo.base64'
 
@@ -203,7 +203,7 @@ function generateCallLetterPDF(data: {
 
       doc
         .font('Helvetica-Bold')
-        .text('Net Salary/Monthly: ', 45, doc.y, { continued: true })
+        .text('Gross Salary/Monthly: ', 45, doc.y, { continued: true })
         .font('Helvetica')
         .text(data.formattedSalaryNum ? `Rs. ${data.formattedSalaryNum}` : 'Rs.')
         .moveDown(0.4)
@@ -435,7 +435,7 @@ export const recruitmentController = {
         return sendError(res, 'Tenant context not found', 400)
       }
 
-      let { jobId, firstName, lastName, name, email, phone, experience, source, skills, attachmentImages } = req.body
+      let { jobId, firstName, lastName, name, email, phone, experience, source, skills, attachmentImages, status, resumeUrl } = req.body
       const fullName = name || `${firstName || ''} ${lastName || ''}`.trim() || 'Applicant'
 
       if (!email) {
@@ -462,6 +462,31 @@ export const recruitmentController = {
         }
       }
 
+      // Check if application already exists by email under this tenant
+      const existing = await prisma.jobApplication.findFirst({
+        where: {
+          email: { equals: email, mode: 'insensitive' as const },
+          job: { tenantId }
+        }
+      })
+
+      if (existing) {
+        const updated = await prisma.jobApplication.update({
+          where: { id: existing.id },
+          data: {
+            name: fullName || existing.name,
+            phone: phone || existing.phone,
+            experience: experience || existing.experience,
+            source: source || existing.source,
+            skills: Array.isArray(skills) ? skills : (skills ? skills.split(',').map((s: string) => s.trim()) : existing.skills),
+            resumeUrl: resumeUrl || existing.resumeUrl,
+            status: status || 'SHORTLISTED',
+            attachmentImages: Array.isArray(attachmentImages) && attachmentImages.length > 0 ? attachmentImages : existing.attachmentImages
+          }
+        })
+        return sendSuccess(res, updated, 'Application updated successfully', 200)
+      }
+
       const application = await prisma.jobApplication.create({
         data: {
           jobId,
@@ -471,8 +496,8 @@ export const recruitmentController = {
           experience: experience || '2 Years',
           source: source || 'Google Form',
           skills: Array.isArray(skills) ? skills : (skills ? skills.split(',').map((s: string) => s.trim()) : []),
-          resumeUrl: 'uploaded-resume.pdf',
-          status: 'APPLIED',
+          resumeUrl: resumeUrl || 'uploaded-resume.pdf',
+          status: status || 'SHORTLISTED',
           attachmentImages: Array.isArray(attachmentImages) ? attachmentImages : []
         }
       })
@@ -487,21 +512,62 @@ export const recruitmentController = {
   async updateApplicationStatus(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params
-      const { status } = req.body
+      const { status, email, name, phone, experience, source, skills, resumeUrl, attachmentImages } = req.body
       const tenantId = req.tenantId ?? req.user?.tenantId
       if (!tenantId) {
         return sendError(res, 'Tenant context not found', 400)
       }
 
-      const application = await prisma.jobApplication.findFirst({
-        where: { id, job: { tenantId } }
+      let application = await prisma.jobApplication.findFirst({
+        where: {
+          OR: [
+            { id },
+            ...(id.includes('@') ? [{ email: { equals: id, mode: 'insensitive' as const } }] : []),
+            ...(email ? [{ email: { equals: email, mode: 'insensitive' as const } }] : [])
+          ],
+          job: { tenantId }
+        }
       })
+
       if (!application) {
-        return sendError(res, 'Application not found or unauthorized access', 404)
+        let activeJob = await prisma.jobPosting.findFirst({
+          where: { tenantId, status: 'OPEN' }
+        })
+        if (!activeJob) {
+          activeJob = await prisma.jobPosting.create({
+            data: {
+              tenantId,
+              title: 'Full Stack Engineer (Google Form Recruitment)',
+              department: 'Engineering',
+              description: 'Official Google Form Recruitment Pipeline',
+              status: 'OPEN',
+            }
+          })
+        }
+
+        const candEmail = email || (id.includes('@') ? id : `applicant_${Date.now()}@example.com`)
+        const candName = name || 'Applicant'
+
+        application = await prisma.jobApplication.create({
+          data: {
+            jobId: activeJob.id,
+            name: candName,
+            email: candEmail,
+            phone: phone || null,
+            experience: experience || 'Degree',
+            source: source || 'Google Form',
+            skills: Array.isArray(skills) ? skills : (skills ? skills.split(',').map((s: string) => s.trim()) : ['Google Form']),
+            resumeUrl: resumeUrl || 'uploaded-resume.pdf',
+            status: status || 'SHORTLISTED',
+            attachmentImages: Array.isArray(attachmentImages) ? attachmentImages : []
+          }
+        })
+
+        return sendSuccess(res, application, 'Application status updated successfully')
       }
 
       const updated = await prisma.jobApplication.update({
-        where: { id },
+        where: { id: application.id },
         data: { status }
       })
 
@@ -515,21 +581,28 @@ export const recruitmentController = {
   async deleteApplication(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params
+      const email = req.body?.email || req.query?.email
       const tenantId = req.tenantId ?? req.user?.tenantId
       if (!tenantId) {
         return sendError(res, 'Tenant context not found', 400)
       }
 
       const application = await prisma.jobApplication.findFirst({
-        where: { id, job: { tenantId } }
+        where: {
+          OR: [
+            { id },
+            ...(id.includes('@') ? [{ email: { equals: id, mode: 'insensitive' as const } }] : []),
+            ...(typeof email === 'string' ? [{ email: { equals: email, mode: 'insensitive' as const } }] : [])
+          ],
+          job: { tenantId }
+        }
       })
-      if (!application) {
-        return sendError(res, 'Application not found or unauthorized access', 404)
-      }
 
-      await prisma.jobApplication.delete({
-        where: { id }
-      })
+      if (application) {
+        await prisma.jobApplication.delete({
+          where: { id: application.id }
+        })
+      }
 
       return sendSuccess(res, null, 'Application deleted successfully')
     } catch (error: any) {
@@ -592,13 +665,16 @@ export const recruitmentController = {
         return sendError(res, 'Tenant context not found', 400)
       }
 
+      const cleanEmail = (candidateEmail || '').trim()
+      const cleanId = (id || '').trim()
+      const orConditions: any[] = []
+      if (cleanId) orConditions.push({ id: cleanId })
+      if (cleanEmail) orConditions.push({ email: { equals: cleanEmail, mode: 'insensitive' } })
+      if (cleanId.includes('@')) orConditions.push({ email: { equals: cleanId, mode: 'insensitive' } })
+
       let application = await prisma.jobApplication.findFirst({
         where: {
-          OR: [
-            { id },
-            ...(candidateEmail ? [{ email: candidateEmail }] : []),
-            ...(id.includes('@') ? [{ email: id }] : [])
-          ],
+          OR: orConditions.length > 0 ? orConditions : [{ id: 'none' }],
           job: { tenantId }
         },
         include: { job: true }
@@ -609,10 +685,15 @@ export const recruitmentController = {
           where: { tenantId, status: 'OPEN' }
         })
         if (!activeJob) {
+          activeJob = await prisma.jobPosting.findFirst({
+            where: { tenantId }
+          })
+        }
+        if (!activeJob) {
           activeJob = await prisma.jobPosting.create({
             data: {
               tenantId,
-              title: req.body.jobTitle || 'Full Stack Engineer (Google Form Recruitment)',
+              title: req.body.jobTitle || 'Full Stack Engineer',
               department: 'Engineering',
               description: 'Official Recruitment Pipeline',
               status: 'OPEN',
@@ -620,8 +701,8 @@ export const recruitmentController = {
           })
         }
 
-        const candName = req.body.candidateName || req.body.name || 'Candidate'
-        const candEmail = candidateEmail || (id.includes('@') ? id : `applicant_${Date.now()}@example.com`)
+        const candName = (req.body.candidateName || req.body.name || 'Candidate').trim()
+        const candEmail = cleanEmail || (cleanId.includes('@') ? cleanId : `applicant_${Date.now()}@vrpigroup.com`)
 
         application = await prisma.jobApplication.create({
           data: {
@@ -633,7 +714,7 @@ export const recruitmentController = {
             source: req.body.source || 'Google Form',
             skills: Array.isArray(req.body.skills) ? req.body.skills : ['Scheduled Interview'],
             resumeUrl: req.body.resumeUrl || 'applicant-resume.pdf',
-            status: 'INTERVIEW',
+            status: decision ? (decision === 'pass' ? 'DOCUMENTS' : 'REJECTED') : 'INTERVIEW',
             interviewDate: interviewDate ? new Date(interviewDate) : null,
             interviewTime: interviewTime || null,
             interviewType: interviewType || 'HR Screening',
@@ -646,7 +727,9 @@ export const recruitmentController = {
 
       const finalMeetingLink = interviewLink && interviewLink.trim()
         ? interviewLink.trim()
-        : await generateTeamsMeetingLink(`Interview: ${application.name} - ${application.job?.title || 'Candidate'}`)
+        : (application.interviewLink && application.interviewLink.trim()
+            ? application.interviewLink.trim()
+            : await generateTeamsMeetingLink(`Interview: ${application.name}`))
 
       const updateData: any = {}
       if (interviewDate) updateData.interviewDate = new Date(interviewDate)
@@ -670,41 +753,53 @@ export const recruitmentController = {
       let emailDispatchResult = null
       if (!decision && sendEmailInvite && (interviewDate || application.interviewDate) && (interviewTime || application.interviewTime)) {
         try {
-          const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } })
-          const resolvedCandidateEmail = candidateEmail || application.email
-          const formattedDate = interviewDate 
-            ? (typeof interviewDate === 'string' ? interviewDate.split('T')[0] : new Date(interviewDate).toISOString().split('T')[0])
-            : (application.interviewDate ? new Date(application.interviewDate).toISOString().split('T')[0] : '')
-
           emailDispatchResult = await interviewService.sendInterviewInvites({
-            candidateName: req.body.candidateName || application.name || 'Candidate',
-            candidateEmail: resolvedCandidateEmail,
-            jobTitle: application.job?.title || 'Recruitment Position',
-            interviewType: interviewType || application.interviewType || 'HR Screening',
+            candidateName: application.name,
+            candidateEmail: application.email,
+            jobTitle: application.job?.title || 'Applied Position',
+            interviewType: interviewType || application.interviewType || 'Interview Round',
             interviewerName: interviewer || application.interviewer || 'Interview Panel',
             interviewerEmail: interviewerEmail,
-            interviewDate: formattedDate,
+            interviewDate: (interviewDate ? new Date(interviewDate) : (application.interviewDate || new Date())).toISOString().split('T')[0],
             interviewTime: interviewTime || application.interviewTime || '11:30 AM',
             interviewLink: finalMeetingLink,
             taggedEmails: Array.isArray(taggedEmails) ? taggedEmails : (taggedEmails ? [taggedEmails] : []),
-            tenantName: tenant?.name || 'VRPI Group HRMS',
-            notes: notes || undefined
+            notes
           })
         } catch (emailErr: any) {
-          console.error('[RecruitmentController] Failed to dispatch interview email invite:', emailErr.message || emailErr)
+          console.error('[RecruitmentController] Failed to dispatch interview invite emails:', emailErr.message || emailErr)
         }
       }
 
-      return sendSuccess(res, { ...updated, emailDispatchResult }, 'Interview details updated successfully')
+      // Update candidate status to DOCUMENTS if passed (document mail is not sent automatically here)
+      const documentEmailResult = null
+
+      return sendSuccess(res, { ...updated, emailDispatchResult, documentEmailResult }, 'Interview details updated successfully')
     } catch (error: any) {
-      return sendError(res, error.message || 'Failed to update interview', 500)
+      return sendError(res, error.message || 'Failed to update interview status', 500)
     }
   },
 
-  // Auto-generate Microsoft Teams meeting URL
+  // Direct Teams meeting link generator
   async generateTeamsLink(req: AuthRequest, res: Response) {
     try {
-      const { topic } = req.body || {}
+      const { topic, candidateEmail, candidateId } = req.body || {}
+      
+      // If candidate already has an interview link in DB, reuse it
+      if (candidateEmail || candidateId) {
+        const existing = await prisma.jobApplication.findFirst({
+          where: {
+            OR: [
+              candidateId ? { id: candidateId } : {},
+              candidateEmail ? { email: { equals: candidateEmail, mode: 'insensitive' } } : {}
+            ]
+          }
+        })
+        if (existing?.interviewLink && existing.interviewLink.trim()) {
+          return sendSuccess(res, { link: existing.interviewLink.trim() }, 'Existing Teams meeting link retrieved successfully')
+        }
+      }
+
       const link = await generateTeamsMeetingLink(topic || 'HRMS Interview Session')
       return sendSuccess(res, { link }, 'Teams meeting link generated successfully')
     } catch (error: any) {
@@ -732,9 +827,18 @@ export const recruitmentController = {
       const tenantId = req.tenantId ?? req.user?.tenantId
       const tenant = tenantId ? await prisma.tenant.findUnique({ where: { id: tenantId } }) : null
 
+      let existingApp = null
+      if (candidateEmail) {
+        existingApp = await prisma.jobApplication.findFirst({
+          where: { email: { equals: candidateEmail, mode: 'insensitive' } }
+        })
+      }
+
       const finalLink = interviewLink && interviewLink.trim()
         ? interviewLink.trim()
-        : await generateTeamsMeetingLink(`Interview: ${candidateName || 'Candidate'}`)
+        : (existingApp?.interviewLink && existingApp.interviewLink.trim()
+            ? existingApp.interviewLink.trim()
+            : await generateTeamsMeetingLink(`Interview: ${candidateName || 'Candidate'}`))
 
       const result = await interviewService.sendInterviewInvites({
         candidateName: candidateName || 'Candidate',
@@ -754,6 +858,28 @@ export const recruitmentController = {
       return sendSuccess(res, { ...result, link: finalLink }, 'Interview invites dispatched successfully')
     } catch (error: any) {
       return sendError(res, error.message || 'Failed to dispatch interview invites', 500)
+    }
+  },
+
+  // Direct dispatch of Document Upload invitation email with Google Form link
+  async sendDocumentUploadInviteDirect(req: AuthRequest, res: Response) {
+    try {
+      const { candidateName, candidateEmail, formUrl } = req.body
+      if (!candidateEmail) {
+        return sendError(res, 'Candidate email is required', 400)
+      }
+      const tenantId = req.tenantId ?? req.user?.tenantId
+      const tenant = tenantId ? await prisma.tenant.findUnique({ where: { id: tenantId } }) : null
+
+      const result = await interviewService.sendDocumentUploadEmail({
+        candidateName: candidateName || 'Candidate',
+        candidateEmail,
+        formUrl: formUrl || DOCUMENT_UPLOAD_FORM_URL,
+        tenantName: tenant?.name || 'VR PI Tech Solutions'
+      })
+      return sendSuccess(res, result, 'Document upload invitation email dispatched successfully')
+    } catch (error: any) {
+      return sendError(res, error.message || 'Failed to send document upload email', 500)
     }
   },
 
@@ -795,32 +921,75 @@ export const recruitmentController = {
     }
   },
 
-  // Stage 8: Document Verification
+  // Stage 5 -> Stage 6: Verify and Approve Documents -> Advance to Call Letter
   async verifyDocuments(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params
-      const { verified } = req.body
+      const { verified, email, name, phone, candidateType, attachmentImages } = req.body
       const tenantId = req.tenantId ?? req.user?.tenantId
       if (!tenantId) {
         return sendError(res, 'Tenant context not found', 400)
       }
 
-      const application = await prisma.jobApplication.findFirst({
-        where: { id, job: { tenantId } }
-      })
-      if (!application) {
-        return sendError(res, 'Application not found or unauthorized access', 404)
-      }
-
-      const updated = await prisma.jobApplication.update({
-        where: { id },
-        data: {
-          documentsVerified: !!verified,
-          status: verified ? 'CALL_LETTER' : 'DOCUMENTS'
+      let application = await prisma.jobApplication.findFirst({
+        where: {
+          OR: [
+            { id },
+            ...(id.includes('@') ? [{ email: { equals: id, mode: 'insensitive' as const } }] : []),
+            ...(email ? [{ email: { equals: email, mode: 'insensitive' as const } }] : [])
+          ],
+          job: { tenantId }
         }
       })
 
-      return sendSuccess(res, updated, 'Document verification updated successfully')
+      if (!application) {
+        let activeJob = await prisma.jobPosting.findFirst({
+          where: { tenantId, status: 'OPEN' }
+        })
+        if (!activeJob) {
+          activeJob = await prisma.jobPosting.create({
+            data: {
+              tenantId,
+              title: 'Full Stack Engineer (Google Form Recruitment)',
+              department: 'Engineering',
+              description: 'Official Google Form Recruitment Pipeline',
+              status: 'OPEN',
+            }
+          })
+        }
+
+        const candEmail = email || (id.includes('@') ? id : `applicant_${Date.now()}@example.com`)
+        const candName = name || 'Applicant'
+
+        application = await prisma.jobApplication.create({
+          data: {
+            jobId: activeJob.id,
+            name: candName,
+            email: candEmail,
+            phone: phone || null,
+            experience: candidateType || 'Experienced',
+            source: 'Google Form (Documents)',
+            skills: ['Verified Credentials'],
+            resumeUrl: 'uploaded-resume.pdf',
+            status: 'CALL_LETTER',
+            documentsVerified: true,
+            attachmentImages: Array.isArray(attachmentImages) ? attachmentImages : []
+          }
+        })
+
+        return sendSuccess(res, application, 'Documents verified and candidate moved to Call Letter stage')
+      }
+
+      const updated = await prisma.jobApplication.update({
+        where: { id: application.id },
+        data: {
+          status: 'CALL_LETTER',
+          documentsVerified: true,
+          ...(attachmentImages && Array.isArray(attachmentImages) && attachmentImages.length > 0 ? { attachmentImages } : {})
+        }
+      })
+
+      return sendSuccess(res, updated, 'Documents verified and candidate moved to Call Letter stage')
     } catch (error: any) {
       return sendError(res, error.message || 'Failed to verify documents', 500)
     }
@@ -1391,7 +1560,8 @@ export const recruitmentController = {
 
       return sendSuccess(res, { responses, count: responses.length }, 'Fetched live Google Form responses successfully')
     } catch (error: any) {
-      return sendError(res, error.message || 'Error fetching live Google Form responses', 500)
+      console.warn('[RecruitmentController] Live sheet fetch warning:', error.message || error)
+      return sendSuccess(res, { responses: [], count: 0, offline: true }, 'Google Sheet offline / fallback active')
     }
   },
 
@@ -1526,7 +1696,8 @@ export const recruitmentController = {
 
       return sendSuccess(res, { applicants, count: applicants.length }, 'Fetched live document sheet records successfully')
     } catch (error: any) {
-      return sendError(res, error.message || 'Error fetching live document responses', 500)
+      console.warn('[RecruitmentController] Live document sheet fetch warning:', error.message || error)
+      return sendSuccess(res, { applicants: [], count: 0, offline: true }, 'Document Sheet offline / fallback active')
     }
   },
 
@@ -1655,7 +1826,8 @@ export const recruitmentController = {
 
       return sendSuccess(res, { applicants, count: applicants.length }, 'Fetched live received call letter sheet records successfully')
     } catch (error: any) {
-      return sendError(res, error.message || 'Error fetching live received call letter responses', 500)
+      console.warn('[RecruitmentController] Live call letter sheet fetch warning:', error.message || error)
+      return sendSuccess(res, { applicants: [], count: 0, offline: true }, 'Call Letter Sheet offline / fallback active')
     }
   },
 

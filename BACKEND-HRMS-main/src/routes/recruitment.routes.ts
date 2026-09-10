@@ -22,6 +22,7 @@ router.patch('/applications/:id/ai-screen', recruitmentController.aiScreenCandid
 router.patch('/applications/:id/interview', recruitmentController.scheduleInterview)
 router.post('/generate-teams-link', recruitmentController.generateTeamsLink)
 router.post('/send-interview-invite', recruitmentController.sendInterviewInviteDirect)
+router.post('/send-document-upload-invite', recruitmentController.sendDocumentUploadInviteDirect)
 router.post('/send-call-letter', recruitmentController.sendCallLetterDirect)
 router.patch('/applications/:id/offer', recruitmentController.manageOffer)
 router.patch('/applications/:id/documents-verify', recruitmentController.verifyDocuments)
