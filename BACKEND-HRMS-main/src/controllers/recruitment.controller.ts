@@ -240,6 +240,44 @@ function generateCallLetterPDF(data: {
   })
 }
 
+function fetchCsvWithIPv4(targetUrl: string, maxRedirects: number = 5): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (maxRedirects <= 0) return reject(new Error('Too many redirects'))
+    const https = require('https')
+    const http = require('http')
+    const parsedUrl = new URL(targetUrl)
+    const isHttps = parsedUrl.protocol === 'https:'
+    const client = isHttps ? https : http
+
+    const req = client.get(
+      targetUrl,
+      {
+        family: 4,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/csv,text/plain,*/*'
+        }
+      },
+      (res: any) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          const redirectUrl = new URL(res.headers.location, targetUrl).toString()
+          return fetchCsvWithIPv4(redirectUrl, maxRedirects - 1).then(resolve).catch(reject)
+        }
+        if (res.statusCode !== 200) {
+          return reject(new Error(`HTTP ${res.statusCode}`))
+        }
+        let data = ''
+        res.on('data', (chunk: any) => { data += chunk })
+        res.on('end', () => resolve(data))
+      }
+    )
+    req.on('error', reject)
+    req.setTimeout(12000, () => {
+      req.destroy(new Error('CSV Fetch timeout after 12s'))
+    })
+  })
+}
+
 export const recruitmentController = {
   // Get all jobs and applicants
   async jobs(req: AuthRequest, res: Response) {
@@ -1409,25 +1447,8 @@ export const recruitmentController = {
     try {
       const spreadsheetId = (process.env.GOOGLE_SHEET_ID || '1lQJhC2BRKi-ut7XerrcptvLwiRpJvxGbZGZaS9WzWpg').trim()
       const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=1809928383`
-      
-      const fetchCsv = (targetUrl: string): Promise<string> => {
-        return new Promise((resolve, reject) => {
-          const https = require('https')
-          https.get(targetUrl, (res: any) => {
-            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-              return fetchCsv(res.headers.location).then(resolve).catch(reject)
-            }
-            if (res.statusCode !== 200) {
-              return reject(new Error(`Google Sheet HTTP ${res.statusCode}`))
-            }
-            let data = ''
-            res.on('data', (chunk: any) => { data += chunk })
-            res.on('end', () => resolve(data))
-          }).on('error', reject)
-        })
-      }
 
-      const csvText = await fetchCsv(csvUrl)
+      const csvText = await fetchCsvWithIPv4(csvUrl)
       const lines = csvText.split('\n').map(l => l.trim()).filter(l => l.length > 0)
 
       if (lines.length <= 1) {
@@ -1478,87 +1499,56 @@ export const recruitmentController = {
 
           if (h.includes('timestamp') || h.includes('date') || h.includes('time')) {
             if (!timestamp) timestamp = cell
-          } else if (h.includes('email') || h.includes('e-mail') || h.includes('mail')) {
+          } else if (h.includes('email') || h.includes('mail') || (cell.includes('@') && !cell.includes('http'))) {
             if (!email) email = cell
-          } else if (h.includes('full name') || h.includes('name') || h.includes('applicant') || h.includes('candidate')) {
+          } else if (h.includes('name') || h.includes('full name')) {
             if (!fullName) fullName = cell
-          } else if (h.includes('mobile') || h.includes('phone') || h.includes('contact') || h.includes('number')) {
+          } else if (h.includes('mobile') || h.includes('phone') || h.includes('contact') || h.includes('whatsapp')) {
             if (!mobile) mobile = cell
-          } else if (h.includes('location') || h.includes('city') || h.includes('place') || h.includes('address')) {
+          } else if (h.includes('location') || h.includes('city') || h.includes('address') || h.includes('state')) {
             if (!location) location = cell
-          } else if (h.includes('qualification') || h.includes('degree') || h.includes('education') || h.includes('qual')) {
+          } else if (h.includes('qualification') || h.includes('degree') || h.includes('education') || h.includes('experience')) {
             if (!qualification) qualification = cell
-          } else if (h.includes('year') || h.includes('passing') || h.includes('graduation')) {
+          } else if (h.includes('year') || h.includes('pass') || h.includes('graduat')) {
             if (!graduationYear) graduationYear = cell
-          }
-
-          if (cell.includes('drive.google.com') || cell.includes('http')) {
+          } else if (cell.includes('drive.google.com') || cell.includes('http')) {
             if (!resumeLink) resumeLink = cell
           }
         })
 
-        // Pass 2: Type detection pass for unassigned cells
-        rowVals.forEach((cellVal: string) => {
-          const cell = cellVal.trim()
-          if (!cell) return
-
-          if (!email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cell)) {
-            email = cell
-          }
-          if ((!mobile || mobile === 'N/A' || /[a-zA-Z]/.test(mobile)) && /^\+?\d{10,12}$/.test(cell.replace(/[\s-]/g, ''))) {
-            mobile = cell.replace(/[\s-]/g, '')
-          }
-          if ((!graduationYear || graduationYear === '-') && /^(19|20)\d{2}$/.test(cell)) {
-            graduationYear = cell
-          }
-        })
-
-        // Pass 3: Self-correction for swapped fields (e.g. Phone containing name, Location containing phone)
-        if (mobile && /[a-zA-Z]/.test(mobile)) {
-          if (!fullName || fullName === 'Applicant') {
-            fullName = mobile
-            mobile = 'N/A'
-          }
+        // Pass 2: Positional / Smart Fallback
+        if (!email && rowVals[1] && rowVals[1].includes('@')) email = rowVals[1].trim()
+        if (!fullName && rowVals[2] && !rowVals[2].includes('@') && !rowVals[2].includes('http')) fullName = rowVals[2].trim()
+        if (!mobile && rowVals[3] && !rowVals[3].includes('http')) mobile = rowVals[3].trim()
+        if (!location && rowVals[4] && !rowVals[4].includes('http')) location = rowVals[4].trim()
+        if (!qualification && rowVals[5] && !rowVals[5].includes('http')) qualification = rowVals[5].trim()
+        if (!graduationYear && rowVals[6] && !rowVals[6].includes('http')) graduationYear = rowVals[6].trim()
+        if (!resumeLink) {
+          const linkCell = rowVals.find(v => v.includes('drive.google.com') || v.includes('http://') || v.includes('https://'))
+          if (linkCell) resumeLink = linkCell.trim()
         }
 
-        if (location && /^\+?\d{10,12}$/.test(location.replace(/[\s-]/g, ''))) {
-          if (!mobile || mobile === 'N/A' || /[a-zA-Z]/.test(mobile)) {
-            mobile = location.replace(/[\s-]/g, '')
-            location = 'WNP'
-          }
-        }
-
-        if (qualification && ['mbnr', 'hyd', 'wnp', 'npl', 'hyderabad', 'wanaparthy', 'mahabubnagar'].includes(qualification.toLowerCase())) {
-          if (!location || location === 'WNP' || location === 'N/A') {
-            location = qualification.toUpperCase()
-            qualification = 'Degree'
-          }
-        }
-
-        if (!timestamp) timestamp = rowVals[0] || '24/08/2026 10:58:33'
-        if (!email && rowVals[1] && rowVals[1].includes('@')) email = rowVals[1]
-
-        if (email.includes('applicant_') || email.includes('@example.com')) continue
-        if (!email && !fullName) continue
-
-        if (!resumeLink || !resumeLink.includes('http')) {
+        // Deterministic mock fallback drive links for full experience
+        if (!resumeLink) {
           resumeLink = sampleDriveLinks[(i - 1) % sampleDriveLinks.length]
         }
 
-        responses.push({
-          id: `sheet-row-${i}`,
-          timestamp,
-          email,
-          fullName,
-          mobile,
-          location,
-          qualification,
-          graduationYear,
-          resumeLink
-        })
+        if (fullName || email) {
+          responses.push({
+            id: `sheet-row-${i}`,
+            timestamp: timestamp || new Date().toISOString(),
+            email: email || `applicant_${i}@googleform.com`,
+            fullName: fullName || `Applicant ${i}`,
+            mobile: mobile || 'N/A',
+            location: location || 'Remote',
+            qualification: qualification || 'Graduate',
+            graduationYear: graduationYear || '-',
+            resumeLink: resumeLink
+          })
+        }
       }
 
-      return sendSuccess(res, { responses, count: responses.length }, 'Fetched live Google Form responses successfully')
+      return sendSuccess(res, { responses, count: responses.length }, 'Fetched live sheet records successfully')
     } catch (error: any) {
       console.warn('[RecruitmentController] Live sheet fetch warning:', error.message || error)
       return sendSuccess(res, { responses: [], count: 0, offline: true }, 'Google Sheet offline / fallback active')
@@ -1569,27 +1559,12 @@ export const recruitmentController = {
   async fetchLiveDocumentSheetData(req: AuthRequest, res: Response) {
     try {
       const sheetId = (process.env.GOOGLE_DOCS_SHEET_ID || '1jz7d2yAaLfzgGPMpOO7GzHamvHVIspk82Y86IED_raY').trim()
-      const gid = '510736051'
-      const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`
+      const gid = (process.env.GOOGLE_DOCS_SHEET_GID || '510736051').trim()
+      const csvUrl = gid 
+        ? `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`
+        : `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`
 
-      const fetchCsv = (targetUrl: string): Promise<string> => {
-        return new Promise((resolve, reject) => {
-          const https = require('https')
-          https.get(targetUrl, (httpRes: any) => {
-            if (httpRes.statusCode >= 300 && httpRes.statusCode < 400 && httpRes.headers.location) {
-              return fetchCsv(httpRes.headers.location).then(resolve).catch(reject)
-            }
-            if (httpRes.statusCode !== 200) {
-              return reject(new Error(`Document Sheet HTTP ${httpRes.statusCode}`))
-            }
-            let data = ''
-            httpRes.on('data', (chunk: any) => { data += chunk })
-            httpRes.on('end', () => resolve(data))
-          }).on('error', reject)
-        })
-      }
-
-      const csvText = await fetchCsv(csvUrl)
+      const csvText = await fetchCsvWithIPv4(csvUrl)
       
       const parseCSV = (text: string) => {
         const rows: string[][] = []
@@ -1667,7 +1642,7 @@ export const recruitmentController = {
             else if (hl.includes('pan')) { docTitle = 'PAN Card'; docType = 'pan' }
             else if (hl.includes('10th')) { docTitle = '10th Marksheet / SSC'; docType = 'marksheet_10' }
             else if (hl.includes('12th')) { docTitle = '12th Marksheet / Intermediate'; docType = 'marksheet_12' }
-            else if (hl.includes('degree') || hl.includes('b.tech')) { docTitle = 'Degree / B.Tech Marksheet'; docType = 'degree' }
+            else if (hl.includes('degree') || hl.includes('b.tech') || hl.includes('sheet')) { docTitle = 'Degree / B.Tech Marksheet'; docType = 'degree' }
             else if (hl.includes('internship') || hl.includes('training')) { docTitle = 'Internship / Training Certificate'; docType = 'internship' }
             else if (hl.includes('relieving') || hl.includes('service') || hl.includes('experience')) { docTitle = 'Relieving / Experience Certificate'; docType = 'experience' }
             else if (hl.includes('uan') || hl.includes('universal')) { docTitle = 'Universal Account Number (UAN)'; docType = 'uan' }
@@ -1707,24 +1682,7 @@ export const recruitmentController = {
       const sheetId = (process.env.GOOGLE_RECEIVED_CALL_LETTER_SHEET_ID || '1nFaAEv_99akWqw_FwyXPSDQnBLGDXNwYtBjb5oIw0q8').trim()
       const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`
 
-      const fetchCsv = (targetUrl: string): Promise<string> => {
-        return new Promise((resolve, reject) => {
-          const https = require('https')
-          https.get(targetUrl, (httpRes: any) => {
-            if (httpRes.statusCode >= 300 && httpRes.statusCode < 400 && httpRes.headers.location) {
-              return fetchCsv(httpRes.headers.location).then(resolve).catch(reject)
-            }
-            if (httpRes.statusCode !== 200) {
-              return reject(new Error(`Received Call Letter Sheet HTTP ${httpRes.statusCode}`))
-            }
-            let data = ''
-            httpRes.on('data', (chunk: any) => { data += chunk })
-            httpRes.on('end', () => resolve(data))
-          }).on('error', reject)
-        })
-      }
-
-      const csvText = await fetchCsv(csvUrl)
+      const csvText = await fetchCsvWithIPv4(csvUrl)
       
       const parseCSV = (text: string) => {
         const rows: string[][] = []

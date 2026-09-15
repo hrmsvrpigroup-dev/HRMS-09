@@ -480,6 +480,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   const [liveSheetResponses, setLiveSheetResponses] = useState<any[]>([]);
   const [liveDocumentResponses, setLiveDocumentResponses] = useState<any[]>([]);
   const [liveReceivedCallLetterResponses, setLiveReceivedCallLetterResponses] = useState<any[]>([]);
+  const [isSyncingDocs, setIsSyncingDocs] = useState<boolean>(false);
   
   // State for forms & UI flows
   const [selectedJobId, setSelectedJobId] = useState<string>('');
@@ -533,6 +534,23 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       localStorage.setItem('hrms_form_applicant_statuses', JSON.stringify(formApplicantStatuses));
     } catch (_) {}
   }, [formApplicantStatuses]);
+
+  const [sentDocEmails, setSentDocEmails] = useState<{ [key: string]: boolean }>(() => {
+    try {
+      const saved = localStorage.getItem('hrms_sent_doc_emails');
+      return saved ? JSON.parse(saved) : {};
+    } catch (_) {
+      return {};
+    }
+  });
+  const [sendingDocEmailId, setSendingDocEmailId] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('hrms_sent_doc_emails', JSON.stringify(sentDocEmails));
+    } catch (_) {}
+  }, [sentDocEmails]);
+
 
   const getStoredShortlistedCandidates = (): Candidate[] => {
     try {
@@ -1250,6 +1268,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                 return;
               }
 
+              const isCallLetter = storedStatuses[rEmailTrim] === 'call_letter' || storedStatuses[rEmailLower] === 'call_letter';
+              const isDocuments = storedStatuses[rEmailTrim] === 'documents' || storedStatuses[rEmailLower] === 'documents';
               const isScheduled = storedStatuses[rEmailTrim] === 'scheduled' || storedStatuses[rEmailLower] === 'scheduled';
               const isAccepted = storedStatuses[rEmailTrim] === 'accepted' || storedStatuses[rEmailLower] === 'accepted';
               const isDeclined = storedStatuses[rEmailTrim] === 'declined' || storedStatuses[rEmailLower] === 'declined';
@@ -1285,7 +1305,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                 lastName: nameStr.split(' ').slice(1).join(' ') || '',
                 email: rEmailTrim,
                 phone: phoneStr,
-                stage: isScheduled ? 'Interviews' : isAccepted ? 'Shortlisting' : isDeclined ? 'Rejected' : 'Applications',
+                stage: isCallLetter ? 'Call Letter' : isDocuments ? 'Documents' : isScheduled ? 'Interviews' : isAccepted ? 'Shortlisting' : isDeclined ? 'Rejected' : 'Applications',
                 source: 'Google Form',
                 jobTitle: 'Google Form Recruitment',
                 experience: expStr,
@@ -1305,6 +1325,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         DEFAULT_FALLBACK_APPLICANTS.forEach(fb => {
           if (isCandidateDeleted(fb.id, fb.email)) return;
           const fbEmailLower = fb.email.toLowerCase();
+          const isCallLetter = storedStatuses[fb.email] === 'call_letter' || storedStatuses[fb.id] === 'call_letter' || storedStatuses[fbEmailLower] === 'call_letter';
+          const isDocuments = storedStatuses[fb.email] === 'documents' || storedStatuses[fb.id] === 'documents' || storedStatuses[fbEmailLower] === 'documents';
           const isScheduled = storedStatuses[fb.email] === 'scheduled' || storedStatuses[fb.id] === 'scheduled' || storedStatuses[fbEmailLower] === 'scheduled';
           const isAccepted = storedStatuses[fb.email] === 'accepted' || storedStatuses[fb.id] === 'accepted' || storedStatuses[fbEmailLower] === 'accepted';
           const isDeclined = storedStatuses[fb.email] === 'declined' || storedStatuses[fb.id] === 'declined' || storedStatuses[fbEmailLower] === 'declined';
@@ -1316,7 +1338,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               lastName: fb.lastName,
               email: fb.email,
               phone: fb.phone,
-              stage: isScheduled ? 'Interviews' : isAccepted ? 'Shortlisting' : isDeclined ? 'Rejected' : 'Applications',
+              stage: isCallLetter ? 'Call Letter' : isDocuments ? 'Documents' : isScheduled ? 'Interviews' : isAccepted ? 'Shortlisting' : isDeclined ? 'Rejected' : 'Applications',
               source: fb.source,
               jobTitle: fb.jobTitle,
               experience: fb.experience,
@@ -2116,6 +2138,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
   // Direct send/resend Document Upload invitation email
   const handleSendDocUploadInviteEmail = async (candidate: Candidate) => {
+    const key = candidate.id || candidate.email;
+    setSendingDocEmailId(key);
     try {
       const candidateEmail = candidate.email;
       const candidateName = `${candidate.firstName} ${candidate.lastName}`.trim();
@@ -2124,9 +2148,23 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         candidateName,
         formUrl: googleDocUploadFormUrl
       });
+      // Mark as sent in state & localStorage to prevent data loss on refresh
+      setSentDocEmails(prev => {
+        const updated = {
+          ...prev,
+          [candidate.id]: true,
+          ...(candidate.email ? { [candidate.email.toLowerCase()]: true } : {})
+        };
+        try {
+          localStorage.setItem('hrms_sent_doc_emails', JSON.stringify(updated));
+        } catch (_) {}
+        return updated;
+      });
       alert(`📧 Document Upload invitation email sent successfully to ${candidateName} (${candidateEmail})!`);
     } catch (err: any) {
       alert(`Failed to send email: ${err?.response?.data?.message || err.message}`);
+    } finally {
+      setSendingDocEmailId(null);
     }
   };
 
@@ -3179,12 +3217,19 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       let stage = c.stage;
       if (status === 'accepted') stage = (c.stage === 'Applications' || !c.stage) ? 'Shortlisting' : c.stage;
       else if (status === 'declined') stage = 'Rejected';
-      else if (status === 'interview') stage = 'Interviews';
+      else if (status === 'interview' || status === 'scheduled') stage = 'Interviews';
       else if (status === 'documents') stage = 'Documents';
       else if (status === 'call_letter' || status === 'call-letter' || status === 'callletter') stage = 'Call Letter';
       else if (status === 'received_call_letter' || status === 'call_letter_received' || status === 'received-call-letter') stage = 'Received Call Letter';
       else if (status === 'offer') stage = 'Offer';
       else if (status === 'onboarded') stage = 'Onboarding';
+      else if (c.stage !== 'Call Letter' && c.stage !== 'Received Call Letter' && c.stage !== 'Offer' && c.stage !== 'Onboarding' && c.stage !== 'Rejected' && liveDocumentResponses.some(docR => 
+        (docR.email && c.email && docR.email.toLowerCase() === c.email.toLowerCase()) ||
+        docR.id === c.id ||
+        ((docR.fullName || '').trim().toLowerCase() === `${c.firstName} ${c.lastName}`.trim().toLowerCase())
+      )) {
+        stage = 'Documents';
+      }
 
       map.set(key, {
         ...c,
@@ -3200,12 +3245,19 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         let stage: Candidate['stage'] = 'Applications';
         if (status === 'accepted') stage = 'Shortlisting';
         else if (status === 'declined') stage = 'Rejected';
-        else if (status === 'interview') stage = 'Interviews';
+        else if (status === 'interview' || status === 'scheduled') stage = 'Interviews';
         else if (status === 'documents') stage = 'Documents';
         else if (status === 'call_letter' || status === 'call-letter' || status === 'callletter') stage = 'Call Letter';
         else if (status === 'received_call_letter' || status === 'call_letter_received' || status === 'received-call-letter') stage = 'Received Call Letter';
         else if (status === 'offer') stage = 'Offer';
         else if (status === 'onboarded') stage = 'Onboarding';
+        else if (liveDocumentResponses.some(docR => 
+          (docR.email && r.email && docR.email.toLowerCase() === r.email.toLowerCase()) ||
+          docR.id === r.id ||
+          ((docR.fullName || '').trim().toLowerCase() === (r.fullName || '').trim().toLowerCase())
+        )) {
+          stage = 'Documents';
+        }
 
         if (!map.has(key)) {
           const nameParts = (r.fullName || 'Applicant').split(' ');
@@ -3240,12 +3292,19 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       let stage: Candidate['stage'] = 'Applications';
       if (status === 'accepted') stage = 'Shortlisting';
       else if (status === 'declined') stage = 'Rejected';
-      else if (status === 'interview') stage = 'Interviews';
+      else if (status === 'interview' || status === 'scheduled') stage = 'Interviews';
       else if (status === 'documents') stage = 'Documents';
       else if (status === 'call_letter' || status === 'call-letter' || status === 'callletter') stage = 'Call Letter';
       else if (status === 'received_call_letter' || status === 'call_letter_received' || status === 'received-call-letter') stage = 'Received Call Letter';
       else if (status === 'offer') stage = 'Offer';
       else if (status === 'onboarded') stage = 'Onboarding';
+      else if (liveDocumentResponses.some(docR => 
+        (docR.email && fb.email && docR.email.toLowerCase() === fb.email.toLowerCase()) ||
+        docR.id === fb.id ||
+        ((docR.fullName || '').trim().toLowerCase() === `${fb.firstName} ${fb.lastName}`.trim().toLowerCase())
+      )) {
+        stage = 'Documents';
+      }
 
       if (!map.has(key) && !map.has(fb.id)) {
         map.set(key, {
@@ -3276,7 +3335,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       !c.email?.includes('@example.com') &&
       !c.email?.includes('employee_')
     );
-  }, [candidates, liveSheetResponses, formApplicantStatuses]);
+  }, [candidates, liveSheetResponses, formApplicantStatuses, liveDocumentResponses]);
 
   // Helper values for dashboard charts and metrics
   const boardCandidates = unifiedCandidates;
@@ -5669,12 +5728,83 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
             {/* ════════════════ STAGE 8: DOCUMENTS (STAGE 4: DOCUMENT REQUESTS & PORTAL) ════════════════ */}
             {activeTab === 'stage-8' && (() => {
               // 1. Pipeline candidates in 'Documents' stage
-              const pipelineDocs = candidates.filter(c => {
-                const s = formApplicantStatuses[c.email] || (c.email ? formApplicantStatuses[c.email.toLowerCase()] : undefined) || (c.id ? formApplicantStatuses[c.id] : undefined);
-                if (s === 'call_letter' || s === 'call-letter' || s === 'callletter' || s === 'received_call_letter' || s === 'call_letter_received' || s === 'received-call-letter' || s === 'offer' || s === 'onboarded' || s === 'declined') return false;
-                if (c.stage === 'Call Letter' || c.stage === 'Received Call Letter' || c.stage === 'Offer' || c.stage === 'Onboarding' || c.stage === 'Rejected') return false;
-                return c.stage === 'Documents' || s === 'documents';
+              const docsMap = new Map<string, Candidate>();
+              const allCandidatesSource = [...unifiedCandidates, ...candidates];
+
+              allCandidatesSource.forEach(c => {
+                if (isCandidateDeleted(c.id, c.email)) return;
+                const emailKey = (c.email || '').toLowerCase().trim();
+                const nameKey = `${c.firstName || ''} ${c.lastName || ''}`.toLowerCase().trim();
+                const s = (emailKey && formApplicantStatuses[emailKey]) || 
+                          (c.email && formApplicantStatuses[c.email]) || 
+                          (c.id && formApplicantStatuses[c.id]) ||
+                          (nameKey && formApplicantStatuses[nameKey]);
+
+                // If candidate moved to Call Letter, Offer, Onboarding, or Rejected, exclude from Documents tab
+                if (s === 'call_letter' || s === 'call-letter' || s === 'callletter' || 
+                    s === 'received_call_letter' || s === 'call_letter_received' || s === 'received-call-letter' || 
+                    s === 'offer' || s === 'onboarded' || s === 'declined') return;
+
+                if (c.stage === 'Call Letter' || c.stage === 'Received Call Letter' || c.stage === 'Offer' || c.stage === 'Onboarding' || c.stage === 'Rejected') return;
+
+                const hasDocSubmission = liveDocumentResponses.some(r => 
+                  (r.email && c.email && r.email.toLowerCase() === c.email.toLowerCase()) ||
+                  r.id === c.id ||
+                  ((r.fullName || '').trim().toLowerCase() === nameKey)
+                ) || (c.attachmentImages && c.attachmentImages.length > 0);
+
+                if (c.stage === 'Documents' || s === 'documents' || hasDocSubmission) {
+                  const key = emailKey || c.id || nameKey;
+                  if (!docsMap.has(key)) {
+                    docsMap.set(key, c);
+                  }
+                }
               });
+
+              // Also include any records directly from liveDocumentResponses not yet in unifiedCandidates
+              liveDocumentResponses.forEach((r, idx) => {
+                if (isCandidateDeleted(r.id, r.email)) return;
+                const emailKey = (r.email || '').toLowerCase().trim();
+                const nameKey = (r.fullName || '').toLowerCase().trim();
+                const s = (emailKey && formApplicantStatuses[emailKey]) || 
+                          (r.email && formApplicantStatuses[r.email]) || 
+                          (r.id && formApplicantStatuses[r.id]) ||
+                          (nameKey && formApplicantStatuses[nameKey]);
+
+                if (s === 'call_letter' || s === 'call-letter' || s === 'callletter' || 
+                    s === 'received_call_letter' || s === 'call_letter_received' || s === 'received-call-letter' || 
+                    s === 'offer' || s === 'onboarded' || s === 'declined') return;
+
+                const key = emailKey || r.id || nameKey;
+                const alreadyExists = Array.from(docsMap.values()).some(existing => 
+                  (emailKey && existing.email && existing.email.toLowerCase().trim() === emailKey) ||
+                  (nameKey && `${existing.firstName} ${existing.lastName}`.trim().toLowerCase() === nameKey)
+                );
+
+                if (!docsMap.has(key) && !alreadyExists) {
+                  const nameParts = (r.fullName || 'Applicant').trim().split(' ');
+                  const fName = nameParts[0] || 'Applicant';
+                  const lName = nameParts.slice(1).join(' ') || '';
+                  docsMap.set(key, {
+                    id: r.id || `sheet-doc-row-${idx + 1}`,
+                    firstName: fName,
+                    lastName: lName,
+                    email: r.email || '',
+                    phone: r.phone || 'N/A',
+                    stage: 'Documents',
+                    source: 'Google Form',
+                    jobTitle: 'Google Form Recruitment',
+                    experience: 'Degree',
+                    appliedDate: r.timestamp || format(new Date(), 'yyyy-MM-dd'),
+                    matchScore: 85,
+                    skills: ['Document Verification'],
+                    avatarColor: 'bg-blue-100 text-blue-600 border-blue-200',
+                    attachmentImages: (r.documents || []).map((d: any) => d.url)
+                  });
+                }
+              });
+
+              const pipelineDocs = Array.from(docsMap.values());
 
               // Also count received records for quick badge
               const receivedCount = liveDocumentResponses.filter(r => !isCandidateDeleted(r.id, r.email)).length;
@@ -5790,6 +5920,12 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                             (`${c.firstName} ${c.lastName}`.trim().toLowerCase() === (r.fullName || '').trim().toLowerCase())
                           ) || (c.attachmentImages && c.attachmentImages.length > 0);
 
+                          const isDocEmailSent = Boolean(
+                            sentDocEmails[c.id] ||
+                            (c.email && sentDocEmails[c.email.toLowerCase()])
+                          );
+                          const isSendingThisDocEmail = sendingDocEmailId === (c.id || c.email);
+
                           return (
                             <div key={c.id} style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '1rem', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 2px 10px rgba(15, 23, 42, 0.03)' }}>
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
@@ -5828,11 +5964,34 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 <button
                                   type="button"
                                   onClick={() => handleSendDocUploadInviteEmail(c)}
+                                  disabled={isSendingThisDocEmail}
                                   className="rec-btn-outline"
-                                  style={{ fontSize: '0.68rem', height: '28px', padding: '0 10px', gap: '4px', color: '#2563eb', borderColor: '#bfdbfe', background: '#eff6ff', fontWeight: 700 }}
-                                  title="Send Document Upload Google Form email to candidate"
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    height: '28px',
+                                    padding: '0 10px',
+                                    gap: '4px',
+                                    color: isDocEmailSent ? '#166534' : '#2563eb',
+                                    borderColor: isDocEmailSent ? '#bbf7d0' : '#bfdbfe',
+                                    background: isDocEmailSent ? '#dcfce7' : '#eff6ff',
+                                    fontWeight: 700,
+                                    cursor: isSendingThisDocEmail ? 'not-allowed' : 'pointer'
+                                  }}
+                                  title={isDocEmailSent ? "Document Upload invitation sent. Click to send again." : "Send Document Upload Google Form email to candidate"}
                                 >
-                                  <Send className="h-3 w-3" /> Resend Email
+                                  {isSendingThisDocEmail ? (
+                                    <>
+                                      <Loader2 className="h-3 w-3 animate-spin" /> Sending...
+                                    </>
+                                  ) : isDocEmailSent ? (
+                                    <>
+                                      <Check className="h-3 w-3" /> Sent
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Send className="h-3 w-3" /> Send
+                                    </>
+                                  )}
                                 </button>
                                 <button
                                   type="button"
@@ -5873,8 +6032,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               );
             })()}
 
-            {/* ════════════════ STAGE 5: DOCUMENTS RECEIVED (LIVE VERIFICATION & AUDIT - GOOGLE SHEET ONLY) ════════════════ */}
+            {/* ════════════════ STAGE 5: DOCUMENTS RECEIVED (LIVE VERIFICATION & AUDIT) ════════════════ */}
             {activeTab === 'stage-documents-received' && (() => {
+              const map = new Map<string, Candidate>();
+
               // 1. Map ONLY the live applicant records from the Google Sheet
               const sheetDocs: Candidate[] = liveDocumentResponses
                 .filter(r => !isCandidateDeleted(r.id, r.email))
@@ -5948,7 +6109,6 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                 });
 
               // Strictly include ONLY candidate records that exist in the Google Sheet
-              const map = new Map<string, Candidate>();
               sheetDocs.forEach(c => {
                 const key = (c.email || c.id || `${c.firstName}_${c.lastName}`).toLowerCase();
                 if (!map.has(key)) {
@@ -5981,12 +6141,17 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <button
                           type="button"
-                          onClick={() => pollLiveDocumentResponses()}
+                          onClick={async () => {
+                            setIsSyncingDocs(true);
+                            await pollLiveDocumentResponses();
+                            setTimeout(() => setIsSyncingDocs(false), 500);
+                          }}
                           className="rec-btn-outline"
                           style={{ fontSize: '0.72rem', height: '32px', padding: '0 12px', gap: '6px', color: '#059669', borderColor: '#a7f3d0', background: '#ecfdf5', fontWeight: 700 }}
                           title="Refresh live Google Sheet document responses"
+                          disabled={isSyncingDocs}
                         >
-                          <RefreshCw className="h-3.5 w-3.5" /> Sync Sheet
+                          <RefreshCw className={`h-3.5 w-3.5 ${isSyncingDocs ? 'animate-spin' : ''}`} /> {isSyncingDocs ? 'Syncing...' : 'Sync Sheet'}
                         </button>
                         <a
                           href={googleDocUploadFormUrl}
