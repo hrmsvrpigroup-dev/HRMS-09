@@ -24,6 +24,13 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../../lib/utils';
+import {
+  renderFormalOfferFullHtml,
+  getOfferLetterPageHtml,
+  getOfferLetterStyles,
+  OfferLetterData,
+  VRPI_WATERMARK_DATA_URI
+} from '../../utils/offerLetterTemplate';
 import './recruitment.css';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -582,6 +589,21 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     } catch (_) {}
   };
 
+  const getStoredOfferCandidates = (): Candidate[] => {
+    try {
+      const saved = localStorage.getItem('hrms_offer_candidates');
+      return saved ? JSON.parse(saved) : [];
+    } catch (_) {
+      return [];
+    }
+  };
+
+  const saveStoredOfferCandidates = (list: Candidate[]) => {
+    try {
+      localStorage.setItem('hrms_offer_candidates', JSON.stringify(list));
+    } catch (_) {}
+  };
+
   const getDeletedApplicants = (): string[] => {
     try {
       const saved = localStorage.getItem('hrms_deleted_applicants');
@@ -1055,11 +1077,91 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     return convert(Math.floor(num)) + ' Rupees Only';
   };
 
+  // Salary & Deductions Calculator according to VR PI Offer Template & Percentage Rules
+  const calculateSalaryBreakdown = (annualCtcNum: number) => {
+    const annualCtc = Math.max(0, Number(annualCtcNum) || 0);
+    const monthlyGross = Math.round(annualCtc / 12);
+
+    // Percentages:
+    // Basic (50%)
+    const basicYearly = Math.round(annualCtc * 0.50);
+    const basicMonthly = Math.round(monthlyGross * 0.50);
+
+    // House Rent Allowance (HRA) (25%)
+    const hraYearly = Math.round(annualCtc * 0.25);
+    const hraMonthly = Math.round(monthlyGross * 0.25);
+
+    // Leave Travel Allowance (LTA) (10%)
+    const ltaYearly = Math.round(annualCtc * 0.10);
+    const ltaMonthly = Math.round(monthlyGross * 0.10);
+
+    // Insurance & Other Allowances (15%)
+    const otherAllowYearly = Math.round(annualCtc * 0.15);
+    const otherAllowMonthly = Math.round(monthlyGross * 0.15);
+
+    // Deductions:
+    const ptMonthly = 200;
+    const ptYearly = 2400;
+
+    const pfMonthly = 1800; // EPF Provident Fund
+    const pfYearly = 21600;
+
+    const otherDeductMonthly = 200;
+    const otherDeductYearly = 2400;
+
+    const totalDeductMonthly = 2200; // 200 + 1800 + 200 = 2200
+    const totalDeductYearly = 26400; // 2400 + 21600 + 2400 = 26400
+
+    const netMonthly = Math.max(0, monthlyGross - totalDeductMonthly);
+    const netYearly = Math.max(0, annualCtc - totalDeductYearly);
+
+    return {
+      annualCtc,
+      monthlyGross,
+      basicYearly,
+      basicMonthly,
+      hraYearly,
+      hraMonthly,
+      ltaYearly,
+      ltaMonthly,
+      otherAllowYearly,
+      otherAllowMonthly,
+      ptMonthly,
+      ptYearly,
+      pfMonthly,
+      pfYearly,
+      otherDeductMonthly,
+      otherDeductYearly,
+      totalDeductMonthly,
+      totalDeductYearly,
+      netMonthly,
+      netYearly,
+    };
+  };
+
   // Stage 7 Offer form state
   const [offerForm, setOfferForm] = useState({
-    salary: '75000',
+    salary: '720000',
     joiningDate: ''
   });
+  const [candidateOfferForms, setCandidateOfferForms] = useState<Record<string, { annualCtc?: string; joiningDate?: string; designation?: string }>>(() => {
+    try {
+      const saved = localStorage.getItem('hrms_candidate_offer_forms');
+      return saved ? JSON.parse(saved) : {};
+    } catch (_) {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('hrms_candidate_offer_forms', JSON.stringify(candidateOfferForms));
+    } catch (_) {}
+  }, [candidateOfferForms]);
+
+  const [previewOfferCandidate, setPreviewOfferCandidate] = useState<Candidate | null>(null);
+  const [previewOfferPage, setPreviewOfferPage] = useState<number>(1);
+  const [previewOfferMode, setPreviewOfferMode] = useState<'all' | 'single'>('all');
 
   // Stage 8 Document uploads mock state
   const [uploadingDocType, setUploadingDocType] = useState<string | null>(null);
@@ -1183,6 +1285,16 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
           const em = cand.email ? cand.email.trim() : '';
           const emLower = em.toLowerCase();
           const id = cand.id ? cand.id.trim() : '';
+          const nameKey = `${cand.firstName || ''} ${cand.lastName || ''}`.trim().toLowerCase();
+
+          // If this candidate was already placed in Offer or Onboarding locally, preserve it unless DB has a newer stage
+          const currentLocalStatus = storedStatuses[em] || storedStatuses[emLower] || (id ? storedStatuses[id] : undefined) || (nameKey ? storedStatuses[nameKey] : undefined);
+          if (currentLocalStatus === 'offer' && cand.stage !== 'Onboarding' && cand.stage !== 'Rejected') {
+            return;
+          }
+          if (currentLocalStatus === 'onboarded' && cand.stage !== 'Rejected') {
+            return;
+          }
 
           let mappedStatus = '';
           if (cand.stage === 'Call Letter' || cand.documentsVerified) {
@@ -1211,13 +1323,13 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
             if (id) {
               storedStatuses[id] = mappedStatus;
             }
-            if (cand.firstName) {
-              storedStatuses[`${cand.firstName} ${cand.lastName || ''}`.trim().toLowerCase()] = mappedStatus;
+            if (nameKey) {
+              storedStatuses[nameKey] = mappedStatus;
             }
           }
         });
 
-        // Database storedStatuses MUST OVERWRITE local machine's stale state
+        // Update formApplicantStatuses state and localStorage
         setFormApplicantStatuses(prev => ({ ...prev, ...storedStatuses }));
         try {
           localStorage.setItem('hrms_form_applicant_statuses', JSON.stringify(storedStatuses));
@@ -1390,6 +1502,23 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
           }
         });
 
+        // Merge stored offer candidates into allCandidates
+        const storedOffers = getStoredOfferCandidates();
+        storedOffers.forEach(so => {
+          const idx = allCandidates.findIndex(c => (c.email && so.email && c.email.toLowerCase() === so.email.toLowerCase()) || (c.id && c.id === so.id));
+          if (idx >= 0) {
+            allCandidates[idx] = {
+              ...allCandidates[idx],
+              stage: 'Offer',
+              offerSalary: so.offerSalary || allCandidates[idx].offerSalary,
+              offerJoiningDate: so.offerJoiningDate || allCandidates[idx].offerJoiningDate,
+              offerStatus: so.offerStatus || allCandidates[idx].offerStatus,
+            };
+          } else {
+            allCandidates.unshift({ ...so, stage: 'Offer' });
+          }
+        });
+
         // Apply local storage statuses to all candidates (case-insensitive) - MUST RUN AFTER MERGING
         allCandidates.forEach(cand => {
           const status = storedStatuses[cand.email] || (cand.email ? storedStatuses[cand.email.toLowerCase()] : undefined) || (cand.id ? storedStatuses[cand.id] : undefined);
@@ -1473,8 +1602,9 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
       const storedShortlisted = getStoredShortlistedCandidates().filter(c => !isCandidateDeleted(c.id, c.email));
       const storedScheduled = getStoredScheduledInterviews().filter(c => !isCandidateDeleted(c.id, c.email));
+      const storedOffers = getStoredOfferCandidates().filter(c => !isCandidateDeleted(c.id, c.email));
 
-      const fallbackList: Candidate[] = [...storedShortlisted, ...storedScheduled];
+      const fallbackList: Candidate[] = [...storedShortlisted, ...storedScheduled, ...storedOffers];
       DEFAULT_FALLBACK_APPLICANTS.forEach(fb => {
         if (isCandidateDeleted(fb.id, fb.email)) return;
         const isAccepted = storedStatuses[fb.email] === 'accepted' || storedStatuses[fb.id] === 'accepted' || storedStatuses[fb.email.toLowerCase()] === 'accepted';
@@ -2170,17 +2300,36 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
   // Generate & extend Offer
   const handleExtendOfferSubmit = async (candidateId: string) => {
-    if (!offerForm.joiningDate || !offerForm.salary) {
-      alert('Please fill out Joining Date and Base Salary.');
+    const candForm = candidateOfferForms[candidateId] || {};
+    const cand = candidates.find(c => c.id === candidateId);
+    const annualCtcStr = candForm.annualCtc || (cand?.offerSalary ? (cand.offerSalary > 100000 ? cand.offerSalary.toString() : (cand.offerSalary * 12).toString()) : offerForm.salary);
+    const joiningDate = candForm.joiningDate || offerForm.joiningDate || format(new Date(Date.now() + 7 * 86400000), 'yyyy-MM-dd');
+
+    if (!joiningDate || !annualCtcStr) {
+      alert('Please fill out Joining Date and Annual CTC.');
       return;
     }
+
+    const annualCtc = Number(annualCtcStr);
+    const monthlyGross = Math.round(annualCtc / 12);
+
     try {
-      await api.patch(`/recruitment/applications/${candidateId}/offer`, {
-        offerSalary: Number(offerForm.salary),
-        offerJoiningDate: offerForm.joiningDate,
+      if (candidateId && !candidateId.startsWith('cand-')) {
+        await api.patch(`/recruitment/applications/${candidateId}/offer`, {
+          offerSalary: monthlyGross,
+          offerJoiningDate: joiningDate,
+          offerStatus: 'SENT'
+        });
+      }
+
+      setCandidates(prev => prev.map(c => c.id === candidateId ? {
+        ...c,
+        offerSalary: monthlyGross,
+        offerJoiningDate: joiningDate,
         offerStatus: 'SENT'
-      });
-      alert('Offer extended and sent to candidate successfully!');
+      } : c));
+
+      alert(`🎉 Offer Letter issued successfully with Annual CTC ₹${annualCtc.toLocaleString('en-IN')} (Gross: ₹${monthlyGross.toLocaleString('en-IN')}/mo)!`);
       await loadRecruitmentData();
     } catch (err) {
       alert('Failed to extend offer.');
@@ -2924,7 +3073,61 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     }
   };
 
-  // Pass Call Letter and proceed to Stage 6: Received Call Letter Stage
+  // Generate & Download / Print Full Official 14-Page VR PI Offer Letter with Detailed Annexure
+  const handleDownloadFormalOfferLetter = (cand: Candidate, annualCtcOverride?: number, joiningDateOverride?: string) => {
+    const candForm = candidateOfferForms[cand.id] || (cand.email ? candidateOfferForms[cand.email] : undefined) || (cand.email ? candidateOfferForms[cand.email.toLowerCase().trim()] : undefined) || {};
+    const candName = cand.customName || `${cand.firstName || ''} ${cand.lastName || ''}`.trim() || 'Candidate';
+    const cleanJobTitle = (cand.jobTitle || '')
+      .replace(/\s*\([^)]*Google\s*Form[^)]*\)/gi, '')
+      .replace(/\s*\(Google Form Recruitment\)/gi, '')
+      .replace(/Google Form Recruitment/gi, '')
+      .replace(/Selected Candidate/gi, 'Associate Software Engineer')
+      .trim() || 'Associate Software Engineer';
+    const role = cand.callLetterDesignation || cleanJobTitle;
+    const department = (cand as any).department || 'IT Department';
+
+    const annualCtcNum = annualCtcOverride !== undefined 
+      ? annualCtcOverride 
+      : (candForm.annualCtc ? Number(candForm.annualCtc) : (cand.offerSalary ? (cand.offerSalary > 100000 ? cand.offerSalary : cand.offerSalary * 12) : 720000));
+
+    const joiningDateStr = joiningDateOverride || candForm.joiningDate || cand.offerJoiningDate || format(new Date(Date.now() + 7 * 86400000), 'dd-MMM-yyyy');
+
+    const dateObj = new Date();
+    const currentYear = dateObj.getFullYear();
+    const nextYearShort = String((currentYear + 1) % 100).padStart(2, '0');
+    const financialYear = `${currentYear}${nextYearShort}`;
+    const monthDate = `${String(dateObj.getMonth() + 1).padStart(2, '0')}${String(dateObj.getDate()).padStart(2, '0')}`;
+    const code = getCandidateCode(cand);
+    const defaultSlNo = code ? code.padStart(4, '0') : '0001';
+    const refNo = `${financialYear}/${monthDate}/${defaultSlNo}`;
+    const todayFormatted = format(new Date(), 'dd/MM/yyyy');
+
+    const offerData: OfferLetterData = {
+      candidateName: candName,
+      jobTitle: role,
+      department: department,
+      annualCtc: annualCtcNum,
+      joiningDate: joiningDateStr,
+      referenceNo: refNo,
+      offerDate: todayFormatted,
+      genderPrefix: 'Mr./Ms.'
+    };
+
+    const fullHtml = renderFormalOfferFullHtml(offerData);
+
+    const printWindow = window.open('', '_blank', 'width=950,height=1000');
+    if (printWindow) {
+      printWindow.document.open();
+      printWindow.document.write(fullHtml);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+      }, 500);
+    }
+  };
+
+  // Pass Call Letter and proceed to Stage 7: Received Call Letter Stage
   const handlePassCallLetterToReceived = async (candidateId: string) => {
     try {
       const target = candidates.find(c => c.id === candidateId || c.email === candidateId);
@@ -2980,7 +3183,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         }
       }
 
-      alert('📥 Call letter marked as Received! Proceeding to Stage 6: Received Call Letter.');
+      alert('📥 Call letter marked as Received! Proceeding to Stage 7: Received Call Letter.');
       await loadRecruitmentData();
       setActiveTab('stage-received-call-letter');
     } catch (err) {
@@ -2988,7 +3191,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     }
   };
 
-  // Move / Revert candidate back to Stage 5: Call Letter from Received Call Letter
+  // Move / Revert candidate back to Stage 6: Call Letter from Received Call Letter
   const handleRevertReceivedToCallLetter = async (candidateId: string) => {
     try {
       const target = candidates.find(c => c.id === candidateId || c.email === candidateId);
@@ -3031,7 +3234,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         return c;
       }));
 
-      alert('↩️ Candidate profile successfully moved back to Stage 5: Call Letter!');
+      alert('↩️ Candidate profile successfully moved back to Stage 6: Call Letter!');
       await loadRecruitmentData();
       setActiveTab('stage-call-letter');
     } catch (err) {
@@ -3039,13 +3242,26 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     }
   };
 
-  // Pass Received Call Letter and proceed to Stage 7: Offer Stage
+  // Pass Received Call Letter and proceed to Stage 8: Offer Stage
   const handlePassReceivedToOffer = async (candidateId: string, candObj?: Candidate) => {
     try {
-      const target = candObj || candidates.find(c => c.id === candidateId || c.email === candidateId) || liveReceivedCallLetterResponses.find(r => r.id === candidateId || r.email === candidateId);
-      const candEmail = target?.email || (candidateId.includes('@') ? candidateId : undefined);
-      const candName = (target as any)?.customName || (target as any)?.fullName || (target ? `${(target as any).firstName || ''} ${(target as any).lastName || ''}`.trim() : 'Candidate');
-      const targetSalary = target?.offerSalary !== undefined ? target.offerSalary : (offerForm.salary ? Number(offerForm.salary) : 75000);
+      const target = candObj || candidates.find(c => c.id === candidateId || (c.email && c.email.toLowerCase().trim() === candidateId.toLowerCase().trim())) || liveReceivedCallLetterResponses.find(r => r.id === candidateId || (r.email && r.email.toLowerCase().trim() === candidateId.toLowerCase().trim()));
+      const rawEmail = target?.email || (candidateId.includes('@') ? candidateId : undefined);
+      const candEmail = rawEmail ? rawEmail.trim() : '';
+      const cleanEmail = candEmail.toLowerCase();
+      const candName = (target as any)?.customName || (target as any)?.fullName || (target ? `${(target as any).firstName || ''} ${(target as any).lastName || ''}`.trim() : 'Candidate') || 'Candidate';
+      const targetSalary = target?.offerSalary !== undefined && target.offerSalary > 0 ? target.offerSalary : (offerForm.salary ? Number(offerForm.salary) : 60000);
+      const ctcVal = targetSalary > 100000 ? String(targetSalary) : String(targetSalary * 12 || 720000);
+
+      // Un-delete if this candidate or email was ever marked deleted
+      try {
+        const deleted = getDeletedApplicants().filter(d => 
+          d !== candidateId && 
+          (!cleanEmail || (d !== candEmail && d.toLowerCase() !== cleanEmail && d.trim().toLowerCase() !== cleanEmail)) &&
+          (!target?.id || d !== target.id)
+        );
+        localStorage.setItem('hrms_deleted_applicants', JSON.stringify(deleted));
+      } catch (_) {}
 
       // 1. Synchronously persist to formApplicantStatuses
       let updatedStatuses: { [key: string]: any } = {};
@@ -3056,7 +3272,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       
       if (candEmail) {
         updatedStatuses[candEmail] = 'offer';
-        updatedStatuses[candEmail.toLowerCase()] = 'offer';
+        updatedStatuses[cleanEmail] = 'offer';
+        updatedStatuses[candEmail.trim()] = 'offer';
       }
       if (candidateId) {
         updatedStatuses[candidateId] = 'offer';
@@ -3064,70 +3281,118 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       if (target?.id) {
         updatedStatuses[target.id] = 'offer';
       }
+      if (candName) {
+        updatedStatuses[candName.toLowerCase().trim()] = 'offer';
+      }
       try {
         localStorage.setItem('hrms_form_applicant_statuses', JSON.stringify(updatedStatuses));
       } catch (_) {}
       setFormApplicantStatuses(updatedStatuses);
 
-      // 2. Update scheduled interviews in localStorage
+      // 2. Pre-fill candidate offer form with default Annual CTC and joining date
+      const defaultJoiningDate = format(new Date(Date.now() + 7 * 86400000), 'yyyy-MM-dd');
+      setCandidateOfferForms(prev => ({
+        ...prev,
+        [candidateId]: { annualCtc: ctcVal, joiningDate: defaultJoiningDate },
+        ...(target?.id ? { [target.id]: { annualCtc: ctcVal, joiningDate: defaultJoiningDate } } : {}),
+        ...(candEmail ? { [candEmail]: { annualCtc: ctcVal, joiningDate: defaultJoiningDate } } : {}),
+        ...(cleanEmail ? { [cleanEmail]: { annualCtc: ctcVal, joiningDate: defaultJoiningDate } } : {})
+      }));
+
+      const candId = target?.id && !target.id.startsWith('sheet-cl-rec-row-') ? target.id : (cleanEmail ? `offer-${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}` : (candidateId || `cand-offer-${Date.now()}`));
+
+      const offerCandidateObj: Candidate = {
+        ...(target ? (target as any) : {
+          id: candId,
+          firstName: candName.split(' ')[0] || candName,
+          lastName: candName.split(' ').slice(1).join(' ') || '',
+          email: candEmail || '',
+          phone: (target as any)?.phone || 'N/A',
+          source: 'Google Form (Received Call Letter)',
+          jobTitle: 'Associate Software Engineer',
+          experience: 'Selected Candidate',
+          location: 'Wanaparthy / Hyderabad',
+          appliedDate: format(new Date(), 'yyyy-MM-dd'),
+          matchScore: 95,
+          skills: ['Offer Letter']
+        }),
+        id: candId,
+        customName: candName,
+        stage: 'Offer',
+        callLetterStatus: 'ISSUED',
+        offerSalary: targetSalary,
+        callLetterDesignation: target?.callLetterDesignation || (target as any)?.jobTitle || 'Associate Software Engineer',
+        avatarColor: 'bg-orange-100 text-orange-600 border-orange-200'
+      };
+
+      // 3. Persist to stored offer candidates
+      const currentOffers = getStoredOfferCandidates();
+      const existingOfferIdx = currentOffers.findIndex(c => 
+        c.id === candId || 
+        c.id === candidateId || 
+        (cleanEmail && c.email && c.email.trim().toLowerCase() === cleanEmail) || 
+        (target?.id && c.id === target.id) ||
+        (candName && c.customName && c.customName.trim().toLowerCase() === candName.trim().toLowerCase())
+      );
+      if (existingOfferIdx >= 0) {
+        currentOffers[existingOfferIdx] = { ...currentOffers[existingOfferIdx], ...offerCandidateObj };
+      } else {
+        currentOffers.unshift(offerCandidateObj);
+      }
+      saveStoredOfferCandidates(currentOffers);
+
+      // 4. Update scheduled interviews in localStorage
       const currentScheduled = getStoredScheduledInterviews();
       const updatedScheduled = currentScheduled.map(c => {
-        if (c.id === candidateId || (candEmail && c.email && c.email.toLowerCase() === candEmail.toLowerCase())) {
+        if (c.id === candidateId || c.id === candId || (cleanEmail && c.email && c.email.toLowerCase().trim() === cleanEmail)) {
           return { ...c, stage: 'Offer', callLetterStatus: 'ISSUED', offerSalary: targetSalary, customName: candName };
         }
         return c;
       });
       saveStoredScheduledInterviews(updatedScheduled);
 
-      // 3. Update React state immediately (adding new candidate if not already present)
+      // 5. Update React state immediately
       setCandidates(prev => {
-        const exists = prev.some(c => c.id === candidateId || (candEmail && c.email && c.email.toLowerCase() === candEmail.toLowerCase()) || (target?.id && c.id === target.id));
+        const exists = prev.some(c => 
+          c.id === candidateId || 
+          c.id === candId || 
+          (cleanEmail && c.email && c.email.toLowerCase().trim() === cleanEmail) || 
+          (target?.id && c.id === target.id)
+        );
         if (exists) {
           return prev.map(c => {
-            if (c.id === candidateId || (candEmail && c.email && c.email.toLowerCase() === candEmail.toLowerCase()) || (target?.id && c.id === target.id)) {
-              return { ...c, stage: 'Offer', callLetterStatus: 'ISSUED', offerSalary: targetSalary, customName: candName };
+            if (c.id === candidateId || c.id === candId || (cleanEmail && c.email && c.email.toLowerCase().trim() === cleanEmail) || (target?.id && c.id === target.id)) {
+              return { ...c, ...offerCandidateObj, stage: 'Offer', callLetterStatus: 'ISSUED', offerSalary: targetSalary, customName: candName };
             }
             return c;
           });
         } else {
-          const newCand: Candidate = {
-            id: candidateId || `cand-offer-${Date.now()}`,
-            firstName: candName.split(' ')[0] || candName,
-            lastName: candName.split(' ').slice(1).join(' ') || '',
-            customName: candName,
-            email: candEmail || '',
-            phone: (target as any)?.phone || 'N/A',
-            stage: 'Offer',
-            callLetterStatus: 'ISSUED',
-            offerSalary: targetSalary,
-            source: 'Google Form (Received Call Letter)',
-            jobTitle: 'Selected Candidate',
-            experience: 'Selected Candidate',
-            location: 'Wanaparthy / Hyderabad',
-            appliedDate: format(new Date(), 'yyyy-MM-dd'),
-            matchScore: 95,
-            skills: ['Offer Letter'],
-            avatarColor: 'bg-orange-100 text-orange-600 border-orange-200'
-          };
-          return [newCand, ...prev];
+          return [offerCandidateObj, ...prev];
         }
       });
 
-      // 4. Update offerForm salary for active editing
-      setOfferForm(prev => ({ ...prev, salary: String(targetSalary) }));
+      // 6. Update offerForm salary for active editing
+      setOfferForm(prev => ({ ...prev, salary: ctcVal }));
 
-      // 5. Instantly switch to Stage 7: Offer Letter
+      // 7. Switch immediately to Stage 8: Offer Letter tab
       setActiveTab('stage-7');
 
-      if (candidateId && !candidateId.startsWith('cand-') && !candidateId.startsWith('sheet-')) {
+      if (candidateId) {
         try {
           await api.patch(`/recruitment/applications/${candidateId}/status`, {
-            status: 'OFFER'
+            status: 'OFFER',
+            email: candEmail || undefined,
+            name: candName || undefined,
+            offerSalary: targetSalary
           });
         } catch (err) {
           console.warn('Backend update status warning:', err);
         }
       }
+
+      alert(`🎉 Candidate ${candName} successfully moved to Stage 8: Offer!`);
+      await loadRecruitmentData(false);
+      setActiveTab('stage-7');
     } catch (err) {
       alert('Failed to advance candidate to Offer stage.');
     }
@@ -3135,7 +3400,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
   const handlePassCallLetterToOffer = handlePassReceivedToOffer;
 
-  // Move / Revert candidate back to Stage 6: Received Call Letter from Offer Stage
+  // Move / Revert candidate back to Stage 7: Received Call Letter from Offer Stage
   const handleRevertOfferToReceived = async (candidateId: string) => {
     try {
       const target = candidates.find(c => c.id === candidateId || c.email === candidateId);
@@ -3162,6 +3427,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       } catch (_) {}
       setFormApplicantStatuses(updatedStatuses);
 
+      // Remove from stored offer candidates
+      const currentOffers = getStoredOfferCandidates().filter(c => c.id !== candidateId && (!candEmail || (c.email && c.email.toLowerCase() !== candEmail.toLowerCase())));
+      saveStoredOfferCandidates(currentOffers);
+
       const currentScheduled = getStoredScheduledInterviews();
       const updatedScheduled = currentScheduled.map(c => {
         if (c.id === candidateId || (candEmail && c.email && c.email.toLowerCase() === candEmail.toLowerCase())) {
@@ -3178,7 +3447,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         return c;
       }));
 
-      alert('↩️ Candidate profile successfully moved back to Stage 6: Received Call Letter!');
+      alert('↩️ Candidate profile successfully moved back to Stage 7: Received Call Letter!');
       await loadRecruitmentData();
       setActiveTab('stage-received-call-letter');
     } catch (err) {
@@ -3284,7 +3553,52 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       }
     });
 
-    // 3. Default fallback applicants
+    // 3. Live Received Call Letter responses
+    liveReceivedCallLetterResponses.forEach((r, idx) => {
+      if (r.email && !isCandidateDeleted(r.id, r.email)) {
+        const key = r.email.toLowerCase();
+        const status = formApplicantStatuses[r.email] || formApplicantStatuses[r.id] || (key ? formApplicantStatuses[key] : undefined);
+        let stage: Candidate['stage'] = 'Received Call Letter';
+        if (status === 'accepted') stage = 'Shortlisting';
+        else if (status === 'declined') stage = 'Rejected';
+        else if (status === 'interview' || status === 'scheduled') stage = 'Interviews';
+        else if (status === 'documents') stage = 'Documents';
+        else if (status === 'call_letter' || status === 'call-letter') stage = 'Call Letter';
+        else if (status === 'received_call_letter') stage = 'Received Call Letter';
+        else if (status === 'offer') stage = 'Offer';
+        else if (status === 'onboarded') stage = 'Onboarding';
+
+        if (!map.has(key)) {
+          const nameParts = (r.fullName || 'Candidate').split(' ');
+          map.set(key, {
+            id: r.id || `cand-rec-${idx + 1}-${r.email}`,
+            firstName: nameParts[0] || 'Candidate',
+            lastName: nameParts.slice(1).join(' ') || '',
+            customName: r.fullName,
+            email: r.email,
+            phone: r.phone || 'N/A',
+            location: 'Wanaparthy / Hyderabad',
+            experience: 'Selected Candidate',
+            appliedDate: r.timestamp || format(new Date(), 'yyyy-MM-dd'),
+            source: 'Google Form (Received Call Letter)',
+            jobTitle: 'Associate Software Engineer',
+            stage: stage,
+            matchScore: 92,
+            skills: ['Call Letter', 'Offer'],
+            avatarColor: 'bg-indigo-100 text-indigo-600 border-indigo-200'
+          });
+        } else {
+          const existing = map.get(key)!;
+          if (status === 'offer' || status === 'onboarded') {
+            map.set(key, { ...existing, stage: stage });
+          } else if (existing.stage !== 'Offer' && existing.stage !== 'Onboarding' && existing.stage !== 'Rejected') {
+            map.set(key, { ...existing, stage: 'Received Call Letter' });
+          }
+        }
+      }
+    });
+
+    // 4. Default fallback applicants
     DEFAULT_FALLBACK_APPLICANTS.forEach(fb => {
       if (isCandidateDeleted(fb.id, fb.email)) return;
       const key = fb.email.toLowerCase();
@@ -3335,7 +3649,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       !c.email?.includes('@example.com') &&
       !c.email?.includes('employee_')
     );
-  }, [candidates, liveSheetResponses, formApplicantStatuses, liveDocumentResponses]);
+  }, [candidates, liveSheetResponses, liveReceivedCallLetterResponses, formApplicantStatuses, liveDocumentResponses]);
 
   // Helper values for dashboard charts and metrics
   const boardCandidates = unifiedCandidates;
@@ -6377,7 +6691,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <h2 className="rec-section-title" style={{ fontSize: '1.3rem', fontWeight: 800, margin: 0, color: '#0f172a', letterSpacing: '-0.02em' }}>
-                              Stage 5: Call Letter Issuance & Appointment Notice
+                              Stage 6: Call Letter Issuance & Appointment Notice
                             </h2>
                             <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '99px', background: '#f3e8ff', color: '#7e22ce', border: '1px solid #d8b4fe' }}>
                               {callLetterCandidates.length} Candidates Ready
@@ -6416,7 +6730,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                         </a>
 
                         <span style={{ fontSize: '0.75rem', color: '#6b21a8', background: '#faf5ff', padding: '6px 12px', borderRadius: '0.75rem', border: '1px solid #e9d5ff', fontWeight: 700 }}>
-                          Step 5 of Recruitment Pipeline
+                          Step 6 of Recruitment Pipeline
                         </span>
                       </div>
                     </div>
@@ -6462,7 +6776,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                             <MailCheck className="h-8 w-8 text-purple-300" />
                             <p style={{ margin: 0, fontWeight: 700, color: '#64748b' }}>No candidates currently in Call Letter Stage</p>
                             <p style={{ margin: 0, fontSize: '0.75rem', color: '#94a3b8' }}>
-                              Candidates whose documents are verified in Stage 4: Documents will automatically appear here.
+                              Candidates whose documents are verified in Stage 5: Documents Received will automatically appear here.
                             </p>
                           </div>
                         </div>
@@ -6777,7 +7091,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <h2 className="rec-section-title" style={{ fontSize: '1.3rem', fontWeight: 800, margin: 0, color: '#0f172a', letterSpacing: '-0.02em' }}>
-                              Stage 6: Received Call Letter & Candidate Acceptance
+                              Stage 7: Received Call Letter & Candidate Acceptance
                             </h2>
                             <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '99px', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac' }}>
                               {receivedCallLetterCandidates.length} Candidates Received
@@ -6839,7 +7153,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                         </a>
 
                         <span style={{ fontSize: '0.75rem', color: '#047857', background: '#ecfdf5', padding: '6px 12px', borderRadius: '0.75rem', border: '1px solid #a7f3d0', fontWeight: 700 }}>
-                          Step 6 of Recruitment Pipeline
+                          Step 7 of Recruitment Pipeline
                         </span>
                       </div>
                     </div>
@@ -7004,7 +7318,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                                     <button
                                       type="button"
-                                      onClick={() => handlePassReceivedToOffer(matchingCand.id)}
+                                      onClick={async () => {
+                                        await handlePassReceivedToOffer(matchingCand.id, matchingCand);
+                                        setActiveTab('stage-7');
+                                      }}
                                       className="rec-btn-primary"
                                       style={{
                                         height: '28px',
@@ -7070,7 +7387,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                         fontWeight: 700,
                                         borderRadius: '6px'
                                       }}
-                                      title="Move back to Stage 5: Call Letter"
+                                      title="Move back to Stage 6: Call Letter"
                                     >
                                       <ArrowLeft className="h-3 w-3" /> Back
                                     </button>
@@ -7087,89 +7404,319 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               );
             })()}
 
-            {/* ════════════════ STAGE 7: OFFER (STAGE 7) ════════════════ */}
+            {/* ════════════════ STAGE 8: OFFER (STAGE 8) ════════════════ */}
             {activeTab === 'stage-7' && (() => {
-              const offerCandidates = candidates.filter(c => {
-                const s = formApplicantStatuses[c.email] || (c.email ? formApplicantStatuses[c.email.toLowerCase()] : undefined) || (c.id ? formApplicantStatuses[c.id] : undefined);
-                if (s === 'onboarded' || s === 'declined') return false;
-                if (c.stage === 'Onboarding' || c.stage === 'Rejected') return false;
-                return c.stage === 'Offer' || s === 'offer';
+              const storedOffer = getStoredOfferCandidates();
+              const map = new Map<string, Candidate>();
+
+              // 1. Add all candidates from storedOffer (candidates explicitly passed to Offer stage via Offer button)
+              storedOffer.forEach((c: Candidate) => {
+                if (isCandidateDeleted(c.id, c.email)) return;
+                const emailKey = c.email ? c.email.trim().toLowerCase() : undefined;
+                const nameKey = (c.customName || `${c.firstName || ''} ${c.lastName || ''}`).trim().toLowerCase();
+                const key = emailKey || c.id || nameKey;
+                if (!key) return;
+
+                const s = (c.email ? formApplicantStatuses[c.email] : undefined) || 
+                          (emailKey ? formApplicantStatuses[emailKey] : undefined) || 
+                          (c.id ? formApplicantStatuses[c.id] : undefined) ||
+                          (nameKey ? formApplicantStatuses[nameKey] : undefined);
+                if (s === 'onboarded' || s === 'declined') return;
+                if (c.stage === 'Onboarding' || c.stage === 'Rejected') return;
+
+                map.set(key, {
+                  ...c,
+                  stage: 'Offer',
+                  callLetterDesignation: c.callLetterDesignation || c.jobTitle || 'Associate Software Engineer',
+                  offerSalary: (c.offerSalary && c.offerSalary > 0) ? c.offerSalary : 60000
+                });
               });
+
+              // 2. Add candidates from candidates & unifiedCandidates if stage is Offer or status is offer or in storedOffer
+              [...candidates, ...unifiedCandidates].forEach((c: Candidate) => {
+                if (isCandidateDeleted(c.id, c.email)) return;
+                const emailKey = c.email ? c.email.trim().toLowerCase() : undefined;
+                const nameKey = (c.customName || `${c.firstName || ''} ${c.lastName || ''}`).trim().toLowerCase();
+                const key = emailKey || c.id || nameKey;
+                if (!key) return;
+
+                const s = (c.email ? formApplicantStatuses[c.email] : undefined) || 
+                          (emailKey ? formApplicantStatuses[emailKey] : undefined) || 
+                          (c.id ? formApplicantStatuses[c.id] : undefined) ||
+                          (nameKey ? formApplicantStatuses[nameKey] : undefined);
+                if (s === 'onboarded' || s === 'declined') return;
+                if (c.stage === 'Onboarding' || c.stage === 'Rejected') return;
+
+                const isOffer = c.stage === 'Offer' || s === 'offer' || storedOffer.some(so => (so.email && c.email && so.email.trim().toLowerCase() === c.email.trim().toLowerCase()) || so.id === c.id);
+                if (isOffer) {
+                  if (!map.has(key)) {
+                    map.set(key, {
+                      ...c,
+                      stage: 'Offer',
+                      callLetterDesignation: c.callLetterDesignation || c.jobTitle || 'Associate Software Engineer',
+                      offerSalary: (c.offerSalary && c.offerSalary > 0) ? c.offerSalary : 60000
+                    });
+                  } else {
+                    const existing = map.get(key)!;
+                    map.set(key, {
+                      ...existing,
+                      ...c,
+                      stage: 'Offer',
+                      customName: c.customName || existing.customName,
+                      callLetterDesignation: c.callLetterDesignation || existing.callLetterDesignation || c.jobTitle || existing.jobTitle,
+                      offerSalary: (c.offerSalary && c.offerSalary > 0) ? c.offerSalary : (existing.offerSalary || 60000)
+                    });
+                  }
+                }
+              });
+
+              // 3. Add candidates from liveReceivedCallLetterResponses if their status is offer or present in storedOffer
+              liveReceivedCallLetterResponses.forEach((r: any, idx: number) => {
+                if (isCandidateDeleted(r.id, r.email)) return;
+                const rEmail = r.email ? r.email.trim().toLowerCase() : '';
+                const rName = (r.fullName || '').trim().toLowerCase();
+                const s = (r.email ? formApplicantStatuses[r.email] : undefined) || 
+                          (rEmail ? formApplicantStatuses[rEmail] : undefined) || 
+                          (r.id ? formApplicantStatuses[r.id] : undefined) ||
+                          (rName ? formApplicantStatuses[rName] : undefined);
+
+                const inStored = storedOffer.some(so => (so.email && rEmail && so.email.trim().toLowerCase() === rEmail) || so.id === r.id);
+
+                if (s === 'offer' || inStored) {
+                  const key = rEmail || r.id || rName || `sheet-cl-rec-row-${idx + 1}`;
+                  if (!map.has(key)) {
+                    const nameParts = (r.fullName || 'Candidate').trim().split(' ');
+                    map.set(key, {
+                      id: r.id || `sheet-cl-rec-row-${idx + 1}`,
+                      firstName: nameParts[0] || 'Candidate',
+                      lastName: nameParts.slice(1).join(' ') || '',
+                      customName: r.fullName || 'Candidate',
+                      email: r.email || '',
+                      phone: r.phone || 'N/A',
+                      stage: 'Offer',
+                      callLetterStatus: 'ISSUED',
+                      callLetterDesignation: 'Associate Software Engineer',
+                      offerSalary: 60000,
+                      source: 'Google Form (Received Call Letter)',
+                      jobTitle: 'Associate Software Engineer',
+                      experience: 'Selected Candidate',
+                      location: 'Wanaparthy / Hyderabad',
+                      appliedDate: r.timestamp || format(new Date(), 'yyyy-MM-dd'),
+                      matchScore: 95,
+                      skills: ['Offer Letter'],
+                      avatarColor: 'bg-orange-100 text-orange-600 border-orange-200'
+                    });
+                  }
+                }
+              });
+
+              const offerCandidates = Array.from(map.values());
 
               return (
                 <div className="rec-card" style={{ padding: '1.5rem' }}>
-                  <h2 className="rec-section-title" style={{ marginBottom: '0.5rem' }}>Stage 7: Offer Letter Administration</h2>
-                  <p className="rec-section-sub" style={{ marginBottom: '1.5rem' }}>Draft salary details and issue contracts to candidates who completed Call Letter verification & acceptance</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+                    <div>
+                      <h2 className="rec-section-title" style={{ marginBottom: '0.25rem' }}>Stage 8: Offer Letter Administration</h2>
+                      <p className="rec-section-sub">
+                        Enter Candidate Annual CTC to auto-compute 50% Basic, 25% HRA, 10% LTA, 15% Other Allowances, and ₹2,200 Deductions (EPF ₹1,800 + PT ₹200 + Other ₹200) matching VR PI Offer Letter standard.
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                        Total Offer Pipeline: {offerCandidates.length}
+                      </span>
+                    </div>
+                  </div>
                   
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '1.5rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: '1.5rem' }}>
                     {offerCandidates.length === 0 ? (
-                      <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '3rem', background: '#f8fafc', borderRadius: '1rem', border: '1px solid #e2e8f0', color: '#94a3b8', fontSize: '0.75rem' }}>
-                        No candidates currently in Offer Phase. Mark candidates as passed in Stage 6: Received Call Letter.
+                      <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '3rem 1.5rem', background: '#f8fafc', borderRadius: '1rem', border: '1px dashed #cbd5e1', color: '#64748b', fontSize: '0.8rem' }}>
+                        <Award className="h-10 w-10 text-orange-400 mx-auto mb-2 opacity-70" />
+                        <p style={{ fontWeight: 700, color: '#334155', fontSize: '0.9rem' }}>No candidates currently in Offer Phase</p>
                       </div>
                     ) : (
-                      offerCandidates.map(c => (
-                        <div key={c.id} style={{ background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: '1rem', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 1px 4px rgba(0,0,0,0.02)' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
-                            <div>
-                              <h3 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a' }}>{c.customName || `${c.firstName} ${c.lastName}`.trim()}</h3>
-                              <p style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>{c.jobTitle} · Exp: {c.experience}</p>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <button
-                                type="button"
-                                onClick={() => handleRevertOfferToReceived(c.id)}
-                                className="rec-btn-outline"
-                                style={{ fontSize: '0.65rem', height: '24px', padding: '0 8px', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', gap: '4px', fontWeight: 700 }}
-                                title="Move candidate back to Received Call Letter stage"
-                              >
-                                <ArrowLeft className="h-3 w-3" /> Back to Received Call Letter
-                              </button>
-                              <span className={cn(
-                                'px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase',
-                                c.offerStatus === 'SENT' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-amber-50 text-amber-600 border-amber-100'
-                              )}>
-                                {c.offerStatus || 'PENDING'}
-                              </span>
-                            </div>
-                          </div>
+                      offerCandidates.map(c => {
+                        const candForm = candidateOfferForms[c.id] || (c.email ? candidateOfferForms[c.email] : undefined) || (c.email ? candidateOfferForms[c.email.toLowerCase()] : undefined) || {};
+                        const defaultCtc = c.offerSalary ? (c.offerSalary > 100000 ? c.offerSalary : c.offerSalary * 12) : 720000;
+                        const annualCtcStr = candForm.annualCtc !== undefined ? candForm.annualCtc : String(defaultCtc);
+                        const joiningDate = candForm.joiningDate !== undefined ? candForm.joiningDate : (c.offerJoiningDate || offerForm.joiningDate || format(new Date(Date.now() + 7 * 86400000), 'yyyy-MM-dd'));
+                        const annualCtcNum = Number(annualCtcStr) || 0;
+                        const breakdown = calculateSalaryBreakdown(annualCtcNum);
 
-                          {c.offerStatus !== 'SENT' ? (
-                            <div className="flex flex-col gap-3">
-                              <div className="auth-luxury-label">
-                                Joining Date
-                                <input 
-                                  type="date" 
-                                  className="rec-search-input" 
-                                  style={{ width: '100%', paddingLeft: '1rem', height: '36px' }}
-                                  value={offerForm.joiningDate}
-                                  onChange={e => setOfferForm({...offerForm, joiningDate: e.target.value})}
-                                />
+                        return (
+                          <div key={c.id} style={{ background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: '1rem', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.85rem', boxShadow: '0 4px 15px -3px rgba(0,0,0,0.04)' }}>
+                            {/* Candidate Header */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
+                              <div>
+                                <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>{c.customName || `${c.firstName} ${c.lastName}`.trim()}</h3>
+                                <p style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>
+                                  {c.callLetterDesignation || (c.jobTitle || '').replace(/\s*\([^)]*Google\s*Form[^)]*\)/gi, '').replace(/\s*\(Google Form Recruitment\)/gi, '').replace(/Google Form Recruitment/gi, '').trim() || 'Associate Software Engineer'} · {c.email}
+                                </p>
                               </div>
-                              <div className="auth-luxury-label">
-                                Base Salary (INR gross/month)
-                                <input 
-                                  type="number" 
-                                  className="rec-search-input" 
-                                  style={{ width: '100%', paddingLeft: '1rem', height: '36px' }}
-                                  value={offerForm.salary}
-                                  onChange={e => setOfferForm({...offerForm, salary: e.target.value})}
-                                />
-                              </div>
-                              <div style={{ display: 'flex', gap: '8px' }}>
-                                <button 
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <button
                                   type="button"
                                   onClick={() => handleRevertOfferToReceived(c.id)}
                                   className="rec-btn-outline"
-                                  style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', gap: '4px', fontWeight: 700 }}
+                                  style={{ fontSize: '0.65rem', height: '24px', padding: '0 8px', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', gap: '4px', fontWeight: 700 }}
+                                  title="Move candidate back to Received Call Letter stage"
                                 >
-                                  <ArrowLeft className="h-3.5 w-3.5" /> Back
+                                  <ArrowLeft className="h-3 w-3" /> Back
                                 </button>
+                                <span className={cn(
+                                  'px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase',
+                                  c.offerStatus === 'SENT' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-amber-50 text-amber-600 border-amber-100'
+                                )}>
+                                  {c.offerStatus || 'PENDING'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Inputs Row */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem' }}>
+                              <div className="auth-luxury-label">
+                                Annual CTC (₹ / Year) *
+                                <input 
+                                  type="number" 
+                                  step="1000"
+                                  disabled={c.offerStatus === 'SENT'}
+                                  className="rec-search-input" 
+                                  style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', fontWeight: 700, color: '#0f172a', background: c.offerStatus === 'SENT' ? '#f8fafc' : '#ffffff' }}
+                                  value={annualCtcStr}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    setCandidateOfferForms(prev => ({
+                                      ...prev,
+                                      [c.id]: { ...prev[c.id], annualCtc: val }
+                                    }));
+                                  }}
+                                  placeholder="e.g. 720000"
+                                />
+                              </div>
+
+                              <div className="auth-luxury-label">
+                                Joining Date *
+                                <input 
+                                  type="date" 
+                                  disabled={c.offerStatus === 'SENT'}
+                                  className="rec-search-input" 
+                                  style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', background: c.offerStatus === 'SENT' ? '#f8fafc' : '#ffffff' }}
+                                  value={joiningDate}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    setCandidateOfferForms(prev => ({
+                                      ...prev,
+                                      [c.id]: { ...prev[c.id], joiningDate: val }
+                                    }));
+                                  }}
+                                />
+                              </div>
+                            </div>
+
+                            {/* ── Salary & Deductions Interactive Calculation Table ── */}
+                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '0.75rem', overflow: 'hidden', fontSize: '0.72rem' }}>
+                              <div style={{ background: '#f1f5f9', padding: '6px 10px', fontWeight: 800, color: '#1e293b', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ textTransform: 'uppercase', letterSpacing: '0.5px' }}>GROSS SALARY CALCULATIONS</span>
+                                <span style={{ fontSize: '0.65rem', color: '#64748b' }}>Monthly / Yearly Breakup</span>
+                              </div>
+                              
+                              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.7rem' }}>
+                                <thead>
+                                  <tr style={{ background: '#ffffff', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontSize: '0.65rem' }}>
+                                    <th style={{ padding: '4px 10px' }}>Particulars</th>
+                                    <th style={{ padding: '4px 10px', textAlign: 'right' }}>Monthly (₹)</th>
+                                    <th style={{ padding: '4px 10px', textAlign: 'right' }}>Yearly (₹)</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                    <td style={{ padding: '4px 10px' }}>Basic (50%)</td>
+                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.basicMonthly.toLocaleString('en-IN')}</td>
+                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.basicYearly.toLocaleString('en-IN')}</td>
+                                  </tr>
+                                  <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                    <td style={{ padding: '4px 10px' }}>HRA (House Rent Allowance) (25%)</td>
+                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.hraMonthly.toLocaleString('en-IN')}</td>
+                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.hraYearly.toLocaleString('en-IN')}</td>
+                                  </tr>
+                                  <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                    <td style={{ padding: '4px 10px' }}>LTA (Leave Travel Allowance) (10%)</td>
+                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.ltaMonthly.toLocaleString('en-IN')}</td>
+                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.ltaYearly.toLocaleString('en-IN')}</td>
+                                  </tr>
+                                  <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                    <td style={{ padding: '4px 10px' }}>Insurance &amp; Other Allowances (15%)</td>
+                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.otherAllowMonthly.toLocaleString('en-IN')}</td>
+                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.otherAllowYearly.toLocaleString('en-IN')}</td>
+                                  </tr>
+                                  <tr style={{ background: '#f1f5f9', fontWeight: 800, color: '#0f172a', borderTop: '1px solid #cbd5e1' }}>
+                                    <td style={{ padding: '5px 10px' }}>Total Amount (CTC)</td>
+                                    <td style={{ padding: '5px 10px', textAlign: 'right' }}>₹{breakdown.monthlyGross.toLocaleString('en-IN')}</td>
+                                    <td style={{ padding: '5px 10px', textAlign: 'right' }}>₹{breakdown.annualCtc.toLocaleString('en-IN')}</td>
+                                  </tr>
+
+                                  {/* DEDUCTIONS SECTION */}
+                                  <tr style={{ background: '#fef2f2', borderTop: '1px solid #fecaca', color: '#991b1b', fontWeight: 800 }}>
+                                    <td colSpan={3} style={{ padding: '4px 10px', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>DEDUCTIONS</td>
+                                  </tr>
+                                  <tr style={{ borderBottom: '1px solid #fef2f2' }}>
+                                    <td style={{ padding: '4px 10px' }}>PT (Professional Tax)</td>
+                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.ptMonthly.toLocaleString('en-IN')}</td>
+                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.ptYearly.toLocaleString('en-IN')}</td>
+                                  </tr>
+                                  <tr style={{ borderBottom: '1px solid #fef2f2' }}>
+                                    <td style={{ padding: '4px 10px' }}>EPF (Provident Fund)</td>
+                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.pfMonthly.toLocaleString('en-IN')}</td>
+                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.pfYearly.toLocaleString('en-IN')}</td>
+                                  </tr>
+                                  <tr style={{ borderBottom: '1px solid #fef2f2' }}>
+                                    <td style={{ padding: '4px 10px' }}>Other Deductions</td>
+                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.otherDeductMonthly.toLocaleString('en-IN')}</td>
+                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.otherDeductYearly.toLocaleString('en-IN')}</td>
+                                  </tr>
+                                  <tr style={{ background: '#fee2e2', fontWeight: 800, color: '#991b1b' }}>
+                                    <td style={{ padding: '5px 10px' }}>Total Deductions</td>
+                                    <td style={{ padding: '5px 10px', textAlign: 'right' }}>₹{breakdown.totalDeductMonthly.toLocaleString('en-IN')}</td>
+                                    <td style={{ padding: '5px 10px', textAlign: 'right' }}>₹{breakdown.totalDeductYearly.toLocaleString('en-IN')}</td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                              
+                              <div style={{ background: '#ecfdf5', padding: '6px 10px', borderTop: '1px solid #a7f3d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontWeight: 800, color: '#065f46', fontSize: '0.72rem' }}>Net Take-Home (In-Hand):</span>
+                                <span style={{ fontWeight: 800, color: '#047857', fontSize: '0.75rem' }}>
+                                  ₹{breakdown.netMonthly.toLocaleString('en-IN')} <span style={{ fontSize: '0.62rem', fontWeight: 600, color: '#059669' }}>/ mo (₹{breakdown.netYearly.toLocaleString('en-IN')} / yr)</span>
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Actions or Simulation */}
+                            {c.offerStatus !== 'SENT' ? (
+                              <div style={{ display: 'flex', gap: '8px', marginTop: '0.25rem', flexWrap: 'wrap' }}>
                                 <button 
                                   onClick={() => handleExtendOfferSubmit(c.id)} 
                                   className="rec-btn-primary" 
-                                  style={{ flex: 1, height: '36px', justifyContent: 'center' }}
+                                  style={{ flex: 1, minWidth: '130px', height: '36px', justifyContent: 'center', background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', fontWeight: 800 }}
                                 >
-                                  <Send className="h-4 w-4" /> Send Offer Letter
+                                  <Send className="h-4 w-4" /> Issue &amp; Send Offer
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewOfferCandidate(c)}
+                                  className="rec-btn-outline"
+                                  style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', fontWeight: 700, gap: '4px' }}
+                                  title="Preview Formal Offer Letter Contract & Annexure"
+                                >
+                                  <Eye className="h-3.5 w-3.5" /> Preview
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadFormalOfferLetter(c, annualCtcNum, joiningDate)}
+                                  className="rec-btn-outline"
+                                  style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff', fontWeight: 700, gap: '4px' }}
+                                  title="Download / Print Formal Offer Letter Contract PDF"
+                                >
+                                  <Download className="h-3.5 w-3.5" /> PDF
                                 </button>
                                 <button
                                   type="button"
@@ -7181,61 +7728,75 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   <Search className="h-3.5 w-3.5" /> Track
                                 </button>
                               </div>
-                            </div>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '0.75rem', background: '#f8fafc', padding: '0.75rem', borderRadius: '0.75rem' }}>
-                                <div><span style={{ color: '#94a3b8' }}>Offered Base:</span> <p style={{ fontWeight: 800, color: '#334155', marginTop: '2px' }}>₹{c.offerSalary?.toLocaleString()}</p></div>
-                                <div><span style={{ color: '#94a3b8' }}>Joining Date:</span> <p style={{ fontWeight: 800, color: '#334155', marginTop: '2px' }}>{c.offerJoiningDate}</p></div>
-                              </div>
-                              
-                              <div style={{ border: '1px dashed #cbd5e1', borderRadius: '0.75rem', padding: '0.75rem', textAlign: 'center', background: '#fffbeb' }}>
-                                <p style={{ fontSize: '0.7rem', color: '#b45309', fontWeight: 700 }}>Candidate Offer Review Simulation</p>
-                                <p style={{ fontSize: '0.62rem', color: '#d97706', marginTop: '2px' }}>Simulate applicant response to offer letter</p>
-                                <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', marginTop: '0.5rem' }}>
-                                  <button 
-                                    onClick={() => alert('Offer declined recorded')} 
-                                    className="rec-btn-outline" 
-                                    style={{ fontSize: '0.65rem', height: '26px', color: '#ef4444', borderColor: '#fca5a5' }}
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setPreviewOfferCandidate(c)}
+                                    className="rec-btn-outline"
+                                    style={{ height: '32px', padding: '0 12px', fontSize: '0.7rem', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', fontWeight: 700, gap: '4px' }}
                                   >
-                                    Decline Offer
-                                  </button>
-                                  <button 
-                                    onClick={() => handleSimulateOfferAcceptance(c.id)} 
-                                    className="rec-btn-primary" 
-                                    style={{ fontSize: '0.65rem', height: '26px', background: '#10b981' }}
-                                  >
-                                    Accept Offer
+                                    <Eye className="h-3.5 w-3.5" /> View Offer Letter
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => setInspectCandidate(c)}
+                                    onClick={() => handleDownloadFormalOfferLetter(c, annualCtcNum, joiningDate)}
                                     className="rec-btn-outline"
-                                    style={{ fontSize: '0.65rem', height: '26px', color: '#6366f1', borderColor: '#c7d2fe', background: '#ffffff', fontWeight: 700 }}
+                                    style={{ height: '32px', padding: '0 12px', fontSize: '0.7rem', color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff', fontWeight: 700, gap: '4px' }}
                                   >
-                                    Track
+                                    <Download className="h-3.5 w-3.5" /> Download PDF
                                   </button>
                                 </div>
+
+                                <div style={{ border: '1px dashed #cbd5e1', borderRadius: '0.75rem', padding: '0.75rem', textAlign: 'center', background: '#fffbeb' }}>
+                                  <p style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 800 }}>Candidate Offer Review Simulation</p>
+                                  <p style={{ fontSize: '0.62rem', color: '#d97706', marginTop: '2px' }}>Simulate applicant acceptance or response to formal offer contract</p>
+                                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', marginTop: '0.5rem' }}>
+                                    <button 
+                                      onClick={() => alert('Offer declined recorded')} 
+                                      className="rec-btn-outline" 
+                                      style={{ fontSize: '0.65rem', height: '26px', color: '#ef4444', borderColor: '#fca5a5' }}
+                                    >
+                                      Decline Offer
+                                    </button>
+                                    <button 
+                                      onClick={() => handleSimulateOfferAcceptance(c.id)} 
+                                      className="rec-btn-primary" 
+                                      style={{ fontSize: '0.65rem', height: '26px', background: '#10b981' }}
+                                    >
+                                      Accept Offer → Move to Onboarding
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setInspectCandidate(c)}
+                                      className="rec-btn-outline"
+                                      style={{ fontSize: '0.65rem', height: '26px', color: '#6366f1', borderColor: '#c7d2fe', background: '#ffffff', fontWeight: 700 }}
+                                    >
+                                      Track
+                                    </button>
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                          )}
-                        </div>
-                      ))
+                            )}
+                          </div>
+                        );
+                      })
                     )}
                   </div>
                 </div>
               );
             })()}
 
-            {/* ════════════════ STAGE 8: ONBOARDING ════════════════ */}
+            {/* ════════════════ STAGE 9: ONBOARDING (STAGE 9) ════════════════ */}
             {activeTab === 'stage-9' && (
               <div className="rec-card" style={{ padding: '1.5rem' }}>
-                <h2 className="rec-section-title" style={{ marginBottom: '0.5rem' }}>Stage 8: Initialize System Onboarding Invite</h2>
+                <h2 className="rec-section-title" style={{ marginBottom: '0.5rem' }}>Stage 9: Initialize System Onboarding Invite</h2>
                 <p className="rec-section-sub" style={{ marginBottom: '1.5rem' }}>Final step: Issue formal onboarding credentials and welcome token into the HRMS database</p>
                 
                 <div style={{ display: 'grid', gridTemplateColumns: onboardingInviteResult ? '1fr' : 'repeat(auto-fill, minmax(360px, 1fr))', gap: '1.5rem' }}>
                   {onboardingInviteResult ? (
-                    <div style={{ maxWidth: '640px', margin: '0 auto', width: '100%', background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: '1rem', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    <div style={{ maxWidth: '640px', margin: '0 auto', width: '100%', background: '#f0fdf4', border: '1.5.solid #bbf7d0', borderRadius: '1rem', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <div style={{ padding: '0.5rem', background: '#10b981', borderRadius: '50%', display: 'flex', color: '#fff' }}>
                           <CheckCircle className="h-6 w-6" />
@@ -7293,8 +7854,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                       </div>
                     </div>
                   ) : candidates.filter(c => c.stage === 'Onboarding' || c.stage === 'Hired').length === 0 ? (
-                    <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '3rem', background: '#f8fafc', borderRadius: '1rem', border: '1px solid #e2e8f0', color: '#94a3b8', fontSize: '0.75rem' }}>
-                      No candidates currently awaiting onboarding invitation. Verify document approvals in Stage 8.
+                    <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '3rem', background: '#f8fafc', borderRadius: '1rem', border: '1px solid #e2e8f0', color: '#64748b', fontSize: '0.75rem' }}>
+                      No candidates currently awaiting onboarding invitation. Issue offers in Stage 8: Offer.
                     </div>
                   ) : (
                     candidates.filter(c => c.stage === 'Onboarding' || c.stage === 'Hired').map(c => (
@@ -8718,6 +9279,261 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                 >
                   <MailCheck className="h-4 w-4" /> Issue & Send Call Letter
                 </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ════════════════ OFFICIAL FORMAL OFFER LETTER PREVIEW & PRINT MODAL ════════════════ */}
+      <AnimatePresence>
+        {previewOfferCandidate && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="rec-modal-backdrop"
+            style={{ zIndex: 999999, padding: '1rem' }}
+            onClick={() => setPreviewOfferCandidate(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="rec-modal"
+              style={{ maxWidth: '800px', width: '100%', maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: '1.25rem', overflow: 'hidden', boxShadow: '0 25px 60px -15px rgba(0,0,0,0.3)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Modal Top Bar */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.85rem 1.25rem', background: '#0f172a', color: '#fff', borderBottom: '1px solid #1e293b' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <Award className="h-5 w-5 text-orange-400" />
+                  <div>
+                    <span style={{ fontSize: '0.92rem', fontWeight: 800 }}>Official Offer Letter &amp; Employment Agreement</span>
+                    <span style={{ fontSize: '0.72rem', color: '#94a3b8', marginLeft: '8px', padding: '2px 8px', background: 'rgba(255,255,255,0.1)', borderRadius: '12px' }}>14 Pages Document</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {/* View Mode switcher */}
+                  <div style={{ display: 'flex', background: '#1e293b', borderRadius: '6px', padding: '2px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewOfferMode('all')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        borderRadius: '4px',
+                        border: 'none',
+                        background: previewOfferMode === 'all' ? '#f97316' : 'transparent',
+                        color: previewOfferMode === 'all' ? '#fff' : '#94a3b8',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      All Pages (1-14)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewOfferMode('single')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        borderRadius: '4px',
+                        border: 'none',
+                        background: previewOfferMode === 'single' ? '#f97316' : 'transparent',
+                        color: previewOfferMode === 'single' ? '#fff' : '#94a3b8',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Page by Page
+                    </button>
+                  </div>
+
+                  {previewOfferMode === 'single' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#1e293b', padding: '2px 6px', borderRadius: '6px' }}>
+                      <button
+                        type="button"
+                        disabled={previewOfferPage <= 1}
+                        onClick={() => setPreviewOfferPage(p => Math.max(1, p - 1))}
+                        style={{ border: 'none', background: 'transparent', color: previewOfferPage <= 1 ? '#475569' : '#fff', cursor: previewOfferPage <= 1 ? 'not-allowed' : 'pointer', padding: '2px 4px' }}
+                      >
+                        ◀
+                      </button>
+                      <select
+                        value={previewOfferPage}
+                        onChange={(e) => setPreviewOfferPage(Number(e.target.value))}
+                        style={{ background: '#0f172a', color: '#f8fafc', border: '1px solid #334155', borderRadius: '4px', fontSize: '0.72rem', padding: '2px 4px' }}
+                      >
+                        {Array.from({ length: 14 }, (_, i) => i + 1).map(num => (
+                          <option key={num} value={num}>Page {num} of 14</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={previewOfferPage >= 14}
+                        onClick={() => setPreviewOfferPage(p => Math.min(14, p + 1))}
+                        style={{ border: 'none', background: 'transparent', color: previewOfferPage >= 14 ? '#475569' : '#fff', cursor: previewOfferPage >= 14 ? 'not-allowed' : 'pointer', padding: '2px 4px' }}
+                      >
+                        ▶
+                      </button>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const candForm = candidateOfferForms[previewOfferCandidate.id] || {};
+                      const annualCtcNum = candForm.annualCtc ? Number(candForm.annualCtc) : (previewOfferCandidate.offerSalary ? (previewOfferCandidate.offerSalary > 100000 ? previewOfferCandidate.offerSalary : previewOfferCandidate.offerSalary * 12) : 720000);
+                      const joiningDate = candForm.joiningDate || previewOfferCandidate.offerJoiningDate;
+                      handleDownloadFormalOfferLetter(previewOfferCandidate, annualCtcNum, joiningDate);
+                    }}
+                    className="rec-btn-outline"
+                    style={{ fontSize: '0.72rem', height: '30px', padding: '0 12px', gap: '5px', background: 'rgba(249,115,22,0.25)', borderColor: 'rgba(251,146,60,0.5)', color: '#ffffff', fontWeight: 800 }}
+                  >
+                    <Download className="h-3.5 w-3.5" /> Download / Print PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewOfferCandidate(null)}
+                    className="rec-btn-outline"
+                    style={{ fontSize: '0.72rem', height: '30px', padding: '0 10px', color: '#94a3b8', borderColor: '#334155' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Document Body */}
+              {(() => {
+                const candForm = candidateOfferForms[previewOfferCandidate.id] || {};
+                const candName = previewOfferCandidate.customName || `${previewOfferCandidate.firstName} ${previewOfferCandidate.lastName}`.trim() || 'Candidate';
+                const cleanJobTitle = (previewOfferCandidate.jobTitle || '')
+                  .replace(/\s*\([^)]*Google\s*Form[^)]*\)/gi, '')
+                  .replace(/\s*\(Google Form Recruitment\)/gi, '')
+                  .replace(/Google Form Recruitment/gi, '')
+                  .replace(/Selected Candidate/gi, 'Associate Software Engineer')
+                  .trim() || 'Associate Software Engineer';
+                const role = previewOfferCandidate.callLetterDesignation || cleanJobTitle;
+                const department = (previewOfferCandidate as any).department || 'IT Department';
+                const annualCtcNum = candForm.annualCtc ? Number(candForm.annualCtc) : (previewOfferCandidate.offerSalary ? (previewOfferCandidate.offerSalary > 100000 ? previewOfferCandidate.offerSalary : previewOfferCandidate.offerSalary * 12) : 720000);
+                const joiningDateStr = candForm.joiningDate || previewOfferCandidate.offerJoiningDate || format(new Date(Date.now() + 7 * 86400000), 'dd-MMM-yyyy');
+                const todayFormatted = format(new Date(), 'dd/MM/yyyy');
+
+                const dateObj = new Date();
+                const currentYear = dateObj.getFullYear();
+                const nextYearShort = String((currentYear + 1) % 100).padStart(2, '0');
+                const financialYear = `${currentYear}${nextYearShort}`;
+                const monthDate = `${String(dateObj.getMonth() + 1).padStart(2, '0')}${String(dateObj.getDate()).padStart(2, '0')}`;
+                const code = getCandidateCode(previewOfferCandidate);
+                const defaultSlNo = code ? code.padStart(4, '0') : '0001';
+                const refNo = `${financialYear}/${monthDate}/${defaultSlNo}`;
+
+                const offerData: OfferLetterData = {
+                  candidateName: candName,
+                  jobTitle: role,
+                  department: department,
+                  annualCtc: annualCtcNum,
+                  joiningDate: joiningDateStr,
+                  referenceNo: refNo,
+                  offerDate: todayFormatted,
+                  genderPrefix: 'Mr./Ms.'
+                };
+
+                const pagesToRender = previewOfferMode === 'all' 
+                  ? Array.from({ length: 14 }, (_, i) => i + 1)
+                  : [previewOfferPage];
+
+                return (
+                  <div style={{ padding: '1.5rem', overflowY: 'auto', background: '#e2e8f0', display: 'flex', flexDirection: 'column', gap: '20px', alignItems: 'center' }}>
+                    <style dangerouslySetInnerHTML={{ __html: getOfferLetterStyles() }} />
+                    {pagesToRender.map((pageNum) => {
+                      const pageHtml = getOfferLetterPageHtml(pageNum, offerData);
+                      return (
+                        <div
+                          key={pageNum}
+                          style={{
+                            width: '100%',
+                            maxWidth: '750px',
+                            minHeight: '800px',
+                            background: '#ffffff',
+                            borderRadius: '6px',
+                            boxShadow: '0 4px 15px rgba(0,0,0,0.08)',
+                            padding: '24px 28px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            color: '#0f172a',
+                            fontFamily: "'Times New Roman', Times, Georgia, serif",
+                            fontSize: '0.85rem',
+                            lineHeight: '1.5',
+                            position: 'relative',
+                          }}
+                        >
+                          <img
+                            src={VRPI_WATERMARK_DATA_URI}
+                            alt="VR PI Watermark"
+                            style={{
+                              position: 'absolute',
+                              top: '48%',
+                              left: '50%',
+                              transform: 'translate(-50%, -50%)',
+                              width: '78%',
+                              maxWidth: '520px',
+                              opacity: 0.24,
+                              pointerEvents: 'none',
+                              zIndex: 0,
+                              objectFit: 'contain'
+                            }}
+                          />
+                          <div style={{ position: 'relative', zIndex: 1 }} dangerouslySetInnerHTML={{ __html: pageHtml }} />
+                          <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '8px', marginTop: '16px', fontSize: '0.7rem', color: '#64748b' }}>
+                            <span>VR PI TECH SOLUTIONS LLP — STRICTLY CONFIDENTIAL</span>
+                            <span>Page {pageNum} of 14</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              {/* Modal Footer */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', padding: '1rem 1.5rem', background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+                <button
+                  type="button"
+                  onClick={() => setPreviewOfferCandidate(null)}
+                  className="rec-btn-outline"
+                  style={{ fontSize: '0.75rem', height: '36px', padding: '0 16px', fontWeight: 700 }}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const candForm = candidateOfferForms[previewOfferCandidate.id] || {};
+                    const annualCtcNum = candForm.annualCtc ? Number(candForm.annualCtc) : (previewOfferCandidate.offerSalary ? (previewOfferCandidate.offerSalary > 100000 ? previewOfferCandidate.offerSalary : previewOfferCandidate.offerSalary * 12) : 720000);
+                    const joiningDate = candForm.joiningDate || previewOfferCandidate.offerJoiningDate;
+                    handleDownloadFormalOfferLetter(previewOfferCandidate, annualCtcNum, joiningDate);
+                  }}
+                  className="rec-btn-outline"
+                  style={{ fontSize: '0.75rem', height: '36px', padding: '0 16px', fontWeight: 700, gap: '6px', color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff' }}
+                >
+                  <Download className="h-4 w-4" /> Download / Print PDF
+                </button>
+                {previewOfferCandidate.offerStatus !== 'SENT' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleExtendOfferSubmit(previewOfferCandidate.id);
+                      setPreviewOfferCandidate(null);
+                    }}
+                    className="rec-btn-primary"
+                    style={{ fontSize: '0.75rem', height: '36px', padding: '0 20px', background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', fontWeight: 800, gap: '6px' }}
+                  >
+                    <Send className="h-4 w-4" /> Issue &amp; Send Formal Offer
+                  </button>
+                )}
               </div>
             </motion.div>
           </motion.div>

@@ -282,13 +282,39 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
   onSaved: () => void
 }) {
   const [employeeId, setEmployeeId] = useState('')
+  const [empSearch, setEmpSearch] = useState('')
   const [month, setMonth] = useState(currentMonth)
   const [year, setYear] = useState(currentYear)
   const [netSalary, setNetSalary] = useState('')
   const [file, setFile] = useState<File | null>(null)
-  const [autoDetect, setAutoDetect] = useState(true)
+  const [autoDetect, setAutoDetect] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
+  const [successMsg, setSuccessMsg] = useState('')
+
+  const activeEmployees = employees.filter(e => e.status === 'ACTIVE')
+  const filteredEmployees = activeEmployees.filter(e => {
+    if (!empSearch.trim()) return true
+    const q = empSearch.toLowerCase()
+    const fullName = `${e.firstName} ${e.lastName}`.toLowerCase()
+    const code = (e.employeeCode || '').toLowerCase()
+    const dept = (e.department?.name || '').toLowerCase()
+    return fullName.includes(q) || code.includes(q) || dept.includes(q)
+  })
+
+  const selectedEmployee = activeEmployees.find(e => e.id === employeeId)
+
+  const handleSelectEmployee = (id: string) => {
+    setEmployeeId(id)
+    setError('')
+    const emp = activeEmployees.find(e => e.id === id)
+    if (emp && emp.salaryGross && (!netSalary || netSalary === '')) {
+      const estimatedMonthlyNet = Math.round(((emp.salaryGross || 0) / 12) * 0.95)
+      if (estimatedMonthlyNet > 0) {
+        setNetSalary(String(estimatedMonthlyNet))
+      }
+    }
+  }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
@@ -304,16 +330,17 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
 
   const handleUpload = async () => {
     if ((!autoDetect && !employeeId) || !month || !year || !file) {
-      setError(autoDetect ? 'Please select month, year, and a file.' : 'Please select an employee, month, year, and a file.')
+      setError(autoDetect ? 'Please select month, year, and a payslip PDF file.' : 'Please select an employee name, month, year, and payslip PDF file.')
       return
     }
 
     setUploading(true)
     setError('')
+    setSuccessMsg('')
 
     try {
       const formData = new FormData()
-      if (!autoDetect) {
+      if (!autoDetect && employeeId) {
         formData.append('employeeId', employeeId)
       }
       formData.append('autoDetect', String(autoDetect))
@@ -325,10 +352,13 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
       formData.append('payslip', file)
 
       await payrollApi.uploadPayslip(formData)
-      onSaved()
-      onClose()
+      setSuccessMsg('Salary slip uploaded and synced to employee portal successfully!')
+      setTimeout(() => {
+        onSaved()
+        onClose()
+      }, 700)
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to upload payslip')
+      setError(err.response?.data?.message || 'Failed to upload salary slip')
     } finally {
       setUploading(false)
     }
@@ -336,84 +366,159 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
 
   return (
     <div className="sal-overlay">
-      <div className="sal-modal sal-modal-sm">
-        <div className="sal-modal-header">
+      <div className="sal-modal sal-modal-md" style={{ maxWidth: '620px' }}>
+        <div className="sal-modal-header" style={{ padding: '18px 24px', borderBottom: '1px solid #e2e8f0' }}>
           <div>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 800 }}>Upload Employee Salary Slip</h2>
-            <p>Upload manual PDF statement and notify employee.</p>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>Upload Employee Salary Slip</h2>
+            <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>
+              Select employee name and upload monthly PDF payslip statement to reflect directly on the employee's portal.
+            </p>
           </div>
           <button className="sal-close-btn" onClick={onClose}><X size={20} /></button>
         </div>
 
         {error && (
-          <div className="sal-alert sal-alert-error" style={{ margin: '0 28px 16px' }}>
+          <div className="sal-alert sal-alert-error" style={{ margin: '14px 24px 0' }}>
             <AlertCircle size={16} /> {error}
           </div>
         )}
 
-        <div className="sal-modal-body" style={{ padding: '16px 28px 24px' }}>
-          <div className="sal-form-grid" style={{ gridTemplateColumns: '1fr' }}>
-            <div className="sal-field full-width">
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '8px' }}>
-                <input 
-                  type="checkbox" 
-                  checked={autoDetect}
-                  onChange={(e) => setAutoDetect(e.target.checked)}
-                  style={{ width: '16px', height: '16px', accentColor: '#3b82f6' }}
-                />
-                <span style={{ fontWeight: 600, color: '#334155' }}>Auto-detect Employee from PDF</span>
-              </label>
+        {successMsg && (
+          <div className="sal-alert sal-alert-success" style={{ margin: '14px 24px 0', background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0' }}>
+            <CheckCircle size={16} /> {successMsg}
+          </div>
+        )}
+
+        <div className="sal-modal-body" style={{ padding: '18px 24px 24px' }}>
+          <div className="sal-form-grid" style={{ gridTemplateColumns: '1fr', gap: '16px' }}>
+            
+            {/* Employee Selection Section */}
+            <div className="sal-field full-width" style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: '10px', padding: '14px 16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  1. Select Target Employee <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
+                  <input 
+                    type="checkbox" 
+                    checked={autoDetect}
+                    onChange={(e) => setAutoDetect(e.target.checked)}
+                    style={{ width: '14px', height: '14px', accentColor: '#3b82f6' }}
+                  />
+                  <span>Auto-detect from PDF text</span>
+                </label>
+              </div>
+
+              {!autoDetect ? (
+                <div>
+                  {activeEmployees.length > 6 && (
+                    <div style={{ position: 'relative', marginBottom: '8px' }}>
+                      <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                      <input
+                        type="text"
+                        placeholder="Search employee name or code..."
+                        value={empSearch}
+                        onChange={e => setEmpSearch(e.target.value)}
+                        style={{ paddingLeft: '32px', fontSize: '0.8rem', height: '34px', background: '#ffffff', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                      />
+                    </div>
+                  )}
+
+                  <select 
+                    value={employeeId} 
+                    onChange={e => handleSelectEmployee(e.target.value)}
+                    style={{ fontSize: '0.85rem', height: '40px', fontWeight: 600, background: '#ffffff', border: '1.5px solid #3b82f6', borderRadius: '6px', color: '#0f172a' }}
+                  >
+                    <option value="">-- Click to Choose Employee Name --</option>
+                    {filteredEmployees.map(e => (
+                      <option key={e.id} value={e.id}>
+                        {e.firstName} {e.lastName} ({e.employeeCode}) {e.department?.name ? `• ${e.department.name}` : ''}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Selected Employee Info Pill */}
+                  {selectedEmployee && (
+                    <div style={{ marginTop: '10px', padding: '8px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#3b82f6', color: '#ffffff', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>
+                          {selectedEmployee.firstName[0]}{selectedEmployee.lastName[0]}
+                        </div>
+                        <div>
+                          <strong style={{ color: '#1e3a8a', fontSize: '0.82rem' }}>{selectedEmployee.firstName} {selectedEmployee.lastName}</strong>
+                          <span style={{ color: '#64748b', marginLeft: '6px' }}>({selectedEmployee.employeeCode})</span>
+                          <div style={{ color: '#475569', fontSize: '0.72rem' }}>
+                            {selectedEmployee.designation?.title || selectedEmployee.department?.name || 'Full-time Employee'}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Gross Annual CTC</span>
+                        <div style={{ fontWeight: 700, color: '#16a34a' }}>
+                          ₹{(selectedEmployee.salaryGross || 0).toLocaleString('en-IN')}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ padding: '10px 12px', background: '#f1f5f9', borderRadius: '6px', fontSize: '0.78rem', color: '#475569', fontStyle: 'italic' }}>
+                  ℹ️ Auto-detection active: The system will scan the PDF document for employee name or employee ID code.
+                </div>
+              )}
             </div>
 
-            {!autoDetect && (
-              <div className="sal-field">
-                <label>Select Employee</label>
-                <select value={employeeId} onChange={e => setEmployeeId(e.target.value)}>
-                  <option value="">-- Choose Employee --</option>
-                  {employees.filter(e => e.status === 'ACTIVE').map(e => (
-                    <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.employeeCode})</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
+            {/* Month & Year Selection */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div className="sal-field">
-                <label>Month</label>
-                <select value={month} onChange={e => setMonth(Number(e.target.value))}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b' }}>
+                  2. Statement Month <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <select value={month} onChange={e => setMonth(Number(e.target.value))} style={{ fontSize: '0.85rem', height: '38px' }}>
                   {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
                 </select>
               </div>
               <div className="sal-field">
-                <label>Year</label>
-                <select value={year} onChange={e => setYear(Number(e.target.value))}>
-                  {[currentYear - 1, currentYear, currentYear + 1].map(y => (
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b' }}>
+                  3. Statement Year <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <select value={year} onChange={e => setYear(Number(e.target.value))} style={{ fontSize: '0.85rem', height: '38px' }}>
+                  {[currentYear - 2, currentYear - 1, currentYear, currentYear + 1].map(y => (
                     <option key={y} value={y}>{y}</option>
                   ))}
                 </select>
               </div>
             </div>
 
+            {/* Net Salary Amount */}
             <div className="sal-field">
-              <label>Net Salary (₹ - Optional)</label>
+              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b', display: 'flex', justifyContent: 'space-between' }}>
+                <span>4. Net Disbursed Salary (₹)</span>
+                <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>Optional (Reflects as Net Pay)</span>
+              </label>
               <input
                 type="number"
-                placeholder="Defaults to standard net monthly pay"
+                placeholder={selectedEmployee?.salaryGross ? `Estimated Net: ₹${Math.round((selectedEmployee.salaryGross / 12) * 0.95).toLocaleString('en-IN')}` : 'Defaults to standard net monthly pay'}
                 value={netSalary}
                 onChange={e => setNetSalary(e.target.value)}
+                style={{ fontSize: '0.85rem', height: '38px' }}
               />
             </div>
 
+            {/* Payslip PDF Document Upload */}
             <div className="sal-field">
-              <label>Payslip PDF Document</label>
+              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b' }}>
+                5. Payslip PDF Document <span style={{ color: '#ef4444' }}>*</span>
+              </label>
               <div style={{
-                border: '2px dashed #cbd5e1',
+                border: file ? '2px solid #22c55e' : '2px dashed #94a3b8',
                 borderRadius: '10px',
-                padding: '24px 16px',
-                background: '#f8fafc',
+                padding: '20px 16px',
+                background: file ? '#f0fdf4' : '#f8fafc',
                 textAlign: 'center',
                 cursor: 'pointer',
-                position: 'relative'
+                position: 'relative',
+                transition: 'all 0.2s ease'
               }}>
                 <input
                   type="file"
@@ -426,22 +531,49 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
                     cursor: 'pointer'
                   }}
                 />
-                <FileText size={24} style={{ color: '#3b82f6', marginBottom: '8px', margin: '0 auto' }} />
-                <p style={{ margin: '8px 0 0', fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>
-                  {file ? file.name : 'Click to select PDF payslip'}
-                </p>
-                <p style={{ margin: '4px 0 0', fontSize: '0.72rem', color: '#94a3b8' }}>
-                  PDF up to 10MB
-                </p>
+                {file ? (
+                  <div>
+                    <CheckCircle size={28} style={{ color: '#16a34a', margin: '0 auto 6px' }} />
+                    <p style={{ margin: '4px 0 0', fontSize: '0.85rem', fontWeight: 700, color: '#15803d' }}>
+                      📄 {file.name}
+                    </p>
+                    <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#64748b' }}>
+                      {(file.size / 1024).toFixed(1)} KB — Click or drag to replace
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <FileText size={28} style={{ color: '#3b82f6', margin: '0 auto 6px' }} />
+                    <p style={{ margin: '4px 0 0', fontSize: '0.85rem', fontWeight: 700, color: '#1e293b' }}>
+                      Click or Drag &amp; Drop PDF Payslip
+                    </p>
+                    <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#64748b' }}>
+                      Supports standard PDF payslips up to 10MB
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </div>
 
-        <div className="sal-modal-footer">
-          <button className="sal-btn-cancel" onClick={onClose}>Cancel</button>
-          <button className="sal-btn-save sal-btn-success" onClick={handleUpload} disabled={uploading}>
-            {uploading ? 'Uploading...' : 'Upload & Notify Employee'}
+        <div className="sal-modal-footer" style={{ padding: '14px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+          <button className="sal-btn-cancel" onClick={onClose} style={{ padding: '8px 18px', fontSize: '0.82rem' }}>
+            Cancel
+          </button>
+          <button 
+            className="sal-btn-save sal-btn-success" 
+            onClick={handleUpload} 
+            disabled={uploading || (!autoDetect && !employeeId) || !file}
+            style={{ padding: '8px 22px', fontSize: '0.82rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            {uploading ? (
+              <>
+                <RefreshCw size={14} className="animate-spin" /> Uploading &amp; Syncing...
+              </>
+            ) : (
+              'Upload & Sync to Portal'
+            )}
           </button>
         </div>
       </div>

@@ -12,6 +12,7 @@ interface PayslipData {
   deductions: number
   pf: number
   tax: number
+  netSalary?: number
   status: 'DRAFT' | 'PROCESSED' | 'PAID'
   paidAt?: string
   slipUrl?: string
@@ -36,13 +37,16 @@ export default function Payslips() {
   }, [])
 
   const calculateNetPay = (slip: PayslipData) => {
+    if (slip.netSalary !== undefined && slip.netSalary !== null && Number(slip.netSalary) > 0) {
+      return Number(slip.netSalary)
+    }
     return (slip.basicSalary + slip.hra + slip.allowances) - (slip.pf + slip.tax)
   }
 
   const handleDownload = async (slip: PayslipData) => {
     try {
       const response = await payrollApi.downloadPayslip(slip.id)
-      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
       const link = document.createElement('a')
       link.href = url
       link.setAttribute('download', `Payslip-${MONTHS[slip.month - 1]}-${slip.year}.pdf`)
@@ -68,7 +72,7 @@ export default function Payslips() {
         <div className="banner-icon"><Landmark size={24} /></div>
         <div className="banner-info">
           <h3>Direct Deposit Information</h3>
-          <p>Your monthly payroll is directly transferred to your registered account ending in <strong>*4892</strong> on the last calendar day of the month.</p>
+          <p>Your monthly payroll is directly transferred to your registered bank account on the last calendar day of the month.</p>
         </div>
       </div>
 
@@ -95,7 +99,7 @@ export default function Payslips() {
               {payslips.map((slip) => {
                 const totalEarnings = slip.basicSalary + slip.hra + slip.allowances
                 const totalDeductions = slip.pf + slip.tax
-                const netPay = totalEarnings - totalDeductions
+                const netPay = calculateNetPay(slip)
                 return (
                   <tr key={slip.id}>
                     <td className="ref-cell">

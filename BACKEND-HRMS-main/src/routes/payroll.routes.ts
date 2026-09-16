@@ -9,9 +9,13 @@ import { authorize } from '../middleware/rbac.middleware'
 import { tenantIsolation } from '../middleware/tenant.middleware'
 
 // Setup multer for payslips
-const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'payslips')
+const uploadDir = path.join(process.cwd(), 'uploads', 'payslips')
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true })
+}
+const publicUploadDir = path.join(process.cwd(), 'public', 'uploads', 'payslips')
+if (!fs.existsSync(publicUploadDir)) {
+  fs.mkdirSync(publicUploadDir, { recursive: true })
 }
 
 const storage = multer.diskStorage({

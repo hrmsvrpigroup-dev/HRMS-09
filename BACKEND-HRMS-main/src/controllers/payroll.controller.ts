@@ -14,7 +14,15 @@ export const payrollController = {
 
     try {
       if (req.user?.role === 'EMPLOYEE') {
-        const employee = await prisma.employee.findUnique({ where: { userId: req.user.id } })
+        let employee = await prisma.employee.findUnique({ where: { userId: req.user.id } })
+        if (!employee && req.user.email) {
+          employee = await prisma.employee.findFirst({
+            where: {
+              tenantId,
+              email: { equals: req.user.email, mode: 'insensitive' },
+            },
+          })
+        }
         if (!employee) return sendError(res, 'Employee profile not found', 404)
         
         const items = await prisma.payroll.findMany({
@@ -39,26 +47,39 @@ export const payrollController = {
       const { id } = req.params
       const payroll = await prisma.payroll.findUnique({
         where: { id, tenantId },
-        select: { slipUrl: true, employee: { select: { userId: true } } }
+        include: { employee: true },
       })
 
       if (!payroll) return sendError(res, 'Payslip not found', 404)
 
       // Ensure employees can only download their own payslips
-      if (req.user?.role === 'EMPLOYEE' && payroll.employee.userId !== req.user.id) {
-        return sendError(res, 'Unauthorized to view this payslip', 403)
+      if (req.user?.role === 'EMPLOYEE') {
+        const isOwner = (payroll.employee.userId && payroll.employee.userId === req.user.id) ||
+                        (payroll.employee.email && req.user.email && payroll.employee.email.toLowerCase() === req.user.email.toLowerCase())
+        if (!isOwner) {
+          return sendError(res, 'Unauthorized to view this payslip', 403)
+        }
       }
 
       if (!payroll.slipUrl) {
         return sendError(res, 'Payslip PDF has not been generated yet', 400)
       }
 
-      const filePath = path.join(__dirname, '../../public', payroll.slipUrl)
-      if (!fs.existsSync(filePath)) {
+      const cleanSlipUrl = payroll.slipUrl.startsWith('/') ? payroll.slipUrl.slice(1) : payroll.slipUrl
+      const candidates = [
+        path.join(process.cwd(), cleanSlipUrl),
+        path.join(process.cwd(), 'public', cleanSlipUrl),
+        path.join(process.cwd(), 'uploads', 'payslips', path.basename(payroll.slipUrl)),
+        path.join(process.cwd(), 'public', 'uploads', 'payslips', path.basename(payroll.slipUrl)),
+        path.join(__dirname, '../../public', cleanSlipUrl),
+      ]
+
+      const resolvedPath = candidates.find(p => fs.existsSync(p))
+      if (!resolvedPath) {
         return sendError(res, 'Payslip file is missing on the server', 404)
       }
 
-      res.download(filePath)
+      res.download(resolvedPath, `Payslip-${payroll.month}-${payroll.year}.pdf`)
     } catch (err: any) {
       return sendError(res, err.message || 'Failed to download payslip', 500)
     }
@@ -142,17 +163,33 @@ export const payrollController = {
         return sendError(res, 'Month and year are required', 400)
       }
 
-      if (!autoDetect && !employeeId) {
-        return sendError(res, 'Employee ID is required when auto-detect is disabled', 400)
+      const isAutoDetect = (autoDetect === 'true' || autoDetect === true) && !employeeId
+
+      if (!employeeId && !isAutoDetect) {
+        return sendError(res, 'Please select an employee name or enable auto-detection', 400)
       }
 
       if (!req.file) {
-        return sendError(res, 'Salary slip file is required', 400)
+        return sendError(res, 'Salary slip PDF file is required', 400)
       }
 
       let detectedEmployeeId = employeeId
 
-      if (autoDetect === 'true' || autoDetect === true) {
+      // Mirror file to public/uploads/payslips if directory exists so both static route and file download find it
+      try {
+        const publicUploadDir = path.join(process.cwd(), 'public', 'uploads', 'payslips')
+        if (!fs.existsSync(publicUploadDir)) {
+          fs.mkdirSync(publicUploadDir, { recursive: true })
+        }
+        const publicTarget = path.join(publicUploadDir, req.file.filename)
+        if (!fs.existsSync(publicTarget)) {
+          fs.copyFileSync(req.file.path, publicTarget)
+        }
+      } catch (copyErr) {
+        console.warn('Could not mirror payslip to public folder:', copyErr)
+      }
+
+      if (isAutoDetect) {
         // Parse PDF to auto-detect employee
         const dataBuffer = fs.readFileSync(req.file.path)
         try {
@@ -162,7 +199,7 @@ export const payrollController = {
           // Get all active employees for this tenant
           const employees = await prisma.employee.findMany({
             where: { tenantId, status: 'ACTIVE' },
-            select: { id: true, employeeCode: true, firstName: true, lastName: true }
+            select: { id: true, employeeCode: true, firstName: true, lastName: true },
           })
 
           const matches: any[] = []
@@ -180,89 +217,76 @@ export const payrollController = {
           }
 
           if (matches.length === 0) {
-            // Delete the uploaded file since we failed to detect
-            fs.unlinkSync(req.file.path)
-            return sendError(res, 'Could not auto-detect any employee from this salary slip. Please uncheck Auto-detect and select the employee manually.', 404)
+            if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path)
+            return sendError(res, 'Could not auto-detect any employee from this salary slip. Please select the employee name manually.', 404)
           }
 
           if (matches.length > 1) {
-            // Check if any matched by employee code specifically (higher confidence)
             const codeMatches = matches.filter(emp => text.toLowerCase().includes(emp.employeeCode.toLowerCase()))
             if (codeMatches.length === 1) {
               detectedEmployeeId = codeMatches[0].id
             } else {
-              fs.unlinkSync(req.file.path)
-              return sendError(res, `Multiple employees detected (${matches.map(m => m.firstName).join(', ')}). Please select the employee manually.`, 400)
+              if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path)
+              return sendError(res, `Multiple employees matched (${matches.map(m => m.firstName + ' ' + m.lastName).join(', ')}). Please select the employee manually.`, 400)
             }
           } else {
             detectedEmployeeId = matches[0].id
           }
-
-          // Auto-Extraction of Payroll Details
-          const updates: any = {}
-
-          // 1. Bank Name
-          const bankNameMatch = text.match(/(?:Bank Name|Bank)\s*:\s*([A-Za-z\s]+?)(?=\n|$|A\/c|Account)/i)
-          if (bankNameMatch && bankNameMatch[1].trim()) updates.bankName = bankNameMatch[1].trim()
-
-          // 2. Account Number
-          const accMatch = text.match(/(?:A\/C No|Account No|Acc No|Account Number|A\/c Number)\s*[:.-]?\s*(\d{8,18})/i)
-          if (accMatch) updates.accountNumber = accMatch[1].trim()
-
-          // 3. UAN
-          const uanMatch = text.match(/(?:UAN|UAN No|UAN Number)\s*[:.-]?\s*(\d{12})/i)
-          if (uanMatch) updates.uanNumber = uanMatch[1].trim()
-
-          // 4. PF (often alphanumeric with slashes)
-          const pfMatch = text.match(/(?:PF No|PF Number|EPF No)\s*[:.-]?\s*([A-Z0-9/]{10,25})/i)
-          if (pfMatch) {
-            // If we found a PF, let's mark pfEnabled true. But we don't have a direct 'pfNumber' field in DB, only uanNumber and pfEnabled.
-            updates.pfEnabled = true
-          }
-          if (uanMatch) updates.pfEnabled = true
-
-          // 5. ESI
-          const esiMatch = text.match(/(?:ESI No|ESIC No|ESI Number)\s*[:.-]?\s*(\d{10,17})/i)
-          if (esiMatch) updates.esiEnabled = true
-
-          // 6. Basic Salary
-          const basicMatch = text.match(/(?:Basic|Basic Salary)\s*[:.-]?\s*(?:Rs\.?|INR|₹)?\s*([\d,]+\.?\d*)/i)
-          let parsedBasic = 0
-          if (basicMatch) {
-            const val = parseFloat(basicMatch[1].replace(/,/g, ''))
-            if (!isNaN(val) && val > 0) {
-              parsedBasic = val
-              updates.basicSalary = val
-            }
-          }
-
-          // 7. Gross Salary / Total Earnings
-          const grossMatch = text.match(/(?:Gross|Gross Salary|Gross Earnings|Total Earnings|Total Payable)\s*[:.-]?\s*(?:Rs\.?|INR|₹)?\s*([\d,]+\.?\d*)/i)
-          if (grossMatch) {
-            const grossVal = parseFloat(grossMatch[1].replace(/,/g, ''))
-            if (!isNaN(grossVal) && grossVal > 0) {
-              // Update the Annual Gross (CTC)
-              updates.salaryGross = grossVal * 12
-            }
-          } else if (parsedBasic > 0) {
-            // If we found basic but no gross, estimate Annual Gross (assuming Basic is 50% of Monthly Gross)
-            updates.salaryGross = parsedBasic * 2 * 12
-          }
-
-          if (Object.keys(updates).length > 0) {
-            // Update the employee profile automatically
-            try {
-              await payrollService.updateEmployeeSalary(tenantId, detectedEmployeeId, updates)
-            } catch (updateErr) {
-              console.log('Failed to auto-update extracted details:', updateErr)
-              // We do not fail the upload just because extraction update failed.
-            }
-          }
-
         } catch (parseError) {
-          fs.unlinkSync(req.file.path)
-          return sendError(res, 'Failed to read PDF document for auto-detection. Ensure it is a valid text-based PDF.', 400)
+          if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path)
+          return sendError(res, 'Failed to read PDF document for auto-detection. Please select the employee name manually.', 400)
         }
+      }
+
+      // Non-blocking extraction of details if text parse is available
+      try {
+        const dataBuffer = fs.readFileSync(req.file.path)
+        const pdfData = await pdfParse(dataBuffer)
+        const text = pdfData.text
+        const updates: any = {}
+
+        const bankNameMatch = text.match(/(?:Bank Name|Bank)\s*:\s*([A-Za-z\s]+?)(?=\n|$|A\/c|Account)/i)
+        if (bankNameMatch && bankNameMatch[1].trim()) updates.bankName = bankNameMatch[1].trim()
+
+        const accMatch = text.match(/(?:A\/C No|Account No|Acc No|Account Number|A\/c Number)\s*[:.-]?\s*(\d{8,18})/i)
+        if (accMatch) updates.accountNumber = accMatch[1].trim()
+
+        const uanMatch = text.match(/(?:UAN|UAN No|UAN Number)\s*[:.-]?\s*(\d{12})/i)
+        if (uanMatch) updates.uanNumber = uanMatch[1].trim()
+        if (uanMatch) updates.pfEnabled = true
+
+        const esiMatch = text.match(/(?:ESI No|ESIC No|ESI Number)\s*[:.-]?\s*(\d{10,17})/i)
+        if (esiMatch) updates.esiEnabled = true
+
+        const basicMatch = text.match(/(?:Basic|Basic Salary)\s*[:.-]?\s*(?:Rs\.?|INR|₹)?\s*([\d,]+\.?\d*)/i)
+        let parsedBasic = 0
+        if (basicMatch) {
+          const val = parseFloat(basicMatch[1].replace(/,/g, ''))
+          if (!isNaN(val) && val > 0) {
+            parsedBasic = val
+            updates.basicSalary = val
+          }
+        }
+
+        const grossMatch = text.match(/(?:Gross|Gross Salary|Gross Earnings|Total Earnings|Total Payable)\s*[:.-]?\s*(?:Rs\.?|INR|₹)?\s*([\d,]+\.?\d*)/i)
+        if (grossMatch) {
+          const grossVal = parseFloat(grossMatch[1].replace(/,/g, ''))
+          if (!isNaN(grossVal) && grossVal > 0) {
+            updates.salaryGross = grossVal * 12
+          }
+        } else if (parsedBasic > 0) {
+          updates.salaryGross = parsedBasic * 2 * 12
+        }
+
+        if (Object.keys(updates).length > 0 && detectedEmployeeId) {
+          try {
+            await payrollService.updateEmployeeSalary(tenantId, detectedEmployeeId, updates)
+          } catch (updateErr) {
+            console.log('Failed to auto-update extracted details:', updateErr)
+          }
+        }
+      } catch (_) {
+        // Non-fatal parse warning
       }
 
       const fileUrl = `/uploads/payslips/${req.file.filename}`
@@ -276,7 +300,7 @@ export const payrollController = {
         slipUrl: fileUrl,
       })
 
-      return sendSuccess(res, result, 'Salary slip uploaded successfully')
+      return sendSuccess(res, result, 'Salary slip uploaded successfully and reflected on employee portal')
     } catch (err: any) {
       return sendError(res, err.message || 'Failed to upload salary slip', 500)
     }
