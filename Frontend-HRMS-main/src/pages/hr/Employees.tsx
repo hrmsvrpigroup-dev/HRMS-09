@@ -8,9 +8,29 @@ import { downloadEmployeeExcel } from '../../utils/excelExport'
 
 export default function Employees() {
   const navigate = useNavigate()
-  const [employees, setEmployees] = useState<Employee[]>([])
-  const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([])
-  const [loading, setLoading] = useState(true)
+  const [employees, setEmployees] = useState<Employee[]>(() => {
+    try {
+      const cached = sessionStorage.getItem('hrms_cached_employees')
+      return cached ? JSON.parse(cached) : []
+    } catch {
+      return []
+    }
+  })
+  const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>(() => {
+    try {
+      const cached = sessionStorage.getItem('hrms_cached_employees')
+      return cached ? JSON.parse(cached) : []
+    } catch {
+      return []
+    }
+  })
+  const [loading, setLoading] = useState(() => {
+    try {
+      return !sessionStorage.getItem('hrms_cached_employees')
+    } catch {
+      return true
+    }
+  })
   const [error, setError] = useState('')
   const [showAddEmployee, setShowAddEmployee] = useState(false)
 
@@ -19,12 +39,16 @@ export default function Employees() {
   const [deptFilter, setDeptFilter] = useState('ALL')
   const [statusFilter, setStatusFilter] = useState('ALL')
 
-  const fetchEmployees = async () => {
+  const fetchEmployees = async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const res = await employeeApi.list()
-      setEmployees(res.data.data)
-      setFilteredEmployees(res.data.data)
+      const data = res.data.data || []
+      setEmployees(data)
+      setFilteredEmployees(data)
+      try {
+        sessionStorage.setItem('hrms_cached_employees', JSON.stringify(data))
+      } catch {}
     } catch {
       setError('Could not retrieve workspace employee rosters.')
     } finally {
@@ -43,7 +67,7 @@ export default function Employees() {
   }
 
   useEffect(() => {
-    fetchEmployees()
+    fetchEmployees(employees.length > 0)
   }, [])
 
   // Handle Search and Filtering locally

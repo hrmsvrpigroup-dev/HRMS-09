@@ -195,6 +195,8 @@ model Employee {
   @@unique([tenantId, employeeCode])
   @@index([tenantId, departmentId])
   @@index([tenantId, hrUserId])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
 }
 
 enum EmployeeStatus {

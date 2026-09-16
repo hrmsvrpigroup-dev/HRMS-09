@@ -45,17 +45,33 @@ const STATUS_CFG: Record<string, {
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const [data, setData] = useState<HRDashboardData | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState<HRDashboardData | null>(() => {
+    try {
+      const cached = sessionStorage.getItem('hrms_cached_hr_dashboard')
+      return cached ? JSON.parse(cached) : null
+    } catch {
+      return null
+    }
+  })
+  const [loading, setLoading] = useState(() => {
+    try {
+      return !sessionStorage.getItem('hrms_cached_hr_dashboard')
+    } catch {
+      return true
+    }
+  })
   const [error, setError] = useState('')
   const [tasks, setTasks] = useState<AssignedTask[]>([])
   const [taskFilter, setTaskFilter] = useState<string>('ALL')
 
-  const fetchDashboard = async () => {
+  const fetchDashboard = async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const res = await hrApi.getDashboard()
       setData(res)
+      try {
+        sessionStorage.setItem('hrms_cached_hr_dashboard', JSON.stringify(res))
+      } catch {}
     } catch {
       setError('Could not retrieve HR operational metrics.')
     } finally {
@@ -66,7 +82,7 @@ export default function Dashboard() {
   const refreshTasks = () => setTasks(loadAllTasks())
 
   useEffect(() => {
-    fetchDashboard()
+    fetchDashboard(!!data)
     refreshTasks()
     const iv = setInterval(refreshTasks, 5000)
     return () => clearInterval(iv)
@@ -79,7 +95,7 @@ export default function Dashboard() {
       <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
         <h2 style={{ color: 'var(--error)', marginBottom: '1rem' }}>HR Portal Synchronization Error</h2>
         <p style={{ color: 'var(--text-secondary)' }}>{error}</p>
-        <button onClick={fetchDashboard} className="btn-primary" style={{ marginTop: '1.5rem', display: 'inline-flex' }}>
+        <button onClick={() => fetchDashboard()} className="btn-primary" style={{ marginTop: '1.5rem', display: 'inline-flex' }}>
           Retry Synchronizing
         </button>
       </div>

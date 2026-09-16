@@ -222,9 +222,25 @@ export const employeeController = {
 
       const employees = await prisma.employee.findMany({
         where: whereClause,
-        include: {
-          department: true,
-          designation: true,
+        select: {
+          id: true,
+          employeeCode: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          personalEmail: true,
+          phone: true,
+          gender: true,
+          joiningDate: true,
+          salaryGross: true,
+          status: true,
+          createdAt: true,
+          department: {
+            select: { id: true, name: true }
+          },
+          designation: {
+            select: { id: true, title: true }
+          },
           manager: {
             select: { id: true, firstName: true, lastName: true },
           },
