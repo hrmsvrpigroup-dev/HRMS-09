@@ -2,9 +2,12 @@ import axios from 'axios'
 
 import { useAuthStore } from '../store/auth.store'
 
+const LIVE_API_URL = 'https://hrms-09.onrender.com/api'
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'https://hrms1-kk6q.onrender.com/api',
+  baseURL: import.meta.env.VITE_API_URL || LIVE_API_URL,
   headers: { 'Content-Type': 'application/json' },
+  timeout: 30000,
 })
 
 api.interceptors.request.use((config) => {
@@ -35,7 +38,24 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
 
-    // Only attempt refresh on 401, and not on the refresh/login endpoints themselves
+    if (!originalRequest) {
+      return Promise.reject(error)
+    }
+
+    // 1. Retry network errors, 502, 503, 504 (e.g. Render waking up from cold start)
+    const isNetworkOrGatewayError =
+      !error.response ||
+      error.code === 'ERR_NETWORK' ||
+      [502, 503, 504].includes(error.response?.status)
+
+    if (isNetworkOrGatewayError && (originalRequest._retryCount || 0) < 2) {
+      originalRequest._retryCount = (originalRequest._retryCount || 0) + 1
+      const delayMs = originalRequest._retryCount * 1500
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+      return api(originalRequest)
+    }
+
+    // 2. Only attempt refresh on 401, and not on the refresh/login endpoints themselves
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
@@ -67,7 +87,7 @@ api.interceptors.response.use(
 
       try {
         const response = await axios.post(
-          `${import.meta.env.VITE_API_URL || 'https://hrms1-kk6q.onrender.com/api'}/auth/refresh`,
+          `${import.meta.env.VITE_API_URL || LIVE_API_URL}/auth/refresh`,
           { refreshToken }
         )
         const { accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data.data

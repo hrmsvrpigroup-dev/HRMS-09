@@ -8,8 +8,8 @@ export default defineConfig(({ mode }) => {
   const getApiUrl = () => {
     let url = env.VITE_API_URL
     if (mode === 'production' || process.env.VERCEL) {
-      if (!url || url.includes('your-backend')) {
-        return 'https://hrms1-kk6q.onrender.com/api'
+      if (!url || url.includes('your-backend') || url.includes('hrms1-kk6q')) {
+        return 'https://hrms-09.onrender.com/api'
       }
     }
     if (!url) {
@@ -26,8 +26,8 @@ export default defineConfig(({ mode }) => {
 
   const getWsUrl = () => {
     let url = env.VITE_WS_URL
-    if (!url || url.includes('your-backend')) {
-      return 'wss://hrms1-kk6q.onrender.com'
+    if (!url || url.includes('your-backend') || url.includes('hrms1-kk6q')) {
+      return 'wss://hrms-09.onrender.com'
     }
     url = url.trim().replace(/\/$/, '')
     if (url.endsWith('/api')) {

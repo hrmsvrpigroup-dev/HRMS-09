@@ -11,11 +11,24 @@ interface CachedMonthlyReport {
 const monthlyReportCache = new Map<string, CachedMonthlyReport>()
 const REPORT_CACHE_TTL_MS = 60 * 1000 // 60 seconds TTL
 
+interface CachedDashboard {
+  data: any
+  timestamp: number
+}
+const dashboardCache = new Map<string, CachedDashboard>()
+const DASHBOARD_CACHE_TTL_MS = 15 * 1000 // 15 seconds TTL for fast data loading
+
 export const hrController = {
   async dashboard(req: AuthRequest, res: Response) {
     const tenantId = req.tenantId ?? req.user?.tenantId
     if (!tenantId || !req.user) {
       return sendError(res, 'Tenant context not found', 400)
+    }
+
+    const cacheKey = `${tenantId}:${req.user.id}`
+    const cached = dashboardCache.get(cacheKey)
+    if (cached && (Date.now() - cached.timestamp < DASHBOARD_CACHE_TTL_MS)) {
+      return sendSuccess(res, cached.data)
     }
 
     try {
@@ -41,13 +54,20 @@ export const hrController = {
         }),
       ])
 
-      return sendSuccess(res, {
+      const payload = {
         assignedEmployeeCount,
         totalEmployees,
         pendingLeavesCount,
         creditsBalance: tenant?.credits ?? 0,
         companyName: tenant?.name ?? '',
+      }
+
+      dashboardCache.set(cacheKey, {
+        data: payload,
+        timestamp: Date.now(),
       })
+
+      return sendSuccess(res, payload)
     } catch (error: any) {
       return sendError(res, error.message || 'Failed to retrieve HR dashboard metrics', 500)
     }

@@ -67,13 +67,17 @@ export default function Dashboard() {
   const fetchDashboard = async (silent = false) => {
     try {
       if (!silent) setLoading(true)
+      setError('')
       const res = await hrApi.getDashboard()
       setData(res)
+      setError('')
       try {
         sessionStorage.setItem('hrms_cached_hr_dashboard', JSON.stringify(res))
       } catch {}
     } catch {
-      setError('Could not retrieve HR operational metrics.')
+      if (!data) {
+        setError('Could not retrieve HR operational metrics.')
+      }
     } finally {
       setLoading(false)
     }
@@ -88,9 +92,9 @@ export default function Dashboard() {
     return () => clearInterval(iv)
   }, [])
 
-  if (loading) return <LoadingSpinner />
+  if (loading && !data) return <LoadingSpinner />
 
-  if (error) {
+  if (error && !data) {
     return (
       <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
         <h2 style={{ color: 'var(--error)', marginBottom: '1rem' }}>HR Portal Synchronization Error</h2>
