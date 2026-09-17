@@ -1429,8 +1429,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
           const id = cand.id ? cand.id.trim() : '';
           const nameKey = `${cand.firstName || ''} ${cand.lastName || ''}`.trim().toLowerCase();
 
-          // If this candidate was already placed in Offer or Onboarding locally, preserve it unless DB has a newer stage
+          // If this candidate was already placed in Received Call Letter, Offer, or Onboarding locally, preserve it unless DB has a newer stage
           const currentLocalStatus = storedStatuses[em] || storedStatuses[emLower] || (id ? storedStatuses[id] : undefined) || (nameKey ? storedStatuses[nameKey] : undefined);
+          if ((currentLocalStatus === 'received_call_letter' || currentLocalStatus === 'call_letter_received' || currentLocalStatus === 'received-call-letter') && cand.stage !== 'Offer' && cand.stage !== 'Onboarding' && cand.stage !== 'Rejected') {
+            return;
+          }
           if (currentLocalStatus === 'offer' && cand.stage !== 'Onboarding' && cand.stage !== 'Rejected') {
             return;
           }
@@ -3300,12 +3303,16 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   };
 
   // Pass Call Letter and proceed to Stage 7: Received Call Letter Stage
-  const handlePassCallLetterToReceived = async (candidateId: string) => {
+  const handlePassCallLetterToReceived = async (candidateOrId: Candidate | string) => {
     try {
-      const target = candidates.find(c => c.id === candidateId || c.email === candidateId);
-      const candEmail = target?.email || (candidateId.includes('@') ? candidateId : undefined);
+      const candidateId = typeof candidateOrId === 'string' ? candidateOrId : candidateOrId.id;
+      const target = typeof candidateOrId === 'object' ? candidateOrId : candidates.find(c => c.id === candidateId || c.email === candidateId);
+      const candEmail = target?.email || (typeof candidateOrId === 'string' && candidateOrId.includes('@') ? candidateOrId : undefined);
+      const candNameKey = `${target?.firstName || ''} ${target?.lastName || ''}`.trim().toLowerCase();
+      const code = target ? getCandidateCode(target) : undefined;
+      const candName = target?.customName || (target ? `${target.firstName} ${target.lastName}`.trim() : 'Candidate');
 
-      // 1. Synchronously persist to formApplicantStatuses
+      // 1. Synchronously persist to formApplicantStatuses across all candidate keys
       let updatedStatuses: { [key: string]: any } = {};
       try {
         const savedStr = localStorage.getItem('hrms_form_applicant_statuses');
@@ -3319,33 +3326,53 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       if (candidateId) {
         updatedStatuses[candidateId] = 'received_call_letter';
       }
-      if (target?.id) {
-        updatedStatuses[target.id] = 'received_call_letter';
+      if (candNameKey) {
+        updatedStatuses[candNameKey] = 'received_call_letter';
+      }
+      if (code) {
+        updatedStatuses[code] = 'received_call_letter';
       }
       try {
         localStorage.setItem('hrms_form_applicant_statuses', JSON.stringify(updatedStatuses));
       } catch (_) {}
-      setFormApplicantStatuses(updatedStatuses);
+      setFormApplicantStatuses(prev => ({ ...prev, ...updatedStatuses }));
 
       // 2. Update scheduled interviews in localStorage
       const currentScheduled = getStoredScheduledInterviews();
       const updatedScheduled = currentScheduled.map(c => {
-        if (c.id === candidateId || (candEmail && c.email && c.email.toLowerCase() === candEmail.toLowerCase())) {
+        const match = c.id === candidateId || 
+          (candEmail && c.email && c.email.toLowerCase() === candEmail.toLowerCase()) ||
+          (candNameKey && `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase() === candNameKey);
+        if (match) {
           return { ...c, stage: 'Received Call Letter', callLetterStatus: 'RECEIVED' };
         }
         return c;
       });
       saveStoredScheduledInterviews(updatedScheduled);
 
-      // 3. Update React state immediately
+      // 3. Update candidate call letters stored in localStorage
+      try {
+        const storedCL = JSON.parse(localStorage.getItem('hrms_candidate_call_letters') || '{}');
+        const clData = storedCL[candidateId] || (candEmail && storedCL[candEmail.toLowerCase()]) || {};
+        clData.callLetterStatus = 'RECEIVED';
+        storedCL[candidateId] = clData;
+        if (candEmail) storedCL[candEmail.toLowerCase()] = clData;
+        localStorage.setItem('hrms_candidate_call_letters', JSON.stringify(storedCL));
+      } catch (_) {}
+
+      // 4. Update React state immediately
       setCandidates(prev => prev.map(c => {
-        if (c.id === candidateId || (candEmail && c.email && c.email.toLowerCase() === candEmail.toLowerCase()) || (target?.id && c.id === target.id)) {
+        const match = c.id === candidateId || 
+          (candEmail && c.email && c.email.toLowerCase() === candEmail.toLowerCase()) || 
+          (candNameKey && `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase() === candNameKey);
+        if (match) {
           return { ...c, stage: 'Received Call Letter', callLetterStatus: 'RECEIVED' };
         }
         return c;
       }));
 
-      if (candidateId && !candidateId.startsWith('cand-') && !candidateId.startsWith('sheet-row-')) {
+      // 5. Update backend if valid UUID application
+      if (candidateId && !candidateId.startsWith('cand-') && !candidateId.startsWith('sheet-')) {
         try {
           await api.patch(`/recruitment/applications/${candidateId}/status`, {
             status: 'CALL_LETTER'
@@ -3355,10 +3382,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         }
       }
 
-      alert('📥 Call letter marked as Received! Proceeding to Stage 7: Received Call Letter.');
-      await loadRecruitmentData();
+      alert(`📥 Call letter marked as Received for ${candName}! Proceeding to Stage 7: Received Call Letter.`);
       setActiveTab('stage-received-call-letter');
     } catch (err) {
+      console.error('Failed to advance candidate:', err);
       alert('Failed to advance candidate to Received Call Letter stage.');
     }
   };
@@ -7400,7 +7427,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 <div style={{ display: 'flex', gap: '6px' }}>
                                   <button
                                     type="button"
-                                    onClick={() => handlePassCallLetterToReceived(c.id)}
+                                    onClick={() => handlePassCallLetterToReceived(c)}
                                     className="rec-btn-primary"
                                     style={{
                                       flex: 1,
@@ -7451,10 +7478,18 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
             {activeTab === 'stage-received-call-letter' && (() => {
               // 1. Pipeline candidates in 'Received Call Letter' stage
               const pipelineReceived = candidates.filter(c => {
-                const s = formApplicantStatuses[c.email] || (c.email ? formApplicantStatuses[c.email.toLowerCase()] : undefined) || (c.id ? formApplicantStatuses[c.id] : undefined);
+                const emailKey = (c.email || '').toLowerCase().trim();
+                const nameKey = `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase();
+                const code = getCandidateCode(c);
+                const s = (emailKey && formApplicantStatuses[emailKey]) || 
+                          (c.email && formApplicantStatuses[c.email]) || 
+                          (c.id && formApplicantStatuses[c.id]) ||
+                          (nameKey && formApplicantStatuses[nameKey]) ||
+                          (code && formApplicantStatuses[code]);
+
                 if (s === 'offer' || s === 'onboarded' || s === 'declined') return false;
                 if (c.stage === 'Offer' || c.stage === 'Onboarding' || c.stage === 'Rejected') return false;
-                return c.stage === 'Received Call Letter' || s === 'received_call_letter' || s === 'call_letter_received' || s === 'received-call-letter';
+                return c.stage === 'Received Call Letter' || s === 'received_call_letter' || s === 'call_letter_received' || s === 'received-call-letter' || c.callLetterStatus === 'RECEIVED';
               });
 
               // 2. Map every live applicant record from the Received Call Letter Google Sheet
