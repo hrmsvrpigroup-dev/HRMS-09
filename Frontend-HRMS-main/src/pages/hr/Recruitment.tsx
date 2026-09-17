@@ -6593,7 +6593,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   </div>
                                   <div>
                                     <h4 style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>{c.firstName} {c.lastName}</h4>
-                                    <p style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, margin: '2px 0 0 0' }}>#{code} · {c.jobTitle || 'Role'}</p>
+                                    <p style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, margin: '2px 0 0 0' }}>#{code}</p>
                                   </div>
                                 </div>
                                 {hasSubmitted ? (
