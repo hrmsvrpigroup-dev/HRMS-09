@@ -612,12 +612,18 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   const [sendingDocEmailId, setSendingDocEmailId] = useState<string | null>(null);
   const [docSubTab, setDocSubTab] = useState<'pending' | 'completed' | 'all'>(() => {
     try {
+      const initialized = localStorage.getItem('hrms_doc_sub_tab_v3_completed');
+      if (!initialized) {
+        localStorage.setItem('hrms_doc_sub_tab_v3_completed', 'true');
+        localStorage.setItem('hrms_doc_sub_tab', 'completed');
+        return 'completed';
+      }
       const saved = localStorage.getItem('hrms_doc_sub_tab');
       if (saved && ['pending', 'completed', 'all'].includes(saved)) {
         return saved as any;
       }
     } catch (_) {}
-    return 'pending';
+    return 'completed';
   });
 
   const handleDocSubTabChange = (tab: 'pending' | 'completed' | 'all') => {
@@ -625,6 +631,20 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     try {
       localStorage.setItem('hrms_doc_sub_tab', tab);
     } catch (_) {}
+  };
+
+  const handleToggleDocCandidateStatus = (candidate: Candidate, isCompleted: boolean) => {
+    setSentDocEmails(prev => {
+      const updated = {
+        ...prev,
+        [candidate.id]: isCompleted,
+        ...(candidate.email ? { [candidate.email.toLowerCase()]: isCompleted } : {})
+      };
+      try {
+        localStorage.setItem('hrms_sent_doc_emails', JSON.stringify(updated));
+      } catch (_) {}
+      return updated;
+    });
   };
 
   useEffect(() => {
@@ -6348,13 +6368,32 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
               const pipelineDocs = Array.from(docsMap.values());
 
-              const isCandidateDocSent = (c: Candidate) => Boolean(
-                sentDocEmails[c.id] ||
-                (c.email && sentDocEmails[c.email.toLowerCase()])
-              );
+              const isCandidateDocSent = (c: Candidate) => {
+                // If explicitly marked as pending (false), keep as pending
+                if (sentDocEmails[c.id] === false || (c.email && sentDocEmails[c.email.toLowerCase()] === false)) {
+                  return false;
+                }
+                // All existing document candidate profiles default to Completed as requested
+                return true;
+              };
 
               const completedDocs = pipelineDocs.filter(c => isCandidateDocSent(c));
               const pendingDocs = pipelineDocs.filter(c => !isCandidateDocSent(c));
+
+              const handleMoveAllToCompleted = () => {
+                setSentDocEmails(prev => {
+                  const updated = { ...prev };
+                  pipelineDocs.forEach(c => {
+                    updated[c.id] = true;
+                    if (c.email) updated[c.email.toLowerCase()] = true;
+                  });
+                  try {
+                    localStorage.setItem('hrms_sent_doc_emails', JSON.stringify(updated));
+                  } catch (_) {}
+                  return updated;
+                });
+                handleDocSubTabChange('completed');
+              };
 
               const displayedDocs = docSubTab === 'pending'
                 ? pendingDocs
@@ -6474,82 +6513,105 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                       </div>
                     </div>
 
-                    {/* ─── Sub-tabs: Pending (Send) | Completed (Sent) | All ─── */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px', background: '#f8fafc', borderRadius: '12px', width: 'fit-content', border: '1px solid #e2e8f0', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        onClick={() => handleDocSubTabChange('pending')}
-                        style={{
-                          padding: '7px 16px',
-                          fontSize: '0.8rem',
-                          fontWeight: 700,
-                          borderRadius: '8px',
-                          border: 'none',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '7px',
-                          transition: 'all 0.15s ease',
-                          background: docSubTab === 'pending' ? '#ffffff' : 'transparent',
-                          color: docSubTab === 'pending' ? '#1d4ed8' : '#64748b',
-                          boxShadow: docSubTab === 'pending' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
-                        }}
-                      >
-                        <Send className="h-3.5 w-3.5" style={{ color: docSubTab === 'pending' ? '#2563eb' : '#94a3b8' }} />
-                        <span>Pending ({pendingDocs.length})</span>
-                        <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '99px', background: docSubTab === 'pending' ? '#dbeafe' : '#e2e8f0', color: docSubTab === 'pending' ? '#1e40af' : '#64748b', fontWeight: 800 }}>
-                          Send
-                        </span>
-                      </button>
+                    {/* ─── Sub-tabs: Completed (Sent) | Pending (Send) | All ─── */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px', background: '#f8fafc', borderRadius: '12px', width: 'fit-content', border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleDocSubTabChange('completed')}
+                          style={{
+                            padding: '7px 16px',
+                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            borderRadius: '8px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '7px',
+                            transition: 'all 0.15s ease',
+                            background: docSubTab === 'completed' ? '#ffffff' : 'transparent',
+                            color: docSubTab === 'completed' ? '#15803d' : '#64748b',
+                            boxShadow: docSubTab === 'completed' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                          }}
+                        >
+                          <CheckCircle className="h-3.5 w-3.5" style={{ color: docSubTab === 'completed' ? '#16a34a' : '#94a3b8' }} />
+                          <span>Completed ({completedDocs.length})</span>
+                          <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '99px', background: docSubTab === 'completed' ? '#dcfce7' : '#e2e8f0', color: docSubTab === 'completed' ? '#166534' : '#64748b', fontWeight: 800 }}>
+                            Sent
+                          </span>
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleDocSubTabChange('completed')}
-                        style={{
-                          padding: '7px 16px',
-                          fontSize: '0.8rem',
-                          fontWeight: 700,
-                          borderRadius: '8px',
-                          border: 'none',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '7px',
-                          transition: 'all 0.15s ease',
-                          background: docSubTab === 'completed' ? '#ffffff' : 'transparent',
-                          color: docSubTab === 'completed' ? '#15803d' : '#64748b',
-                          boxShadow: docSubTab === 'completed' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
-                        }}
-                      >
-                        <CheckCircle className="h-3.5 w-3.5" style={{ color: docSubTab === 'completed' ? '#16a34a' : '#94a3b8' }} />
-                        <span>Completed ({completedDocs.length})</span>
-                        <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '99px', background: docSubTab === 'completed' ? '#dcfce7' : '#e2e8f0', color: docSubTab === 'completed' ? '#166534' : '#64748b', fontWeight: 800 }}>
-                          Sent
-                        </span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDocSubTabChange('pending')}
+                          style={{
+                            padding: '7px 16px',
+                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            borderRadius: '8px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '7px',
+                            transition: 'all 0.15s ease',
+                            background: docSubTab === 'pending' ? '#ffffff' : 'transparent',
+                            color: docSubTab === 'pending' ? '#1d4ed8' : '#64748b',
+                            boxShadow: docSubTab === 'pending' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                          }}
+                        >
+                          <Send className="h-3.5 w-3.5" style={{ color: docSubTab === 'pending' ? '#2563eb' : '#94a3b8' }} />
+                          <span>Pending ({pendingDocs.length})</span>
+                          <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '99px', background: docSubTab === 'pending' ? '#dbeafe' : '#e2e8f0', color: docSubTab === 'pending' ? '#1e40af' : '#64748b', fontWeight: 800 }}>
+                            Send
+                          </span>
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleDocSubTabChange('all')}
-                        style={{
-                          padding: '7px 16px',
-                          fontSize: '0.8rem',
-                          fontWeight: 700,
-                          borderRadius: '8px',
-                          border: 'none',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '7px',
-                          transition: 'all 0.15s ease',
-                          background: docSubTab === 'all' ? '#ffffff' : 'transparent',
-                          color: docSubTab === 'all' ? '#0f172a' : '#64748b',
-                          boxShadow: docSubTab === 'all' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
-                        }}
-                      >
-                        <FolderOpen className="h-3.5 w-3.5" style={{ color: docSubTab === 'all' ? '#4f46e5' : '#94a3b8' }} />
-                        <span>All ({pipelineDocs.length})</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDocSubTabChange('all')}
+                          style={{
+                            padding: '7px 16px',
+                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            borderRadius: '8px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '7px',
+                            transition: 'all 0.15s ease',
+                            background: docSubTab === 'all' ? '#ffffff' : 'transparent',
+                            color: docSubTab === 'all' ? '#0f172a' : '#64748b',
+                            boxShadow: docSubTab === 'all' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                          }}
+                        >
+                          <FolderOpen className="h-3.5 w-3.5" style={{ color: docSubTab === 'all' ? '#4f46e5' : '#94a3b8' }} />
+                          <span>All ({pipelineDocs.length})</span>
+                        </button>
+                      </div>
+
+                      {pendingDocs.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleMoveAllToCompleted}
+                          className="rec-btn-outline"
+                          style={{
+                            fontSize: '0.74rem',
+                            height: '34px',
+                            padding: '0 14px',
+                            gap: '6px',
+                            color: '#15803d',
+                            borderColor: '#bbf7d0',
+                            background: '#f0fdf4',
+                            fontWeight: 700
+                          }}
+                          title="Move all remaining pending profiles to the Completed tab"
+                        >
+                          <Check className="h-3.5 w-3.5 text-emerald-600" /> Move All to Completed ({pendingDocs.length})
+                        </button>
+                      )}
                     </div>
 
                     {displayedDocs.length === 0 ? (
@@ -6564,7 +6626,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                         </p>
                         <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>
                           {docSubTab === 'pending' && completedDocs.length > 0
-                            ? `You have sent invitations to ${completedDocs.length} candidate(s). Switch to the Completed tab to review them.`
+                            ? `You have ${completedDocs.length} profile(s) in the Completed tab. Switch to Completed to review them.`
                             : 'Candidates who pass interviews will automatically appear here.'}
                         </p>
                       </div>
@@ -6578,10 +6640,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                             (`${c.firstName} ${c.lastName}`.trim().toLowerCase() === (r.fullName || '').trim().toLowerCase())
                           ) || (c.attachmentImages && c.attachmentImages.length > 0);
 
-                          const isDocEmailSent = Boolean(
-                            sentDocEmails[c.id] ||
-                            (c.email && sentDocEmails[c.email.toLowerCase()])
-                          );
+                          const isDocEmailSent = isCandidateDocSent(c);
                           const isSendingThisDocEmail = sendingDocEmailId === (c.id || c.email);
 
                           return (
