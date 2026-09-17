@@ -53,8 +53,8 @@ export const hrApi = {
     return response.data.data
   },
 
-  getMonthlyReport: async (year: number, month: number) => {
-    const response = await api.get<{ success: boolean; data: any }>(`/hr/monthly-report?year=${year}&month=${month}`)
+  getMonthlyReport: async (year: number, month: number, force: boolean = false) => {
+    const response = await api.get<{ success: boolean; data: any }>(`/hr/monthly-report?year=${year}&month=${month}${force ? '&force=true' : ''}`)
     return response.data.data
   },
 }

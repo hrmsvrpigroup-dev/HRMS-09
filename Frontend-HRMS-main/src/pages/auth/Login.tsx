@@ -126,8 +126,12 @@ export default function Login() {
       setAuth(payload.user, payload.accessToken as string, payload.refreshToken as string)
       navigate(getLandingRoute(payload.user.role), { replace: true })
     } catch (err: any) {
-      const msg = err.response?.data?.message || 'Invalid credentials. Please try again.'
-      setError(msg)
+      if (!err.response) {
+        setError('Server is waking up from idle. Please wait 5 seconds and click Log In again.')
+      } else {
+        const msg = err.response?.data?.message || 'Invalid credentials. Please try again.'
+        setError(msg)
+      }
     } finally {
       setLoading(false)
     }

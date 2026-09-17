@@ -4,6 +4,13 @@ import { AuthRequest } from '../middleware/auth.middleware'
 import { sendError, sendSuccess } from '../utils/response.utils'
 import { LeaveStatus } from '@prisma/client'
 
+interface CachedMonthlyReport {
+  data: any
+  timestamp: number
+}
+const monthlyReportCache = new Map<string, CachedMonthlyReport>()
+const REPORT_CACHE_TTL_MS = 60 * 1000 // 60 seconds TTL
+
 export const hrController = {
   async dashboard(req: AuthRequest, res: Response) {
     const tenantId = req.tenantId ?? req.user?.tenantId
@@ -238,22 +245,49 @@ export const hrController = {
     const tenantId = req.tenantId ?? req.user?.tenantId
     if (!tenantId) return sendError(res, 'Tenant context not found', 400)
 
-    const { year, month } = req.query
+    const { year, month, force } = req.query
     const targetYear = year ? Number(year) : new Date().getFullYear()
     const targetMonth = month ? Number(month) : (new Date().getMonth() + 1)
+    const cacheKey = `${tenantId}:${targetYear}:${targetMonth}`
+
+    // Return cached report if fresh and not forced
+    if (!force) {
+      const cached = monthlyReportCache.get(cacheKey)
+      if (cached && (Date.now() - cached.timestamp < REPORT_CACHE_TTL_MS)) {
+        return sendSuccess(res, cached.data)
+      }
+    }
 
     try {
       const startDate = new Date(Date.UTC(targetYear, targetMonth - 1, 1, 0, 0, 0))
       const endDate = new Date(Date.UTC(targetYear, targetMonth, 1, 0, 0, 0))
 
+      // High-performance lean projection queries (avoids fetching 70+ MB clockInPhoto and faceBaseline)
       const [employees, attendances, leaves] = await Promise.all([
         prisma.employee.findMany({
           where: { tenantId },
-          include: { department: true, designation: true },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            employeeCode: true,
+            status: true,
+            department: { select: { name: true } },
+            designation: { select: { title: true } }
+          },
           orderBy: { employeeCode: 'asc' }
         }),
         prisma.attendance.findMany({
           where: { tenantId, date: { gte: startDate, lt: endDate } },
+          select: {
+            id: true,
+            employeeId: true,
+            date: true,
+            clockIn: true,
+            clockOut: true,
+            totalHours: true,
+            status: true
+          },
           orderBy: { date: 'asc' }
         }),
         prisma.leave.findMany({
@@ -265,6 +299,12 @@ export const hrController = {
               { toDate: { gte: startDate, lt: endDate } },
               { fromDate: { lt: startDate }, toDate: { gte: endDate } }
             ]
+          },
+          select: {
+            employeeId: true,
+            fromDate: true,
+            toDate: true,
+            days: true
           }
         })
       ])
@@ -275,9 +315,39 @@ export const hrController = {
       const isCurrentMonth = (now.getFullYear() === targetYear && (now.getMonth() + 1) === targetMonth)
       const maxDay = isCurrentMonth ? Math.min(now.getDate(), daysInMonth) : daysInMonth
 
+      // Pre-group attendances and leaves by employeeId in O(N) Map lookups
+      const attendancesByEmp = new Map<string, typeof attendances>()
+      for (let i = 0; i < attendances.length; i++) {
+        const a = attendances[i]
+        let list = attendancesByEmp.get(a.employeeId)
+        if (!list) {
+          list = []
+          attendancesByEmp.set(a.employeeId, list)
+        }
+        list.push(a)
+      }
+
+      const leavesByEmp = new Map<string, typeof leaves>()
+      for (let i = 0; i < leaves.length; i++) {
+        const l = leaves[i]
+        let list = leavesByEmp.get(l.employeeId)
+        if (!list) {
+          list = []
+          leavesByEmp.set(l.employeeId, list)
+        }
+        list.push(l)
+      }
+
+      const daysToCheck = companyRecordedDates.length > 0
+        ? companyRecordedDates
+        : Array.from({ length: maxDay }, (_, i) => {
+            const d = new Date(Date.UTC(targetYear, targetMonth - 1, i + 1))
+            return d.toISOString().split('T')[0]
+          })
+
       const employeeReports = employees.map(emp => {
-        const empAttendances = attendances.filter(a => a.employeeId === emp.id)
-        const empLeaves = leaves.filter(l => l.employeeId === emp.id)
+        const empAttendances = attendancesByEmp.get(emp.id) || []
+        const empLeaves = leavesByEmp.get(emp.id) || []
 
         const presentRecords: any[] = []
         const absentDates: string[] = []
@@ -286,19 +356,14 @@ export const hrController = {
         const halfDayDates: string[] = []
 
         const attByDate = new Map<string, typeof empAttendances[0]>()
-        empAttendances.forEach(a => {
+        for (let i = 0; i < empAttendances.length; i++) {
+          const a = empAttendances[i]
           const dStr = a.date.toISOString().split('T')[0]
           attByDate.set(dStr, a)
-        })
+        }
 
-        const daysToCheck = companyRecordedDates.length > 0
-          ? companyRecordedDates
-          : Array.from({ length: maxDay }, (_, i) => {
-              const d = new Date(Date.UTC(targetYear, targetMonth - 1, i + 1))
-              return d.toISOString().split('T')[0]
-            })
-
-        daysToCheck.forEach(dStr => {
+        for (let i = 0; i < daysToCheck.length; i++) {
+          const dStr = daysToCheck[i]
           const rec = attByDate.get(dStr)
           if (rec) {
             if (rec.status === 'PRESENT') {
@@ -323,7 +388,7 @@ export const hrController = {
               absentDates.push(dStr)
             }
           }
-        })
+        }
 
         const presentCount = presentRecords.length
         const absentCount = absentDates.length
@@ -368,7 +433,7 @@ export const hrController = {
         ? Math.round(employeeReports.reduce((s, r) => s + r.attendanceRate, 0) / totalEmployeesCount)
         : 0
 
-      return sendSuccess(res, {
+      const resultPayload = {
         year: targetYear,
         month: targetMonth,
         daysInMonth,
@@ -382,7 +447,15 @@ export const hrController = {
           avgMonthlyRate
         },
         employees: employeeReports
+      }
+
+      // Store in fast TTL cache
+      monthlyReportCache.set(cacheKey, {
+        data: resultPayload,
+        timestamp: Date.now()
       })
+
+      return sendSuccess(res, resultPayload)
     } catch (err: any) {
       return sendError(res, err.message, 500)
     }

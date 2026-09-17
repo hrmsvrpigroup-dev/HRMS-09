@@ -20,28 +20,48 @@ function formatDatePill(dateStr: string) {
   return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', weekday: 'short' })
 }
 
+// Client-side session cache for instant tab switching
+const reportClientCache = new Map<string, any>()
+
 export default function MonthlyReport() {
   const navigate = useNavigate()
   const now = new Date()
   const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth()) // 0-indexed
   const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear())
-  const [reportData, setReportData] = useState<any>(null)
-  const [loading, setLoading] = useState<boolean>(true)
+  const [reportData, setReportData] = useState<any>(() => {
+    return reportClientCache.get(`${now.getFullYear()}-${now.getMonth()}`) || null
+  })
+  const [loading, setLoading] = useState<boolean>(!reportData)
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false)
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [deptFilter, setDeptFilter] = useState<string>('ALL')
   const [expandedEmpId, setExpandedEmpId] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState<number>(1)
   const pageSize = 10
 
-  const fetchMonthlyReport = async (year: number, month: number) => {
-    try {
+  const fetchMonthlyReport = async (year: number, month: number, force: boolean = false) => {
+    const cacheKey = `${year}-${month}`
+    const cached = reportClientCache.get(cacheKey)
+
+    if (cached && !force) {
+      setReportData(cached)
+      setLoading(false)
+    } else if (!cached) {
       setLoading(true)
-      const data = await hrApi.getMonthlyReport(year, month + 1)
-      setReportData(data)
+    }
+
+    try {
+      setIsRefreshing(true)
+      const data = await hrApi.getMonthlyReport(year, month + 1, force)
+      if (data) {
+        reportClientCache.set(cacheKey, data)
+        setReportData(data)
+      }
     } catch (err) {
       console.error('Failed to load monthly report', err)
     } finally {
       setLoading(false)
+      setIsRefreshing(false)
     }
   }
 
@@ -151,8 +171,9 @@ export default function MonthlyReport() {
           <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             {/* Refresh */}
             <button
-              onClick={() => fetchMonthlyReport(selectedYear, selectedMonth)}
-              title="Refresh Data"
+              onClick={() => fetchMonthlyReport(selectedYear, selectedMonth, true)}
+              title="Refresh Data (Force Fetch)"
+              disabled={isRefreshing}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -161,11 +182,12 @@ export default function MonthlyReport() {
                 background: '#fff',
                 border: '1px solid #e2e8f0',
                 borderRadius: 10,
-                color: '#64748b',
-                cursor: 'pointer'
+                color: isRefreshing ? '#6366f1' : '#64748b',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
               }}
             >
-              <RefreshCw size={15} />
+              <RefreshCw size={15} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
             </button>
 
             {/* Month Picker */}
