@@ -653,6 +653,22 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     } catch (_) {}
   }, [sentDocEmails]);
 
+  const [sentCallLetterEmails, setSentCallLetterEmails] = useState<{ [key: string]: boolean }>(() => {
+    try {
+      const saved = localStorage.getItem('hrms_sent_call_letter_emails');
+      return saved ? JSON.parse(saved) : {};
+    } catch (_) {
+      return {};
+    }
+  });
+  const [sendingCallLetterId, setSendingCallLetterId] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('hrms_sent_call_letter_emails', JSON.stringify(sentCallLetterEmails));
+    } catch (_) {}
+  }, [sentCallLetterEmails]);
+
 
   const getStoredShortlistedCandidates = (): Candidate[] => {
     try {
@@ -2898,6 +2914,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
   // Issue / Dispatch Call Letter via Real-time Email
   const handleIssueCallLetter = async (candidateId: string) => {
+    setSendingCallLetterId(candidateId);
     try {
       const target = candidates.find(c => c.id === candidateId || c.email === candidateId);
       const candCustomName = target?.customName || (target ? `${target.firstName} ${target.lastName}`.trim() : 'Candidate');
@@ -2916,7 +2933,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       const candidateEmail = target?.email || (candidateId.includes('@') ? candidateId : '');
 
       setCandidates(prev => prev.map(c => {
-        if (c.id === candidateId || c.email === candidateId) {
+        if (c.id === candidateId || c.email === candidateId || (candidateEmail && c.email && c.email.toLowerCase() === candidateEmail.toLowerCase())) {
           return {
             ...c,
             callLetterStatus: 'SENT',
@@ -2935,6 +2952,20 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         }
         return c;
       }));
+
+      // Update sentCallLetterEmails state & localStorage
+      setSentCallLetterEmails(prev => {
+        const updated = {
+          ...prev,
+          [candidateId]: true,
+          ...(target?.id ? { [target.id]: true } : {}),
+          ...(candidateEmail ? { [candidateEmail.toLowerCase()]: true } : {})
+        };
+        try {
+          localStorage.setItem('hrms_sent_call_letter_emails', JSON.stringify(updated));
+        } catch (_) {}
+        return updated;
+      });
 
       // Store in localStorage
       try {
@@ -2955,7 +2986,9 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
           notes: repNotes
         };
         stored[candidateId] = data;
+        if (target?.id) stored[target.id] = data;
         if (target?.email) stored[target.email.toLowerCase()] = data;
+        if (candidateEmail) stored[candidateEmail.toLowerCase()] = data;
         localStorage.setItem('hrms_candidate_call_letters', JSON.stringify(stored));
       } catch (_) {}
 
@@ -2996,6 +3029,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       alert(`✉️ Official Call Letter dispatched in real-time to ${candCustomName} (${candidateEmail || 'Candidate'})!`);
     } catch (err) {
       alert('Failed to issue call letter.');
+    } finally {
+      setSendingCallLetterId(null);
     }
   };
 
@@ -7186,14 +7221,20 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                       ) : (
                         callLetterCandidates.map(c => {
                           const code = getCandidateCode(c);
-                          const isSent = c.callLetterStatus === 'SENT';
+                          const emailKey = (c.email || '').toLowerCase().trim();
+                          const isSent = c.callLetterStatus === 'SENT' || c.callLetterStatus === 'ISSUED' || Boolean(
+                            sentCallLetterEmails[c.id] ||
+                            (emailKey && sentCallLetterEmails[emailKey]) ||
+                            c.callLetterDate
+                          );
+                          const isSendingThis = Boolean(sendingCallLetterId && (sendingCallLetterId === c.id || (emailKey && sendingCallLetterId === emailKey)));
 
                           return (
                             <div key={c.id} style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '1.15rem', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.15rem', boxShadow: '0 4px 15px rgba(15, 23, 42, 0.03)' }}>
                               {/* Card Header */}
                               <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                  <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.85rem', boxShadow: '0 2px 8px rgba(139, 92, 246, 0.3)' }}>
+                                  <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: isSent ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.85rem', boxShadow: isSent ? '0 2px 8px rgba(16, 185, 129, 0.3)' : '0 2px 8px rgba(139, 92, 246, 0.3)' }}>
                                     {(c.customName || c.firstName || 'C').charAt(0).toUpperCase()}
                                   </div>
                                   <div>
@@ -7203,9 +7244,9 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 </div>
                                 <span className={cn(
                                   'px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider',
-                                  isSent ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                                  isSent ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
                                   )}>
-                                  {isSent ? 'CALL LETTER SENT' : 'PENDING DISPATCH'}
+                                  {isSent ? '✓ CALL LETTER SENT' : 'PENDING DISPATCH'}
                                 </span>
                               </div>
 
@@ -7341,18 +7382,38 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   <button
                                     type="button"
                                     onClick={() => handleIssueCallLetter(c.id)}
+                                    disabled={isSendingThis}
                                     className="rec-btn-primary"
                                     style={{
                                       height: '36px',
                                       fontSize: '0.72rem',
                                       justifyContent: 'center',
-                                      gap: '4px',
-                                      background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-                                      boxShadow: '0 3px 8px rgba(139, 92, 246, 0.3)',
-                                      fontWeight: 700
+                                      gap: '5px',
+                                      background: isSent
+                                        ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                                        : 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+                                      boxShadow: isSent
+                                        ? '0 3px 8px rgba(16, 185, 129, 0.3)'
+                                        : '0 3px 8px rgba(139, 92, 246, 0.3)',
+                                      fontWeight: 800,
+                                      cursor: isSendingThis ? 'not-allowed' : 'pointer',
+                                      color: '#ffffff'
                                     }}
+                                    title={isSent ? "Call Letter email has been sent. Click to resend if needed." : "Send official Call Letter email to candidate"}
                                   >
-                                    <MailCheck className="h-3.5 w-3.5" /> {isSent ? 'Resend' : 'Send'}
+                                    {isSendingThis ? (
+                                      <>
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Sending...
+                                      </>
+                                    ) : isSent ? (
+                                      <>
+                                        <Check className="h-3.5 w-3.5" /> Sent
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Send className="h-3.5 w-3.5" /> Send
+                                      </>
+                                    )}
                                   </button>
                                 </div>
 
