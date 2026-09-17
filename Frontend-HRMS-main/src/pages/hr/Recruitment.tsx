@@ -6513,35 +6513,9 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                       </div>
                     </div>
 
-                    {/* ─── Sub-tabs: Completed (Sent) | Pending (Send) | All ─── */}
+                    {/* ─── Sub-tabs: Pending (Send) | Completed (Sent) | All ─── */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '12px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px', background: '#f8fafc', borderRadius: '12px', width: 'fit-content', border: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleDocSubTabChange('completed')}
-                          style={{
-                            padding: '7px 16px',
-                            fontSize: '0.8rem',
-                            fontWeight: 700,
-                            borderRadius: '8px',
-                            border: 'none',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '7px',
-                            transition: 'all 0.15s ease',
-                            background: docSubTab === 'completed' ? '#ffffff' : 'transparent',
-                            color: docSubTab === 'completed' ? '#15803d' : '#64748b',
-                            boxShadow: docSubTab === 'completed' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
-                          }}
-                        >
-                          <CheckCircle className="h-3.5 w-3.5" style={{ color: docSubTab === 'completed' ? '#16a34a' : '#94a3b8' }} />
-                          <span>Completed ({completedDocs.length})</span>
-                          <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '99px', background: docSubTab === 'completed' ? '#dcfce7' : '#e2e8f0', color: docSubTab === 'completed' ? '#166534' : '#64748b', fontWeight: 800 }}>
-                            Sent
-                          </span>
-                        </button>
-
                         <button
                           type="button"
                           onClick={() => handleDocSubTabChange('pending')}
@@ -6565,6 +6539,32 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                           <span>Pending ({pendingDocs.length})</span>
                           <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '99px', background: docSubTab === 'pending' ? '#dbeafe' : '#e2e8f0', color: docSubTab === 'pending' ? '#1e40af' : '#64748b', fontWeight: 800 }}>
                             Send
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDocSubTabChange('completed')}
+                          style={{
+                            padding: '7px 16px',
+                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            borderRadius: '8px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '7px',
+                            transition: 'all 0.15s ease',
+                            background: docSubTab === 'completed' ? '#ffffff' : 'transparent',
+                            color: docSubTab === 'completed' ? '#15803d' : '#64748b',
+                            boxShadow: docSubTab === 'completed' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                          }}
+                        >
+                          <CheckCircle className="h-3.5 w-3.5" style={{ color: docSubTab === 'completed' ? '#16a34a' : '#94a3b8' }} />
+                          <span>Completed ({completedDocs.length})</span>
+                          <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '99px', background: docSubTab === 'completed' ? '#dcfce7' : '#e2e8f0', color: docSubTab === 'completed' ? '#166534' : '#64748b', fontWeight: 800 }}>
+                            Sent
                           </span>
                         </button>
 
