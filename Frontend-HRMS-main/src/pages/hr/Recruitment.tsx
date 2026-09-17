@@ -6496,26 +6496,6 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                     </div>
                   </div>
 
-                  {/* Document Requirements Checklist Guide */}
-                  <div className="rec-card" style={{ padding: '1.25rem 1.5rem', background: '#ffffff', borderRadius: '1.25rem', border: '1px solid #e2e8f0' }}>
-                    <h3 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', margin: '0 0 0.75rem 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <CheckCircle className="h-4.5 w-4.5 text-emerald-600" /> Mandatory Candidate Documents Checklist
-                    </h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
-                      {[
-                        { title: '1. Identity & Address Proof', desc: 'Aadhaar Card, PAN Card, or Passport' },
-                        { title: '2. Educational Certificates', desc: 'Degree, Provisional, SSC & Inter Marks' },
-                        { title: '3. Relieving / Experience', desc: 'Experience letter or resignation acceptance' },
-                        { title: '4. Financial Credentials', desc: 'Last 3 months payslips or bank statement' },
-                        { title: '5. Passport Photograph', desc: 'Recent professional passport size photo' },
-                      ].map((item, idx) => (
-                        <div key={idx} style={{ padding: '0.75rem', background: '#f8fafc', borderRadius: '0.75rem', border: '1px solid #e2e8f0' }}>
-                          <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 700, color: '#1e293b' }}>{item.title}</p>
-                          <p style={{ margin: '2px 0 0 0', fontSize: '0.7rem', color: '#64748b' }}>{item.desc}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
 
                   {/* Candidates In Stage 4 Documents List */}
                   <div className="rec-card" style={{ padding: '1.5rem', background: '#ffffff', borderRadius: '1.25rem', border: '1px solid #e2e8f0' }}>
