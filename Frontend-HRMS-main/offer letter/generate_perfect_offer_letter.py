@@ -271,9 +271,9 @@ def build_page_html(p_num, raw_html):
 
           <div class="footer-addresses">
             <div class="office-col">
-              <strong>USA:</strong><br />
-              5 Green-tree Centre, Dr 525, Route 73, STE 104, Burlington City, New Jersey 08053.<br />
-              Phone no.: +1 646-741-8264
+              <strong>Head Quarters:</strong><br />
+              2-27-163, Gandhi Nagar, Near Jammi Chettu, Wanaparthy, Telangana, India 509103.<br />
+              Phone no.: (+91) 8790946714
             </div>
             <div class="office-col">
               <strong>INDIA (Hyderabad):</strong><br />
@@ -281,9 +281,9 @@ def build_page_html(p_num, raw_html):
               Phone no.: (+91) 8790946714
             </div>
             <div class="office-col">
-              <strong>Head Quarters:</strong><br />
-              2-27-163, Gandhi Nagar, Near Jammi Chettu, Wanaparthy, Telangana, India 509103.<br />
-              Phone no.: (+91) 8790946714
+              <strong>USA:</strong><br />
+              5 Green-tree Centre, Dr 525, Route 73, STE 104, Burlington City, New Jersey 08053.<br />
+              Phone no.: +1 646-741-8264
             </div>
           </div>
 """

@@ -18,6 +18,7 @@ export interface OfferLetterData {
   referenceNo: string;
   offerDate: string;
   genderPrefix?: string;
+  reportingVenue?: string;
 }
 
 export interface SalaryBreakdown {
@@ -159,7 +160,7 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
 
           <div class="section-title-box">2. <u>DATE OF JOINING:</u></div>
           <p class="body-paragraph" style="padding-left: 16px;">
-            As agreed, you shall join the services of the organization on <strong>${d.joiningDate}</strong>.
+            As agreed, you shall join the services of the organization on <strong>${d.joiningDate}</strong>.${d.reportingVenue ? `<br /><strong>Reporting Venue / Address:</strong> ${d.reportingVenue}` : ''}
           </p>
 
           <div class="section-title-box">General Terms and Conditions of Employment</div>
@@ -192,7 +193,7 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
           </div>
           <div class="page-body-content">
             <p class="body-paragraph">to time. Your remuneration is in payment for all hours which may be required to complete your responsibilities.</p>
-<p class="body-paragraph"><u><strong>Place/Transfer</strong></u><strong>: </strong>Your present place of work will be at Hyderabad, but during the course of the service, you shall be liable to travel to other locations and/or be posted/transferred anywhere, temporarily or permanently, existing now or still to be formed, to serve any of the Company's Projects or any other establishment under the same management in India or outside, at the sole discretion of the management without adversely affecting your emoluments and general condition of service. You will be governed by the transfer rules prevailing in the company at that given point of time.</p>
+<p class="body-paragraph"><u><strong>Place/Transfer</strong></u><strong>: </strong>Your present place of work will be at ${d.reportingVenue || 'Hyderabad'}, but during the course of the service, you shall be liable to travel to other locations and/or be posted/transferred anywhere, temporarily or permanently, existing now or still to be formed, to serve any of the Company's Projects or any other establishment under the same management in India or outside, at the sole discretion of the management without adversely affecting your emoluments and general condition of service. You will be governed by the transfer rules prevailing in the company at that given point of time.</p>
 <p class="body-paragraph"><u><strong>Probation/Confirmation</strong></u><strong>: </strong>You will be on a probation period for <strong>6 months </strong>from the date of joining. Based on your performance and conduct, this period may be reduced, dispensed or extended at the discretion of the management and unless an order in writing is given to you, you shall not be deemed to have been confirmed.</p>
 <div class="clause-header-box"><u><strong>Career Growth:</strong></u><strong> </strong>During the course of Employment, you will be reviewed and appraised on the basis of your performance. If there is any elevation in job role/profile other than which you are specialized into, that is, Horizontal Growth in your Career, it shall be subject to Probationary period. Clause 5 shall be applicable in such case.</div>
 <p class="body-paragraph"><u><strong>Absence without Notice</strong></u><strong>: </strong>Absence without leave or prior approval of your superior or intimation to Human Resources or remaining absent beyond the period of leave originally granted or subsequently extended, shall result in voluntary termination of your employment without any notice or salary in lieu thereof or hold on salary disbursement, unless you return to work within 3 working days from the commencement of such absence and provide satisfactory explanation to management regarding such absence.</p>
@@ -544,9 +545,9 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
 
           <div class="footer-addresses">
             <div class="office-col">
-              <strong>USA:</strong><br />
-              5 Green-tree Centre, Dr 525, Route 73, STE 104, Burlington City, New Jersey 08053.<br />
-              Phone no.: +1 646-741-8264
+              <strong>Head Quarters:</strong><br />
+              2-27-163, Gandhi Nagar, Near Jammi Chettu, Wanaparthy, Telangana, India 509103.<br />
+              Phone no.: (+91) 8790946714
             </div>
             <div class="office-col">
               <strong>INDIA (Hyderabad):</strong><br />
@@ -554,9 +555,9 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
               Phone no.: (+91) 8790946714
             </div>
             <div class="office-col">
-              <strong>Head Quarters:</strong><br />
-              2-27-163, Gandhi Nagar, Near Jammi Chettu, Wanaparthy, Telangana, India 509103.<br />
-              Phone no.: (+91) 8790946714
+              <strong>USA:</strong><br />
+              5 Green-tree Centre, Dr 525, Route 73, STE 104, Burlington City, New Jersey 08053.<br />
+              Phone no.: +1 646-741-8264
             </div>
           </div>
 `;
