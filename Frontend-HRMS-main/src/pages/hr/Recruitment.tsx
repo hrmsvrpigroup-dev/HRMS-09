@@ -8106,28 +8106,6 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                               </div>
                             </div>
 
-                            {/* Inputs Row 3: Reporting Venue / Address */}
-                            <div className="auth-luxury-label">
-                              Reporting Venue / Address *
-                              <input 
-                                type="text" 
-                                disabled={c.offerStatus === 'SENT'}
-                                className="rec-search-input" 
-                                style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', fontWeight: 500, color: '#0f172a', background: c.offerStatus === 'SENT' ? '#f8fafc' : '#ffffff' }}
-                                value={venue}
-                                onChange={e => {
-                                  const val = e.target.value;
-                                  setCandidateOfferForms(prev => ({
-                                    ...prev,
-                                    [c.id]: { ...prev[c.id], venue: val },
-                                    ...(c.email ? { [c.email]: { ...prev[c.email], venue: val } } : {}),
-                                    ...(c.email ? { [c.email.toLowerCase()]: { ...prev[c.email.toLowerCase()], venue: val } } : {})
-                                  }));
-                                }}
-                                placeholder="e.g. 4th Floor, Dwaraka Central, Plot no.: 57, Hitech City Rd, Madhapur, Hyderabad, Telangana 500081"
-                              />
-                            </div>
-
                             {/* Inputs Row 4: Annual CTC & Joining Date */}
                             <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem' }}>
                               <div className="auth-luxury-label">
