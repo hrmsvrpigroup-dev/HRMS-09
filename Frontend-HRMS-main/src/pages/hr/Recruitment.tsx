@@ -960,10 +960,33 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     } catch (_) {}
   };
 
+  const getAdminDefaultTeamsLink = (): string => {
+    try {
+      return localStorage.getItem('hrms_admin_default_teams_link') || '';
+    } catch {
+      return '';
+    }
+  };
+
+  const saveAdminDefaultTeamsLink = (link: string) => {
+    try {
+      localStorage.setItem('hrms_admin_default_teams_link', link.trim());
+    } catch {}
+  };
+
+  const toTeamsAppProtocol = (url: string): string => {
+    if (!url) return '';
+    const clean = url.trim();
+    if (clean.startsWith('https://teams.microsoft.com/')) {
+      return clean.replace('https://teams.microsoft.com/', 'msteams:/');
+    }
+    return clean;
+  };
+
   // Helper to auto-generate or retrieve dedicated video interview meeting URL (1 per person)
-  const generateTeamsMeetingUrl = async (topic: string = 'Interview Session', candidate?: Candidate | null) => {
-    // 1. Check if candidate already has an existing link
-    if (candidate) {
+  const generateTeamsMeetingUrl = async (topic: string = 'Interview Session', candidate?: Candidate | null, forceRefresh: boolean = false) => {
+    // 1. Check if candidate already has an existing link (unless forceRefresh requested)
+    if (candidate && !forceRefresh) {
       const existing = getMeetingLinkForCandidate(candidate);
       if (existing) return existing;
     }
@@ -972,7 +995,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       const res = await api.post('/recruitment/generate-teams-link', { 
         topic,
         candidateEmail: candidate?.email,
-        candidateId: candidate?.id
+        candidateId: candidate?.id,
+        forceRefresh
       });
       if (res.data?.data?.link) {
         const link = res.data.data.link;
@@ -981,7 +1005,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       }
     } catch (_) {}
 
-    const tenantId = '25276fbe-5e30-46cc-b2b0-f5d73c1ae006';
+    const tenantId = '25276fbe-5e50-46cc-b2b0-f5d73c1ae606';
     const randPart = Array.from(crypto.getRandomValues(new Uint8Array(16)))
       .map(b => (b % 36).toString(36))
       .join('');
@@ -5157,7 +5181,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                           display: 'inline-flex',
                                           alignItems: 'center'
                                         }}
-                                        title="Open Microsoft Teams Meeting"
+                                        title="Open Microsoft Teams Meeting (Browser)"
                                       >
                                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
                                           <path d="M16.5 6a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" fill="#A4ACF8"/>
@@ -5169,6 +5193,30 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                         </svg>
                                         Join Teams
                                       </a>
+                                      {meetLink.includes('teams.microsoft.com') && (
+                                        <a
+                                          href={toTeamsAppProtocol(meetLink)}
+                                          className="rec-btn-outline"
+                                          style={{
+                                            fontSize: '0.67rem',
+                                            height: '28px',
+                                            padding: '0 8px',
+                                            borderColor: '#c7d2fe',
+                                            background: '#eef2ff',
+                                            color: '#4338ca',
+                                            textDecoration: 'none',
+                                            borderRadius: '0.45rem',
+                                            fontWeight: 700,
+                                            whiteSpace: 'nowrap',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '3px'
+                                          }}
+                                          title="Open directly in Microsoft Teams Desktop App (Joins as Admin/Organizer)"
+                                        >
+                                          💻 Teams App
+                                        </a>
+                                      )}
                                       <button
                                         onClick={() => {
                                           navigator.clipboard.writeText(meetLink);
@@ -5583,14 +5631,19 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   setSelectedCandidate(cand || null);
                                   if (cand) {
                                     const candName = `${cand.firstName} ${cand.lastName}`.trim();
-                                    setIsGeneratingTeamsLink(true);
-                                    const autoLink = await generateTeamsMeetingUrl(`VRPI Interview: ${candName}`, cand);
+                                    const existingCandLink = getMeetingLinkForCandidate(cand);
+                                    const defaultAdminLink = getAdminDefaultTeamsLink();
+                                    let autoLink = existingCandLink || defaultAdminLink;
+                                    if (!autoLink) {
+                                      setIsGeneratingTeamsLink(true);
+                                      autoLink = await generateTeamsMeetingUrl(`VRPI Interview: ${candName}`, cand);
+                                      setIsGeneratingTeamsLink(false);
+                                    }
                                     setInterviewForm(prev => ({
                                       ...prev,
                                       candidateEmail: cand.email || '',
                                       link: autoLink
                                     }));
-                                    setIsGeneratingTeamsLink(false);
                                   } else {
                                     setInterviewForm(prev => ({
                                       ...prev,
@@ -5887,30 +5940,76 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
                             {/* Meeting Link Field with Action Buttons */}
                             <div className="auth-luxury-label">
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', flexWrap: 'wrap', gap: '4px' }}>
                                 <span>Video Meeting Link *</span>
-                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                                   {interviewForm.link && (
-                                    <a
-                                      href={interviewForm.link}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
+                                    <>
+                                      <a
+                                        href={interviewForm.link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{
+                                          background: '#f1f5f9',
+                                          color: '#475569',
+                                          border: '1px solid #cbd5e1',
+                                          borderRadius: '6px',
+                                          padding: '3px 8px',
+                                          fontSize: '0.7rem',
+                                          fontWeight: 700,
+                                          textDecoration: 'none',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '3px'
+                                        }}
+                                        title="Test in web browser"
+                                      >
+                                        🌐 Test Web
+                                      </a>
+                                      {interviewForm.link.includes('teams.microsoft.com') && (
+                                        <a
+                                          href={toTeamsAppProtocol(interviewForm.link)}
+                                          style={{
+                                            background: '#eef2ff',
+                                            color: '#4338ca',
+                                            border: '1px solid #c7d2fe',
+                                            borderRadius: '6px',
+                                            padding: '3px 8px',
+                                            fontSize: '0.7rem',
+                                            fontWeight: 700,
+                                            textDecoration: 'none',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '3px'
+                                          }}
+                                          title="Open directly in Microsoft Teams Desktop App (Authenticates with your Admin Account)"
+                                        >
+                                          💻 Teams App (Admin)
+                                        </a>
+                                      )}
+                                    </>
+                                  )}
+                                  {getAdminDefaultTeamsLink() && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const defaultLink = getAdminDefaultTeamsLink();
+                                        setInterviewForm(prev => ({ ...prev, link: defaultLink }));
+                                      }}
                                       style={{
-                                        background: '#f1f5f9',
-                                        color: '#475569',
+                                        background: '#f8fafc',
+                                        color: '#334155',
                                         border: '1px solid #cbd5e1',
                                         borderRadius: '6px',
-                                        padding: '4px 10px',
-                                        fontSize: '0.72rem',
+                                        padding: '3px 8px',
+                                        fontSize: '0.7rem',
                                         fontWeight: 700,
-                                        textDecoration: 'none',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
+                                        cursor: 'pointer'
                                       }}
+                                      title="Fill your saved default Admin Teams room link"
                                     >
-                                      🌐 Test Link
-                                    </a>
+                                      📌 Use My Admin Room
+                                    </button>
                                   )}
                                   <button
                                     type="button"
@@ -5918,7 +6017,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                       setIsGeneratingTeamsLink(true);
                                       const candName = selectedCandidate ? `${selectedCandidate.firstName} ${selectedCandidate.lastName}` : 'Candidate';
                                       const topic = `VRPI Interview: ${candName}`;
-                                      const newLink = await generateTeamsMeetingUrl(topic, selectedCandidate);
+                                      const newLink = await generateTeamsMeetingUrl(topic, selectedCandidate, true);
                                       setInterviewForm(prev => ({ ...prev, link: newLink }));
                                       setIsGeneratingTeamsLink(false);
                                     }}
@@ -5927,18 +6026,18 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                       color: '#ffffff',
                                       border: 'none',
                                       borderRadius: '6px',
-                                      padding: '4px 12px',
-                                      fontSize: '0.72rem',
+                                      padding: '3px 10px',
+                                      fontSize: '0.7rem',
                                       fontWeight: 700,
                                       cursor: 'pointer',
                                       display: 'flex',
                                       alignItems: 'center',
-                                      gap: '5px',
-                                      boxShadow: '0 2px 6px rgba(79, 70, 229, 0.3)'
+                                      gap: '4px',
+                                      boxShadow: '0 2px 5px rgba(79, 70, 229, 0.25)'
                                     }}
-                                    title="Create / refresh instant interview meeting room"
+                                    title="Generate or refresh instant interview meeting room"
                                   >
-                                    {isGeneratingTeamsLink ? '⏳ Creating...' : '✨ Create / Refresh Meeting Link'}
+                                    {isGeneratingTeamsLink ? '⏳ Creating...' : '✨ Create / Refresh'}
                                   </button>
                                 </div>
                               </div>
@@ -5947,15 +6046,50 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   type="url" 
                                   className="rec-search-input" 
                                   style={{ width: '100%', paddingLeft: '0.85rem', height: '40px', borderRadius: '0.75rem', fontWeight: 600, fontSize: '0.78rem' }}
-                                  placeholder="Meeting link will be auto-generated here"
+                                  placeholder="Paste your official Teams meeting link or auto-generate above"
                                   value={interviewForm.link}
                                   onChange={e => setInterviewForm({...interviewForm, link: e.target.value})}
                                   required
                                 />
                               </div>
-                              <p style={{ margin: '4px 0 0 0', fontSize: '0.68rem', color: '#64748b' }}>
-                                💡 Meeting link is automatically generated and included in the candidate's invitation email.
-                              </p>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px', flexWrap: 'wrap', gap: '6px' }}>
+                                <p style={{ margin: 0, fontSize: '0.68rem', color: '#64748b' }}>
+                                  💡 This link is included in the candidate's invitation email and calendar invite.
+                                </p>
+                                {interviewForm.link && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      saveAdminDefaultTeamsLink(interviewForm.link);
+                                      alert('✅ Saved as your Default Admin Teams Meeting Link! It will automatically load for future interviews.');
+                                    }}
+                                    style={{
+                                      background: 'transparent',
+                                      border: 'none',
+                                      color: '#4f46e5',
+                                      fontSize: '0.68rem',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                      textDecoration: 'underline',
+                                      padding: 0
+                                    }}
+                                  >
+                                    💾 Save as Default Admin Link
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Admin Host Guide Callout */}
+                              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '0.65rem', padding: '0.6rem 0.8rem', fontSize: '0.7rem', color: '#334155', marginTop: '6px' }}>
+                                <div style={{ fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '3px' }}>
+                                  <span>👑 How to Join as Admin / Host (Not as Guest):</span>
+                                </div>
+                                <ul style={{ margin: 0, paddingLeft: '1.1rem', lineHeight: '1.45', color: '#475569' }}>
+                                  <li><strong>Teams App:</strong> Click <em>"💻 Teams App (Admin)"</em> to open the desktop app directly with your signed-in admin account.</li>
+                                  <li><strong>Custom / Recurring Room:</strong> Paste your real Teams / Outlook meeting link above and click <em>"Save as Default Admin Link"</em>.</li>
+                                  <li><strong>In Browser:</strong> If joining on the web, click <em>"Sign in"</em> with your admin email instead of typing your name to join as guest.</li>
+                                </ul>
+                              </div>
                             </div>
 
                             {/* Auto-send email invite toggle */}

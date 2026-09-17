@@ -821,10 +821,10 @@ export const recruitmentController = {
   // Direct Teams meeting link generator
   async generateTeamsLink(req: AuthRequest, res: Response) {
     try {
-      const { topic, candidateEmail, candidateId } = req.body || {}
+      const { topic, candidateEmail, candidateId, forceRefresh } = req.body || {}
       
-      // If candidate already has an interview link in DB, reuse it
-      if (candidateEmail || candidateId) {
+      // If candidate already has an interview link in DB, reuse it unless forceRefresh is true
+      if (!forceRefresh && (candidateEmail || candidateId)) {
         const existing = await prisma.jobApplication.findFirst({
           where: {
             OR: [

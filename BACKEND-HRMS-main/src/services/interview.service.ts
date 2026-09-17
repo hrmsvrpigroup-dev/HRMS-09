@@ -76,7 +76,10 @@ export async function createMicrosoftTeamsOnlineMeeting(topic: string, startTime
 
     if (!meetingRes.ok) {
       const errText = await meetingRes.text();
-      console.error('[Microsoft Graph Meeting Error]:', errText);
+      console.error('[Microsoft Graph Meeting Error]: Status', meetingRes.status, errText);
+      if (meetingRes.status === 403) {
+        console.warn(`[Microsoft Teams Admin Note]: Azure AD App ${clientId} requires 'OnlineMeetings.ReadWrite.All' Application permission with Admin Consent in Azure Portal (portal.azure.com) so meetings are created under ${userId} as Organizer/Admin.`);
+      }
       return null;
     }
 
@@ -108,10 +111,10 @@ export async function generateTeamsMeetingLink(topic: string = 'Interview Sessio
     console.warn('[Teams Graph Warning]:', err);
   }
 
-  // Official Microsoft Teams Meeting format with tenant context
-  const tenantId = process.env.AZURE_TENANT_ID && process.env.AZURE_TENANT_ID.includes('-') 
+  // Fallback Microsoft Teams Meeting format with tenant context
+  const tenantId = (process.env.AZURE_TENANT_ID && process.env.AZURE_TENANT_ID.includes('-'))
     ? process.env.AZURE_TENANT_ID 
-    : '25276fbe-5e30-46cc-b2b0-f5d73c1ae006';
+    : '25276fbe-5e50-46cc-b2b0-f5d73c1ae606';
   const meetingId = crypto.randomBytes(16).toString('base64url');
   const organizerId = crypto.randomUUID();
   const context = encodeURIComponent(JSON.stringify({ Tid: tenantId, Oid: organizerId }));
