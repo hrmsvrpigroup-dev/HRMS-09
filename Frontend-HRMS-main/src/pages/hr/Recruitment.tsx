@@ -7816,44 +7816,6 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
                                     <button
                                       type="button"
-                                      onClick={() => setPreviewCallLetterCandidate(matchingCand)}
-                                      className="rec-btn-outline"
-                                      style={{
-                                        height: '28px',
-                                        padding: '0 8px',
-                                        fontSize: '0.68rem',
-                                        borderColor: '#c084fc',
-                                        color: '#7e22ce',
-                                        background: '#faf5ff',
-                                        fontWeight: 700,
-                                        borderRadius: '6px'
-                                      }}
-                                      title="Preview Call Letter"
-                                    >
-                                      <Eye className="h-3 w-3" /> Preview
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDownloadCallLetter(matchingCand)}
-                                      className="rec-btn-outline"
-                                      style={{
-                                        height: '28px',
-                                        padding: '0 8px',
-                                        fontSize: '0.68rem',
-                                        borderColor: '#38bdf8',
-                                        color: '#0284c7',
-                                        background: '#f0f9ff',
-                                        fontWeight: 700,
-                                        borderRadius: '6px'
-                                      }}
-                                      title="Download Printable Call Letter PDF"
-                                    >
-                                      <Download className="h-3 w-3" /> PDF
-                                    </button>
-
-                                    <button
-                                      type="button"
                                       onClick={() => handleRevertReceivedToCallLetter(matchingCand.id)}
                                       className="rec-btn-outline"
                                       style={{
