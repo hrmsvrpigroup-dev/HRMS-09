@@ -24,7 +24,7 @@ export type AttendanceItem = {
 }
 
 export const attendanceApi = {
-  list: () => api.get<{ success: boolean; data: AttendanceItem[] }>('/attendance'),
+  list: (params?: { employeeId?: string; month?: number; year?: number }) => api.get<{ success: boolean; data: AttendanceItem[] }>('/attendance', { params }),
   clockIn: (data?: { faceImage?: string; qrData?: string; clockInPhoto?: string }) => api.post<{ success: boolean; data: AttendanceItem }>('/attendance/clock-in', data),
   manualClockIn: (payload: string | { employeeId: string; date?: string; clockInTime?: string; status?: string; notes?: string }) => {
     const data = typeof payload === 'string' ? { employeeId: payload } : payload

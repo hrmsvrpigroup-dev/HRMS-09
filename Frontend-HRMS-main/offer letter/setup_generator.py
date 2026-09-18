@@ -133,6 +133,6 @@ export function numberToWordsINR(num: number): string {
 """
 
 print('Writing page template functions...')
-""")
+''')
 
 print('Generator script written.')

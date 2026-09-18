@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { payrollApi } from '../../api/payroll.api'
+import { attendanceApi, AttendanceItem } from '../../api/attendance.api'
 import {
   DollarSign, Users, TrendingUp, FileText,
   Edit3, CheckCircle, X, RefreshCw, Search,
   CreditCard, Building, Banknote, Shield, AlertCircle,
   PlusCircle, ThumbsUp, ThumbsDown, Zap, RotateCcw, Clock,
-  Download
+  Download, Eye, Printer, Calendar, Calculator, Check, Info, ChevronDown, ChevronUp
 } from 'lucide-react'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -275,7 +276,318 @@ function EditSalaryModal({ emp, onClose, onSaved }: {
   )
 }
 
-// ─── Upload Payslip Modal ───────────────────────────────────────────────────
+// ─── Number to Words INR Helper ──────────────────────────────────────────────
+function formatINRWords(num: number): string {
+  if (!num || isNaN(num) || num <= 0) return 'Zero Rupees Only'
+  const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen ']
+  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
+
+  const n = ('000000000' + Math.floor(num)).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/)
+  if (!n) return 'Rupees Only'
+  let str = ''
+  str += Number(n[1]) !== 0 ? (a[Number(n[1])] || b[Number(n[1][0])] + ' ' + a[Number(n[1][1])]) + 'Crore ' : ''
+  str += Number(n[2]) !== 0 ? (a[Number(n[2])] || b[Number(n[2][0])] + ' ' + a[Number(n[2][1])]) + 'Lakh ' : ''
+  str += Number(n[3]) !== 0 ? (a[Number(n[3])] || b[Number(n[3][0])] + ' ' + a[Number(n[3][1])]) + 'Thousand ' : ''
+  str += Number(n[4]) !== 0 ? (a[Number(n[4])] || b[Number(n[4][0])] + ' ' + a[Number(n[4][1])]) + 'Hundred ' : ''
+  str += Number(n[5]) !== 0 ? ((str !== '') ? 'and ' : '') + (a[Number(n[5])] || b[Number(n[5][0])] + ' ' + a[Number(n[5][1])]) + 'Rupees Only' : 'Rupees Only'
+  return str.replace(/\s+/g, ' ').trim()
+}
+
+// ─── Payslip Preview Modal ───────────────────────────────────────────────────
+function PayslipPreviewModal({
+  employee,
+  month,
+  year,
+  calcData,
+  onClose,
+  uploadedFile,
+}: {
+  employee: EmployeeSalary
+  month: number
+  year: number
+  calcData: {
+    daysInMonth: number
+    workingDays: number
+    grossSalary: number
+    perDayIncome: number
+    deductions: number
+    netSalary: number
+    payableDays: number
+    lossOfPayDays: number
+    basicSalary: number
+    hra: number
+    allowances: number
+    pf: number
+    tax: number
+  }
+  onClose: () => void
+  uploadedFile: File | null
+}) {
+  const [viewMode, setViewMode] = useState<'statement' | 'pdf'>(uploadedFile ? 'pdf' : 'statement')
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (uploadedFile) {
+      const url = URL.createObjectURL(uploadedFile)
+      setPdfBlobUrl(url)
+      return () => URL.revokeObjectURL(url)
+    }
+  }, [uploadedFile])
+
+  const monthName = MONTHS[month - 1]
+
+  const handlePrint = () => {
+    window.print()
+  }
+
+  return (
+    <div className="sal-overlay" style={{ zIndex: 1100 }}>
+      <div className="sal-modal" style={{ maxWidth: '820px', width: '95%', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+        
+        {/* Preview Header */}
+        <div className="sal-modal-header" style={{ padding: '16px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'linear-gradient(135deg, #3b82f6, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+              <Eye size={18} />
+            </div>
+            <div>
+              <h2 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                Payslip Preview — {monthName} {year}
+              </h2>
+              <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b' }}>
+                {employee.firstName} {employee.lastName} ({employee.employeeCode}) • {employee.department?.name || 'General Department'}
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {uploadedFile && (
+              <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: '6px', padding: '2px' }}>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('statement')}
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    background: viewMode === 'statement' ? '#ffffff' : 'transparent',
+                    color: viewMode === 'statement' ? '#1e293b' : '#64748b',
+                    boxShadow: viewMode === 'statement' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                  }}
+                >
+                  System Breakdown
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('pdf')}
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    background: viewMode === 'pdf' ? '#ffffff' : 'transparent',
+                    color: viewMode === 'pdf' ? '#1e293b' : '#64748b',
+                    boxShadow: viewMode === 'pdf' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                  }}
+                >
+                  Uploaded PDF
+                </button>
+              </div>
+            )}
+            <button
+              onClick={handlePrint}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                color: '#1e293b',
+                cursor: 'pointer'
+              }}
+            >
+              <Printer size={15} /> Print / Save
+            </button>
+            <button className="sal-close-btn" onClick={onClose}><X size={20} /></button>
+          </div>
+        </div>
+
+        {/* Modal Body */}
+        <div className="sal-modal-body" style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, background: '#f1f5f9' }}>
+          
+          {viewMode === 'pdf' && pdfBlobUrl ? (
+            <div style={{ background: '#ffffff', borderRadius: '8px', overflow: 'hidden', height: '620px', border: '1px solid #cbd5e1' }}>
+              <iframe src={pdfBlobUrl} title="Uploaded PDF Preview" width="100%" height="100%" style={{ border: 'none' }} />
+            </div>
+          ) : (
+            <div className="payslip-preview-sheet" style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '28px', maxWidth: '750px', margin: '0 auto', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', color: '#0f172a' }}>
+              
+              {/* Company Banner */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #0f172a', paddingBottom: '16px', marginBottom: '20px' }}>
+                <div>
+                  <h1 style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '0.5px' }}>
+                    VR PI TECH SOLUTIONS LLP
+                  </h1>
+                  <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: '#475569' }}>
+                    Plot No. 12, Cyber Gateway, HITEC City, Hyderabad, Telangana - 500081
+                  </p>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#64748b' }}>
+                    Corporate HRMS Payroll Division • Registered LLP
+                  </p>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ display: 'inline-block', padding: '5px 12px', background: '#0f172a', color: '#ffffff', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase' }}>
+                    Payslip
+                  </div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#3b82f6', marginTop: '6px' }}>
+                    {monthName.toUpperCase()} {year}
+                  </div>
+                </div>
+              </div>
+
+              {/* Employee & Attendance Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px 20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '14px 18px', marginBottom: '20px', fontSize: '0.8rem' }}>
+                <div><strong style={{ color: '#475569' }}>Employee Name:</strong> <span style={{ fontWeight: 700, color: '#0f172a' }}>{employee.firstName} {employee.lastName}</span></div>
+                <div><strong style={{ color: '#475569' }}>Employee ID:</strong> <span style={{ fontWeight: 700, color: '#0f172a' }}>{employee.employeeCode}</span></div>
+                <div><strong style={{ color: '#475569' }}>Department:</strong> <span>{employee.department?.name || 'General'}</span></div>
+                <div><strong style={{ color: '#475569' }}>Designation:</strong> <span>{employee.designation?.title || 'Employee'}</span></div>
+                <div><strong style={{ color: '#475569' }}>Date of Joining:</strong> <span>{employee.joiningDate ? new Date(employee.joiningDate).toLocaleDateString('en-IN') : '—'}</span></div>
+                <div><strong style={{ color: '#475569' }}>PAN Number:</strong> <span style={{ fontFamily: 'monospace' }}>{employee.payrollDetails?.panNumber || '—'}</span></div>
+                <div><strong style={{ color: '#475569' }}>Bank Name &amp; A/C:</strong> <span>{employee.payrollDetails?.bankName ? `${employee.payrollDetails.bankName} (•••${(employee.payrollDetails.accountNumber || '').slice(-4)})` : 'Direct Transfer'}</span></div>
+                <div><strong style={{ color: '#475569' }}>UAN / PF Number:</strong> <span style={{ fontFamily: 'monospace' }}>{employee.payrollDetails?.uanNumber || '—'}</span></div>
+              </div>
+
+              {/* Attendance Bar */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '10px 16px', marginBottom: '20px', textAlign: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: '#1e40af', textTransform: 'uppercase', fontWeight: 700 }}>Total Days in Month</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e3a8a' }}>{calcData.daysInMonth}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: '#1e40af', textTransform: 'uppercase', fontWeight: 700 }}>Payable Days</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#16a34a' }}>{calcData.payableDays}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: '#1e40af', textTransform: 'uppercase', fontWeight: 700 }}>Loss of Pay Days</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: calcData.lossOfPayDays > 0 ? '#dc2626' : '#64748b' }}>{calcData.lossOfPayDays}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: '#1e40af', textTransform: 'uppercase', fontWeight: 700 }}>Per-Day Income</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>₹{calcData.perDayIncome.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                </div>
+              </div>
+
+              {/* Earnings & Deductions Table */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', border: '1px solid #0f172a', borderRadius: '6px', overflow: 'hidden', marginBottom: '20px' }}>
+                {/* Earnings */}
+                <div style={{ borderRight: '1px solid #0f172a' }}>
+                  <div style={{ background: '#0f172a', color: '#ffffff', padding: '8px 14px', fontSize: '0.82rem', fontWeight: 800, display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Earnings</span>
+                    <span>Amount (₹)</span>
+                  </div>
+                  <div style={{ padding: '10px 14px', fontSize: '0.8rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed #e2e8f0' }}>
+                      <span style={{ color: '#475569' }}>Basic Salary (50%)</span>
+                      <strong style={{ color: '#0f172a' }}>₹{calcData.basicSalary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed #e2e8f0' }}>
+                      <span style={{ color: '#475569' }}>House Rent Allowance (HRA 25%)</span>
+                      <strong style={{ color: '#0f172a' }}>₹{calcData.hra.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed #e2e8f0' }}>
+                      <span style={{ color: '#475569' }}>Special / Other Allowances</span>
+                      <strong style={{ color: '#0f172a' }}>₹{calcData.allowances.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 4px', fontSize: '0.85rem', fontWeight: 800, color: '#16a34a' }}>
+                      <span>Gross Salary</span>
+                      <span>₹{calcData.grossSalary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Deductions */}
+                <div>
+                  <div style={{ background: '#0f172a', color: '#ffffff', padding: '8px 14px', fontSize: '0.82rem', fontWeight: 800, display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Deductions</span>
+                    <span>Amount (₹)</span>
+                  </div>
+                  <div style={{ padding: '10px 14px', fontSize: '0.8rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed #e2e8f0' }}>
+                      <span style={{ color: '#475569' }}>Provident Fund (PF)</span>
+                      <strong style={{ color: '#dc2626' }}>₹{calcData.pf.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed #e2e8f0' }}>
+                      <span style={{ color: '#475569' }}>Professional Tax (PT)</span>
+                      <strong style={{ color: '#dc2626' }}>₹{calcData.tax.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                    </div>
+                    {calcData.lossOfPayDays > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed #e2e8f0' }}>
+                        <span style={{ color: '#475569' }}>Loss of Pay ({calcData.lossOfPayDays} days)</span>
+                        <strong style={{ color: '#dc2626' }}>₹{Math.round(calcData.lossOfPayDays * calcData.perDayIncome).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 4px', fontSize: '0.85rem', fontWeight: 800, color: '#dc2626' }}>
+                      <span>Total Deductions</span>
+                      <span>-₹{calcData.deductions.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Net Payable Banner */}
+              <div style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', border: '1.5px solid #86efac', borderRadius: '8px', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <div>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Net Disbursed Salary for the Month
+                  </div>
+                  <div style={{ fontSize: '0.82rem', color: '#15803d', fontStyle: 'italic', marginTop: '4px' }}>
+                    ({formatINRWords(calcData.netSalary)})
+                  </div>
+                </div>
+                <div style={{ fontSize: '1.7rem', fontWeight: 900, color: '#14532d' }}>
+                  ₹{calcData.netSalary.toLocaleString('en-IN')}
+                </div>
+              </div>
+
+              {/* Footer Note & Signatures */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '16px', borderTop: '1px solid #e2e8f0', fontSize: '0.75rem', color: '#64748b' }}>
+                <div>
+                  <p style={{ margin: 0 }}>• Policy Note: Case 1 (Friday leave) &amp; Case 2 (Monday leave) weekend pay protection applied.</p>
+                  <p style={{ margin: '2px 0 0' }}>• This is a computer-generated document from VR PI HRMS and does not require a physical signature.</p>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ borderBottom: '1px solid #94a3b8', width: '130px', margin: '0 auto 4px' }}></div>
+                  <span style={{ fontWeight: 600, color: '#334155' }}>Authorized Signatory</span>
+                </div>
+              </div>
+
+            </div>
+          )}
+
+        </div>
+
+        {/* Modal Footer */}
+        <div className="sal-modal-footer" style={{ padding: '12px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+          <button className="sal-btn-cancel" onClick={onClose} style={{ padding: '8px 20px', fontSize: '0.82rem' }}>
+            Close Preview
+          </button>
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
+// ─── Upload & Generate Payslip Modal ─────────────────────────────────────────
 function UploadPayslipModal({ employees, onClose, onSaved }: {
   employees: EmployeeSalary[]
   onClose: () => void
@@ -292,6 +604,14 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
   const [error, setError] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
 
+  // Real-Time Attendance Analysis State
+  const [attendanceLoading, setAttendanceLoading] = useState(false)
+  const [serverAnalysis, setServerAnalysis] = useState<any>(null)
+  const [dayOverrides, setDayOverrides] = useState<Record<number, string>>({})
+  const [calcMethod, setCalcMethod] = useState<'working_days' | 'calendar_days'>('working_days')
+  const [showDayBreakdown, setShowDayBreakdown] = useState(true)
+  const [showPreviewModal, setShowPreviewModal] = useState(false)
+
   const activeEmployees = employees.filter(e => e.status === 'ACTIVE')
   const filteredEmployees = activeEmployees.filter(e => {
     if (!empSearch.trim()) return true
@@ -304,16 +624,158 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
 
   const selectedEmployee = activeEmployees.find(e => e.id === employeeId)
 
+  // Fetch Real-time Attendance & Leave Analysis whenever employee, month, or year changes
+  useEffect(() => {
+    if (!employeeId) {
+      setServerAnalysis(null)
+      setDayOverrides({})
+      return
+    }
+
+    let isMounted = true
+    const fetchAnalysis = async () => {
+      setAttendanceLoading(true)
+      try {
+        const res = await payrollApi.getAttendanceAnalysis(employeeId, month, year)
+        if (isMounted) {
+          setServerAnalysis(res.data.data)
+          setDayOverrides({})
+        }
+      } catch (err) {
+        console.warn('Failed to load real-time attendance analysis:', err)
+        if (isMounted) setServerAnalysis(null)
+      } finally {
+        if (isMounted) setAttendanceLoading(false)
+      }
+    }
+
+    fetchAnalysis()
+    return () => { isMounted = false }
+  }, [employeeId, month, year])
+
+  // ── Compute Real-Time Breakdown with Interactive Overrides ──────────────────
+  const daysInMonth = serverAnalysis?.daysInMonth || new Date(year, month, 0).getDate()
+  
+  // Calculate exact weekdays in month if server analysis is not loaded
+  let defaultWeekdays = 0
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dow = new Date(year, month - 1, d).getDay()
+    if (dow !== 0 && dow !== 6) defaultWeekdays++
+  }
+  const totalWorkingDays = serverAnalysis?.totalWorkingDays || defaultWeekdays
+  const monthlyGross = selectedEmployee ? Math.round((selectedEmployee.salaryGross || 0) / 12) : 0
+
+  // Merge server daily breakdown with any local HR overrides
+  const rawDaily = serverAnalysis?.dailyBreakdown || []
+  let presentWorkingDays = 0
+  let onLeaveWorkingDays = 0
+  let fridayLeaveDays = 0
+  let mondayLeaveDays = 0
+  let unpaidAbsenceDays = 0
+  let weekendPaidDays = 0
+
+  const activeDailyBreakdown = []
+  for (let d = 1; d <= daysInMonth; d++) {
+    const defaultDay = rawDaily.find((item: any) => item.day === d)
+    const dateObj = new Date(year, month - 1, d)
+    const dayOfWeek = dateObj.getDay()
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+
+    if (isWeekend) {
+      weekendPaidDays++
+      activeDailyBreakdown.push(defaultDay || {
+        day: d,
+        dayOfWeek,
+        dayName: dayOfWeek === 6 ? 'Sat' : 'Sun',
+        status: 'WEEKEND_PAID',
+        label: dayOfWeek === 6 ? 'Saturday (Paid Off)' : 'Sunday (Paid Off)',
+        isPaid: true,
+        isWorkingDay: false,
+        caseApplied: 'WEEKEND_PAID'
+      })
+    } else {
+      // Weekday
+      const override = dayOverrides[d]
+      let status: string = override || (defaultDay?.status as string) || 'PRESENT'
+      let label: string = defaultDay?.label || 'Present'
+      let isPaid = true
+      let caseApplied = defaultDay?.caseApplied
+
+      if (override) {
+        if (override === 'PRESENT') {
+          label = 'Present (Manual)'
+          isPaid = true
+          caseApplied = undefined
+        } else if (override === 'PAID_LEAVE') {
+          label = dayOfWeek === 5 ? 'Friday Leave (Case 1)' : dayOfWeek === 1 ? 'Monday Paid Leave (Case 2)' : 'Paid Leave'
+          isPaid = true
+          caseApplied = dayOfWeek === 5 ? 'CASE_1' : dayOfWeek === 1 ? 'CASE_2' : undefined
+        } else if (override === 'UNPAID_ABSENT') {
+          label = 'Absent / Unpaid LOP'
+          isPaid = false
+          caseApplied = undefined
+        }
+      }
+
+      if (status === 'PRESENT' || status === 'HALF_DAY') {
+        presentWorkingDays += status === 'HALF_DAY' ? 0.5 : 1
+      } else if (status === 'LEAVE_FRIDAY' || (override === 'PAID_LEAVE' && dayOfWeek === 5)) {
+        onLeaveWorkingDays++
+        fridayLeaveDays++
+      } else if (status === 'LEAVE_MONDAY' || (override === 'PAID_LEAVE' && dayOfWeek === 1)) {
+        onLeaveWorkingDays++
+        mondayLeaveDays++
+      } else if (status === 'PAID_LEAVE') {
+        onLeaveWorkingDays++
+      } else if (status === 'UNPAID_ABSENT') {
+        unpaidAbsenceDays++
+        isPaid = false
+      } else {
+        presentWorkingDays++
+      }
+
+      activeDailyBreakdown.push({
+        day: d,
+        dayOfWeek,
+        dayName: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayOfWeek],
+        status,
+        label,
+        isPaid,
+        isWorkingDay: true,
+        caseApplied,
+        isOverridden: Boolean(override),
+      })
+    }
+  }
+
+  const paidWorkingDays = presentWorkingDays + onLeaveWorkingDays
+  const payableDays = Math.max(0, daysInMonth - unpaidAbsenceDays)
+
+  // Per-day rate calculation based on chosen method
+  const perDayIncomeWorking = totalWorkingDays > 0 ? Math.round((monthlyGross / totalWorkingDays) * 100) / 100 : 0
+  const perDayIncomeCalendar = daysInMonth > 0 ? Math.round((monthlyGross / daysInMonth) * 100) / 100 : 0
+  const perDayIncome = calcMethod === 'working_days' ? perDayIncomeWorking : perDayIncomeCalendar
+
+  // Standard deduction -₹2,200 (PF ₹2,000 + PT ₹200) + any Loss of Pay
+  const standardDeductions = 2200
+  const lopDeduction = Math.round(unpaidAbsenceDays * perDayIncome)
+  const totalDeductions = standardDeductions + lopDeduction
+
+  // Net salary calculation in real time
+  const calculatedNet = calcMethod === 'working_days'
+    ? Math.max(0, Math.round((paidWorkingDays * perDayIncomeWorking) - standardDeductions))
+    : Math.max(0, Math.round((payableDays * perDayIncomeCalendar) - standardDeductions))
+
+  // Auto-sync netSalary input whenever calculation changes
+  useEffect(() => {
+    if (selectedEmployee && calculatedNet > 0) {
+      setNetSalary(String(calculatedNet))
+    }
+  }, [selectedEmployee?.id, month, year, calculatedNet, calcMethod])
+
   const handleSelectEmployee = (id: string) => {
     setEmployeeId(id)
     setError('')
-    const emp = activeEmployees.find(e => e.id === id)
-    if (emp && emp.salaryGross && (!netSalary || netSalary === '')) {
-      const estimatedMonthlyNet = Math.round(((emp.salaryGross || 0) / 12) * 0.95)
-      if (estimatedMonthlyNet > 0) {
-        setNetSalary(String(estimatedMonthlyNet))
-      }
-    }
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -328,9 +790,28 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
     }
   }
 
-  const handleUpload = async () => {
-    if ((!autoDetect && !employeeId) || !month || !year || !file) {
-      setError(autoDetect ? 'Please select month, year, and a payslip PDF file.' : 'Please select an employee name, month, year, and payslip PDF file.')
+  // Interactive toggle day status on calendar pill click
+  const handleToggleDay = (dayNum: number, currentStatus: string, isWeekend: boolean) => {
+    if (isWeekend) return // Weekends are protected
+    const nextStatus: Record<string, 'PRESENT' | 'PAID_LEAVE' | 'UNPAID_ABSENT'> = {
+      PRESENT: 'PAID_LEAVE',
+      LEAVE_FRIDAY: 'UNPAID_ABSENT',
+      LEAVE_MONDAY: 'UNPAID_ABSENT',
+      PAID_LEAVE: 'UNPAID_ABSENT',
+      UNPAID_ABSENT: 'PRESENT',
+    }
+    const target = nextStatus[currentStatus] || 'PRESENT'
+    setDayOverrides(prev => ({ ...prev, [dayNum]: target }))
+  }
+
+  // Handle Upload or Direct Generation
+  const handleSavePayslip = async () => {
+    if (!autoDetect && !employeeId) {
+      setError('Please select a target employee.')
+      return
+    }
+    if (!month || !year) {
+      setError('Please select month and year.')
       return
     }
 
@@ -339,245 +820,629 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
     setSuccessMsg('')
 
     try {
-      const formData = new FormData()
-      if (!autoDetect && employeeId) {
-        formData.append('employeeId', employeeId)
-      }
-      formData.append('autoDetect', String(autoDetect))
-      formData.append('month', String(month))
-      formData.append('year', String(year))
-      if (netSalary) {
-        formData.append('netSalary', netSalary)
-      }
-      formData.append('payslip', file)
+      if (file) {
+        // Upload custom PDF
+        const formData = new FormData()
+        if (!autoDetect && employeeId) {
+          formData.append('employeeId', employeeId)
+        }
+        formData.append('autoDetect', String(autoDetect))
+        formData.append('month', String(month))
+        formData.append('year', String(year))
+        if (netSalary) {
+          formData.append('netSalary', netSalary)
+        }
+        formData.append('payslip', file)
 
-      await payrollApi.uploadPayslip(formData)
-      setSuccessMsg('Salary slip uploaded and synced to employee portal successfully!')
+        await payrollApi.uploadPayslip(formData)
+        setSuccessMsg('Salary slip uploaded and synced to employee portal successfully!')
+      } else {
+        // Auto-generate from real-time calculation
+        await payrollApi.generateSinglePayslip({
+          employeeId,
+          month: Number(month),
+          year: Number(year),
+          netSalary: netSalary ? Number(netSalary) : calculatedNet,
+          daysPaid: paidWorkingDays,
+          lossOfPay: unpaidAbsenceDays,
+          deductions: totalDeductions,
+        })
+        setSuccessMsg('Official payslip generated and synced to employee portal successfully!')
+      }
+
       setTimeout(() => {
         onSaved()
         onClose()
       }, 700)
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to upload salary slip')
+      setError(err.response?.data?.message || 'Failed to process salary slip')
     } finally {
       setUploading(false)
     }
   }
 
+  // Preview Data
+  const previewCalcData = {
+    daysInMonth,
+    workingDays: totalWorkingDays,
+    grossSalary: monthlyGross,
+    perDayIncome,
+    deductions: totalDeductions,
+    netSalary: netSalary ? Number(netSalary) : calculatedNet,
+    payableDays: paidWorkingDays,
+    lossOfPayDays: unpaidAbsenceDays,
+    basicSalary: Math.round(monthlyGross * 0.5),
+    hra: Math.round(monthlyGross * 0.25),
+    allowances: Math.round(monthlyGross * 0.25),
+    pf: 2000,
+    tax: 200,
+  }
+
   return (
-    <div className="sal-overlay">
-      <div className="sal-modal sal-modal-md" style={{ maxWidth: '620px' }}>
-        <div className="sal-modal-header" style={{ padding: '18px 24px', borderBottom: '1px solid #e2e8f0' }}>
-          <div>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>Upload Employee Salary Slip</h2>
-            <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>
-              Select employee name and upload monthly PDF payslip statement to reflect directly on the employee's portal.
-            </p>
+    <>
+      <div className="sal-overlay">
+        <div className="sal-modal sal-modal-md" style={{ maxWidth: '720px', maxHeight: '94vh', display: 'flex', flexDirection: 'column' }}>
+          
+          <div className="sal-modal-header" style={{ padding: '16px 24px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+            <div>
+              <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                Real-Time Employee Attendance &amp; Payroll Generator
+              </h2>
+              <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>
+                Automated attendance analysis with Case 1 &amp; Case 2 weekend protections, live leave tracking, and instant real-time recalculation.
+              </p>
+            </div>
+            <button className="sal-close-btn" onClick={onClose}><X size={20} /></button>
           </div>
-          <button className="sal-close-btn" onClick={onClose}><X size={20} /></button>
-        </div>
 
-        {error && (
-          <div className="sal-alert sal-alert-error" style={{ margin: '14px 24px 0' }}>
-            <AlertCircle size={16} /> {error}
-          </div>
-        )}
+          {error && (
+            <div className="sal-alert sal-alert-error" style={{ margin: '14px 24px 0' }}>
+              <AlertCircle size={16} /> {error}
+            </div>
+          )}
 
-        {successMsg && (
-          <div className="sal-alert sal-alert-success" style={{ margin: '14px 24px 0', background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0' }}>
-            <CheckCircle size={16} /> {successMsg}
-          </div>
-        )}
+          {successMsg && (
+            <div className="sal-alert sal-alert-success" style={{ margin: '14px 24px 0', background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0' }}>
+              <CheckCircle size={16} /> {successMsg}
+            </div>
+          )}
 
-        <div className="sal-modal-body" style={{ padding: '18px 24px 24px' }}>
-          <div className="sal-form-grid" style={{ gridTemplateColumns: '1fr', gap: '16px' }}>
-            
-            {/* Employee Selection Section */}
-            <div className="sal-field full-width" style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: '10px', padding: '14px 16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  1. Select Target Employee <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
-                  <input 
-                    type="checkbox" 
-                    checked={autoDetect}
-                    onChange={(e) => setAutoDetect(e.target.checked)}
-                    style={{ width: '14px', height: '14px', accentColor: '#3b82f6' }}
-                  />
-                  <span>Auto-detect from PDF text</span>
-                </label>
-              </div>
+          <div className="sal-modal-body" style={{ padding: '16px 24px', overflowY: 'auto', flex: 1 }}>
+            <div className="sal-form-grid" style={{ gridTemplateColumns: '1fr', gap: '14px' }}>
+              
+              {/* 1. Select Target Employee */}
+              <div className="sal-field full-width" style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: '10px', padding: '14px 16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    1. Select Target Employee <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
+                    <input 
+                      type="checkbox" 
+                      checked={autoDetect}
+                      onChange={(e) => setAutoDetect(e.target.checked)}
+                      style={{ width: '14px', height: '14px', accentColor: '#3b82f6' }}
+                    />
+                    <span>Auto-detect from PDF text</span>
+                  </label>
+                </div>
 
-              {!autoDetect ? (
-                <div>
-                  {activeEmployees.length > 6 && (
-                    <div style={{ position: 'relative', marginBottom: '8px' }}>
-                      <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                      <input
-                        type="text"
-                        placeholder="Search employee name or code..."
-                        value={empSearch}
-                        onChange={e => setEmpSearch(e.target.value)}
-                        style={{ paddingLeft: '32px', fontSize: '0.8rem', height: '34px', background: '#ffffff', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                      />
-                    </div>
-                  )}
+                {!autoDetect ? (
+                  <div>
+                    {activeEmployees.length > 6 && (
+                      <div style={{ position: 'relative', marginBottom: '8px' }}>
+                        <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                        <input
+                          type="text"
+                          placeholder="Search employee name or code..."
+                          value={empSearch}
+                          onChange={e => setEmpSearch(e.target.value)}
+                          style={{ paddingLeft: '32px', fontSize: '0.8rem', height: '34px', background: '#ffffff', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                        />
+                      </div>
+                    )}
 
-                  <select 
-                    value={employeeId} 
-                    onChange={e => handleSelectEmployee(e.target.value)}
-                    style={{ fontSize: '0.85rem', height: '40px', fontWeight: 600, background: '#ffffff', border: '1.5px solid #3b82f6', borderRadius: '6px', color: '#0f172a' }}
-                  >
-                    <option value="">-- Click to Choose Employee Name --</option>
-                    {filteredEmployees.map(e => (
-                      <option key={e.id} value={e.id}>
-                        {e.firstName} {e.lastName} ({e.employeeCode}) {e.department?.name ? `• ${e.department.name}` : ''}
-                      </option>
-                    ))}
-                  </select>
+                    <select 
+                      value={employeeId} 
+                      onChange={e => handleSelectEmployee(e.target.value)}
+                      style={{ fontSize: '0.85rem', height: '40px', fontWeight: 600, background: '#ffffff', border: '1.5px solid #3b82f6', borderRadius: '6px', color: '#0f172a', width: '100%' }}
+                    >
+                      <option value="">-- Click to Choose Employee Name --</option>
+                      {filteredEmployees.map(e => (
+                        <option key={e.id} value={e.id}>
+                          {e.firstName} {e.lastName} ({e.employeeCode}) {e.department?.name ? `• ${e.department.name}` : ''}
+                        </option>
+                      ))}
+                    </select>
 
-                  {/* Selected Employee Info Pill */}
-                  {selectedEmployee && (
-                    <div style={{ marginTop: '10px', padding: '8px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#3b82f6', color: '#ffffff', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>
-                          {selectedEmployee.firstName[0]}{selectedEmployee.lastName[0]}
+                    {/* Selected Employee Info Pill */}
+                    {selectedEmployee && (
+                      <div style={{ marginTop: '10px', padding: '8px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#3b82f6', color: '#ffffff', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>
+                            {selectedEmployee.firstName[0]}{selectedEmployee.lastName[0]}
+                          </div>
+                          <div>
+                            <strong style={{ color: '#1e3a8a', fontSize: '0.82rem' }}>{selectedEmployee.firstName} {selectedEmployee.lastName}</strong>
+                            <span style={{ color: '#64748b', marginLeft: '6px' }}>({selectedEmployee.employeeCode})</span>
+                            <div style={{ color: '#475569', fontSize: '0.72rem' }}>
+                              {selectedEmployee.designation?.title || selectedEmployee.department?.name || 'Full-time Employee'}
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <strong style={{ color: '#1e3a8a', fontSize: '0.82rem' }}>{selectedEmployee.firstName} {selectedEmployee.lastName}</strong>
-                          <span style={{ color: '#64748b', marginLeft: '6px' }}>({selectedEmployee.employeeCode})</span>
-                          <div style={{ color: '#475569', fontSize: '0.72rem' }}>
-                            {selectedEmployee.designation?.title || selectedEmployee.department?.name || 'Full-time Employee'}
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Gross Monthly CTC</span>
+                          <div style={{ fontWeight: 800, color: '#16a34a', fontSize: '0.92rem' }}>
+                            ₹{monthlyGross.toLocaleString('en-IN')}
                           </div>
                         </div>
                       </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Gross Annual CTC</span>
-                        <div style={{ fontWeight: 700, color: '#16a34a' }}>
-                          ₹{(selectedEmployee.salaryGross || 0).toLocaleString('en-IN')}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div style={{ padding: '10px 12px', background: '#f1f5f9', borderRadius: '6px', fontSize: '0.78rem', color: '#475569', fontStyle: 'italic' }}>
-                  ℹ️ Auto-detection active: The system will scan the PDF document for employee name or employee ID code.
-                </div>
-              )}
-            </div>
-
-            {/* Month & Year Selection */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div className="sal-field">
-                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b' }}>
-                  2. Statement Month <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <select value={month} onChange={e => setMonth(Number(e.target.value))} style={{ fontSize: '0.85rem', height: '38px' }}>
-                  {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-                </select>
-              </div>
-              <div className="sal-field">
-                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b' }}>
-                  3. Statement Year <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <select value={year} onChange={e => setYear(Number(e.target.value))} style={{ fontSize: '0.85rem', height: '38px' }}>
-                  {[currentYear - 2, currentYear - 1, currentYear, currentYear + 1].map(y => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Net Salary Amount */}
-            <div className="sal-field">
-              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b', display: 'flex', justifyContent: 'space-between' }}>
-                <span>4. Net Disbursed Salary (₹)</span>
-                <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>Optional (Reflects as Net Pay)</span>
-              </label>
-              <input
-                type="number"
-                placeholder={selectedEmployee?.salaryGross ? `Estimated Net: ₹${Math.round((selectedEmployee.salaryGross / 12) * 0.95).toLocaleString('en-IN')}` : 'Defaults to standard net monthly pay'}
-                value={netSalary}
-                onChange={e => setNetSalary(e.target.value)}
-                style={{ fontSize: '0.85rem', height: '38px' }}
-              />
-            </div>
-
-            {/* Payslip PDF Document Upload */}
-            <div className="sal-field">
-              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b' }}>
-                5. Payslip PDF Document <span style={{ color: '#ef4444' }}>*</span>
-              </label>
-              <div style={{
-                border: file ? '2px solid #22c55e' : '2px dashed #94a3b8',
-                borderRadius: '10px',
-                padding: '20px 16px',
-                background: file ? '#f0fdf4' : '#f8fafc',
-                textAlign: 'center',
-                cursor: 'pointer',
-                position: 'relative',
-                transition: 'all 0.2s ease'
-              }}>
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  onChange={handleFileChange}
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    opacity: 0,
-                    cursor: 'pointer'
-                  }}
-                />
-                {file ? (
-                  <div>
-                    <CheckCircle size={28} style={{ color: '#16a34a', margin: '0 auto 6px' }} />
-                    <p style={{ margin: '4px 0 0', fontSize: '0.85rem', fontWeight: 700, color: '#15803d' }}>
-                      📄 {file.name}
-                    </p>
-                    <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#64748b' }}>
-                      {(file.size / 1024).toFixed(1)} KB — Click or drag to replace
-                    </p>
+                    )}
                   </div>
                 ) : (
-                  <div>
-                    <FileText size={28} style={{ color: '#3b82f6', margin: '0 auto 6px' }} />
-                    <p style={{ margin: '4px 0 0', fontSize: '0.85rem', fontWeight: 700, color: '#1e293b' }}>
-                      Click or Drag &amp; Drop PDF Payslip
-                    </p>
-                    <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#64748b' }}>
-                      Supports standard PDF payslips up to 10MB
-                    </p>
+                  <div style={{ padding: '10px 12px', background: '#f1f5f9', borderRadius: '6px', fontSize: '0.78rem', color: '#475569', fontStyle: 'italic' }}>
+                    ℹ️ Auto-detection active: The system will scan the PDF document for employee name or employee ID code.
                   </div>
                 )}
               </div>
+
+              {/* 2 & 3. Month & Year Selection */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div className="sal-field">
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b' }}>
+                    2. Statement Month <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <select value={month} onChange={e => setMonth(Number(e.target.value))} style={{ fontSize: '0.85rem', height: '38px' }}>
+                    {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                  </select>
+                </div>
+                <div className="sal-field">
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b' }}>
+                    3. Statement Year <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <select value={year} onChange={e => setYear(Number(e.target.value))} style={{ fontSize: '0.85rem', height: '38px' }}>
+                    {[currentYear - 2, currentYear - 1, currentYear, currentYear + 1].map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* ── Real-Time Monthly Attendance & Policy Analysis Card ── */}
+              {selectedEmployee && (
+                <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '14px 16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Calendar size={16} style={{ color: '#3b82f6' }} />
+                      <strong style={{ fontSize: '0.85rem', color: '#0f172a' }}>
+                        Live Attendance &amp; Leave Analysis ({MONTHS[month - 1]} {year})
+                      </strong>
+                    </div>
+                    {attendanceLoading ? (
+                      <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <RefreshCw size={12} className="animate-spin" /> Fetching real-time records...
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '0.72rem', background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
+                        ● Live Synchronized
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Policy Protections Highlight */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                    <div style={{ fontSize: '0.72rem', padding: '3px 8px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '4px', color: '#166534', fontWeight: 600 }}>
+                      ✓ Case 1: Friday Leave protects Sat &amp; Sun as Paid Holidays
+                    </div>
+                    <div style={{ fontSize: '0.72rem', padding: '3px 8px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '4px', color: '#166534', fontWeight: 600 }}>
+                      ✓ Case 2: Monday Leave protected as Paid Leave (Sat, Sun, Mon)
+                    </div>
+                  </div>
+
+                  {/* Real-time Stats Grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', textAlign: 'center', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 8px' }}>
+                    <div>
+                      <div style={{ fontSize: '0.68rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Total Working Days</div>
+                      <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>{totalWorkingDays} days</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.68rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Days Worked</div>
+                      <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#2563eb' }}>{presentWorkingDays} days</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.68rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>On Leave Working Days</div>
+                      <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#15803d' }}>
+                        {onLeaveWorkingDays} days
+                      </div>
+                      <div style={{ fontSize: '0.62rem', color: '#16a34a' }}>
+                        ({fridayLeaveDays + mondayLeaveDays} protected)
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.68rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Unpaid LOP Days</div>
+                      <div style={{ fontSize: '1.05rem', fontWeight: 800, color: unpaidAbsenceDays > 0 ? '#dc2626' : '#64748b' }}>
+                        {unpaidAbsenceDays} days
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Interactive Day Breakdown Header */}
+                  <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontStyle: 'italic' }}>
+                      Click any weekday pill below to toggle status (Present / Leave / LOP) in real-time.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowDayBreakdown(!showDayBreakdown)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#2563eb',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      {showDayBreakdown ? (
+                        <>Hide Calendar <ChevronUp size={14} /></>
+                      ) : (
+                        <>Show Interactive Day Calendar ({daysInMonth} Days) <ChevronDown size={14} /></>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Expandable Daily Calendar Pills */}
+                  {showDayBreakdown && (
+                    <div style={{ marginTop: '8px', maxHeight: '180px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '8px', background: '#ffffff' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))', gap: '6px' }}>
+                        {activeDailyBreakdown.map((d: any) => {
+                          const isWeekend = d.dayOfWeek === 0 || d.dayOfWeek === 6
+                          const isLeave = d.status === 'LEAVE_FRIDAY' || d.status === 'LEAVE_MONDAY' || d.status === 'PAID_LEAVE'
+                          const isLop = d.status === 'UNPAID_ABSENT'
+                          return (
+                            <div
+                              key={d.day}
+                              onClick={() => handleToggleDay(d.day, d.status, isWeekend)}
+                              title={isWeekend ? 'Weekend Paid Day' : 'Click to toggle status'}
+                              style={{
+                                padding: '6px 4px',
+                                borderRadius: '5px',
+                                textAlign: 'center',
+                                fontSize: '0.7rem',
+                                border: d.isOverridden ? '1.5px solid #6366f1' : '1px solid #e2e8f0',
+                                background: isWeekend ? '#f8fafc' : isLeave ? '#f0fdf4' : isLop ? '#fef2f2' : '#ffffff',
+                                cursor: isWeekend ? 'default' : 'pointer',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              <div style={{ fontWeight: 800, color: '#0f172a' }}>Day {d.day} ({d.dayName})</div>
+                              <div style={{
+                                fontSize: '0.64rem',
+                                fontWeight: 700,
+                                marginTop: '2px',
+                                color: isWeekend ? '#16a34a' : isLeave ? '#15803d' : isLop ? '#dc2626' : '#2563eb'
+                              }}>
+                                {d.label}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              )}
+
+              {/* ── 6 Core Calculations Dashboard ── */}
+              {selectedEmployee && (
+                <div style={{ background: '#ffffff', border: '1.5px solid #3b82f6', borderRadius: '10px', padding: '16px', boxShadow: '0 2px 10px rgba(59,130,246,0.08)' }}>
+                  
+                  {/* Dashboard Header with Method Switcher */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Calculator size={16} style={{ color: '#2563eb' }} />
+                      <strong style={{ fontSize: '0.85rem', color: '#1e3a8a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        CALCULATED PAYROLL METRICS (6 STANDARD FACTORS)
+                      </strong>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {/* Calculation Basis Switcher */}
+                      <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '6px', padding: '2px', border: '1px solid #cbd5e1', fontSize: '0.72rem', fontWeight: 700 }}>
+                        <button
+                          type="button"
+                          onClick={() => setCalcMethod('working_days')}
+                          style={{
+                            padding: '3px 8px',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            background: calcMethod === 'working_days' ? '#3b82f6' : 'transparent',
+                            color: calcMethod === 'working_days' ? '#ffffff' : '#64748b',
+                            fontWeight: 700
+                          }}
+                        >
+                          By Working Days ({totalWorkingDays})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCalcMethod('calendar_days')}
+                          style={{
+                            padding: '3px 8px',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            background: calcMethod === 'calendar_days' ? '#3b82f6' : 'transparent',
+                            color: calcMethod === 'calendar_days' ? '#ffffff' : '#64748b',
+                            fontWeight: 700
+                          }}
+                        >
+                          By Calendar Days ({daysInMonth})
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowPreviewModal(true)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '5px 12px',
+                          background: 'linear-gradient(135deg, #3b82f6, #6366f1)',
+                          border: 'none',
+                          borderRadius: '6px',
+                          color: '#ffffff',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 6px rgba(59,130,246,0.3)'
+                        }}
+                      >
+                        <Eye size={13} /> Preview Payslip
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 6 Grid Metric Cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                    
+                    {/* 1. No. of Days in Month */}
+                    <div style={{ padding: '10px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700 }}>1. No. of Days in Month</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+                        {daysInMonth} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#64748b' }}>days</span>
+                      </div>
+                      <div style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '2px' }}>
+                        Calendar total for {MONTHS[month - 1]}
+                      </div>
+                    </div>
+
+                    {/* 2. No. of Working Days */}
+                    <div style={{ padding: '10px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700 }}>2. No. of Working Days</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0284c7', marginTop: '2px' }}>
+                        {totalWorkingDays} <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#0284c7' }}>({paidWorkingDays} paid)</span>
+                      </div>
+                      <div style={{ fontSize: '0.65rem', color: '#0369a1', marginTop: '2px', fontWeight: 600 }}>
+                        {presentWorkingDays} Worked • {onLeaveWorkingDays} on Leave {unpaidAbsenceDays > 0 ? `• ${unpaidAbsenceDays} LOP` : ''}
+                      </div>
+                    </div>
+
+                    {/* 3. Gross Salary */}
+                    <div style={{ padding: '10px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700 }}>3. Gross Salary</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#15803d', marginTop: '2px' }}>
+                        ₹{monthlyGross.toLocaleString('en-IN')}
+                      </div>
+                      <div style={{ fontSize: '0.65rem', color: '#166534', marginTop: '2px' }}>
+                        Annual CTC: ₹{(selectedEmployee.salaryGross || 0).toLocaleString('en-IN')}
+                      </div>
+                    </div>
+
+                    {/* 4. Per-Day Income */}
+                    <div style={{ padding: '10px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700 }}>4. Per-Day Income</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+                        ₹{perDayIncome.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </div>
+                      <div style={{ fontSize: '0.65rem', color: '#475569', marginTop: '2px' }}>
+                        {calcMethod === 'working_days' ? `Formula: Gross ÷ ${totalWorkingDays} work days` : `Formula: Gross ÷ ${daysInMonth} cal days`}
+                      </div>
+                    </div>
+
+                    {/* 5. Deductions (-2200) */}
+                    <div style={{ padding: '10px', background: '#fef2f2', borderRadius: '6px', border: '1px solid #fecaca' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#991b1b', fontWeight: 700 }}>5. Deductions (-2200)</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#dc2626', marginTop: '2px' }}>
+                        -₹{totalDeductions.toLocaleString('en-IN')}
+                      </div>
+                      <div style={{ fontSize: '0.65rem', color: '#b91c1c', marginTop: '2px' }}>
+                        PF ₹2,000 + PT ₹200 {unpaidAbsenceDays > 0 ? `+ LOP ₹${lopDeduction.toLocaleString('en-IN')}` : ''}
+                      </div>
+                    </div>
+
+                    {/* 6. Net Salary for Month */}
+                    <div style={{ padding: '10px', background: '#f0fdf4', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#166534', fontWeight: 700 }}>6. Net Salary for Month</div>
+                      <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#15803d', marginTop: '2px' }}>
+                        ₹{calculatedNet.toLocaleString('en-IN')}
+                      </div>
+                      <div style={{ fontSize: '0.65rem', color: '#15803d', fontWeight: 600, marginTop: '2px' }}>
+                        ✓ Syncs to Net Disbursed Pay
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              )}
+
+              {/* 4. Net Salary Input */}
+              <div className="sal-field">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b', margin: 0 }}>
+                    4. Net Disbursed Salary (₹)
+                  </label>
+                  <span style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 600 }}>
+                    ✓ Real-time calculated: {paidWorkingDays} Paid Days × ₹{perDayIncome.toFixed(2)} - Deductions
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="number"
+                    placeholder="Auto-calculated net monthly pay"
+                    value={netSalary}
+                    onChange={e => setNetSalary(e.target.value)}
+                    style={{ fontSize: '0.92rem', height: '40px', fontWeight: 800, color: '#15803d', flex: 1 }}
+                  />
+                  {selectedEmployee && (
+                    <button
+                      type="button"
+                      onClick={() => setShowPreviewModal(true)}
+                      style={{
+                        padding: '0 16px',
+                        background: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        borderRadius: '6px',
+                        color: '#2563eb',
+                        fontWeight: 700,
+                        fontSize: '0.82rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      <Eye size={15} /> Preview Payslip
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 5. Payslip PDF Document Upload (Optional if auto-generating) */}
+              <div className="sal-field">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b', margin: 0 }}>
+                    5. Payslip PDF Document <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>(Optional — System can auto-generate)</span>
+                  </label>
+                </div>
+                <div style={{
+                  border: file ? '2px solid #22c55e' : '2px dashed #94a3b8',
+                  borderRadius: '10px',
+                  padding: '16px',
+                  background: file ? '#f0fdf4' : '#f8fafc',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  position: 'relative',
+                  transition: 'all 0.2s ease'
+                }}>
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    onChange={handleFileChange}
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      opacity: 0,
+                      cursor: 'pointer'
+                    }}
+                  />
+                  {file ? (
+                    <div>
+                      <CheckCircle size={26} style={{ color: '#16a34a', margin: '0 auto 4px' }} />
+                      <p style={{ margin: '2px 0 0', fontSize: '0.85rem', fontWeight: 700, color: '#15803d' }}>
+                        📄 {file.name}
+                      </p>
+                      <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#64748b' }}>
+                        {(file.size / 1024).toFixed(1)} KB — Click to replace or click "Preview Payslip" to view
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <FileText size={26} style={{ color: '#3b82f6', margin: '0 auto 4px' }} />
+                      <p style={{ margin: '2px 0 0', fontSize: '0.85rem', fontWeight: 700, color: '#1e293b' }}>
+                        Click or Drag &amp; Drop PDF Payslip
+                      </p>
+                      <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#64748b' }}>
+                        Upload external PDF or leave blank to auto-generate official payslip
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
             </div>
           </div>
-        </div>
 
-        <div className="sal-modal-footer" style={{ padding: '14px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-          <button className="sal-btn-cancel" onClick={onClose} style={{ padding: '8px 18px', fontSize: '0.82rem' }}>
-            Cancel
-          </button>
-          <button 
-            className="sal-btn-save sal-btn-success" 
-            onClick={handleUpload} 
-            disabled={uploading || (!autoDetect && !employeeId) || !file}
-            style={{ padding: '8px 22px', fontSize: '0.82rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}
-          >
-            {uploading ? (
-              <>
-                <RefreshCw size={14} className="animate-spin" /> Uploading &amp; Syncing...
-              </>
-            ) : (
-              'Upload & Sync to Portal'
-            )}
-          </button>
+          {/* Modal Footer */}
+          <div className="sal-modal-footer" style={{ padding: '14px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              {selectedEmployee && (
+                <button
+                  type="button"
+                  onClick={() => setShowPreviewModal(true)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 16px',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                    color: '#334155',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Eye size={15} style={{ color: '#2563eb' }} /> Preview Payslip
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button className="sal-btn-cancel" onClick={onClose} style={{ padding: '8px 18px', fontSize: '0.82rem' }}>
+                Cancel
+              </button>
+              <button 
+                className="sal-btn-save sal-btn-success" 
+                onClick={handleSavePayslip} 
+                disabled={uploading || (!autoDetect && !employeeId)}
+                style={{ padding: '8px 24px', fontSize: '0.82rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                {uploading ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" /> Syncing to Portal...
+                  </>
+                ) : file ? (
+                  'Upload & Sync to Portal'
+                ) : (
+                  'Generate & Sync to Portal'
+                )}
+              </button>
+            </div>
+          </div>
+
         </div>
       </div>
-    </div>
+
+      {/* Payslip Preview Modal */}
+      {showPreviewModal && selectedEmployee && (
+        <PayslipPreviewModal
+          employee={selectedEmployee}
+          month={month}
+          year={year}
+          calcData={previewCalcData}
+          onClose={() => setShowPreviewModal(false)}
+          uploadedFile={file}
+        />
+      )}
+    </>
   )
 }
 

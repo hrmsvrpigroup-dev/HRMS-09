@@ -305,4 +305,56 @@ export const payrollController = {
       return sendError(res, err.message || 'Failed to upload salary slip', 500)
     }
   },
+
+  // HR: Generate single payslip directly from calculations and sync to employee portal
+  async generateSinglePayslip(req: AuthRequest, res: Response) {
+    try {
+      const tenantId = req.tenantId ?? req.user?.tenantId
+      if (!tenantId) return sendError(res, 'Tenant context not found', 400)
+
+      const { employeeId, month, year, netSalary, daysPaid, lossOfPay, deductions } = req.body
+      if (!employeeId || !month || !year) {
+        return sendError(res, 'employeeId, month, and year are required', 400)
+      }
+
+      const result = await payrollService.generateSinglePayslip({
+        tenantId,
+        employeeId,
+        month: Number(month),
+        year: Number(year),
+        netSalary: netSalary !== undefined ? Number(netSalary) : undefined,
+        daysPaid: daysPaid !== undefined ? Number(daysPaid) : undefined,
+        lossOfPay: lossOfPay !== undefined ? Number(lossOfPay) : undefined,
+        deductions: deductions !== undefined ? Number(deductions) : undefined,
+      })
+
+      return sendSuccess(res, result, 'Payslip generated and synced to employee portal successfully')
+    } catch (err: any) {
+      return sendError(res, err.message || 'Failed to generate payslip', 500)
+    }
+  },
+
+  // HR: Real-time attendance and leave analysis for monthly payroll calculation
+  async getAttendanceAnalysis(req: AuthRequest, res: Response) {
+    try {
+      const tenantId = req.tenantId ?? req.user?.tenantId
+      if (!tenantId) return sendError(res, 'Tenant context not found', 400)
+
+      const { employeeId, month, year } = req.query
+      if (!employeeId || !month || !year) {
+        return sendError(res, 'employeeId, month, and year query params are required', 400)
+      }
+
+      const analysis = await payrollService.getAttendanceAnalysis({
+        tenantId,
+        employeeId: String(employeeId),
+        month: Number(month),
+        year: Number(year),
+      })
+
+      return sendSuccess(res, analysis)
+    } catch (err: any) {
+      return sendError(res, err.message || 'Failed to analyze attendance', 500)
+    }
+  },
 }

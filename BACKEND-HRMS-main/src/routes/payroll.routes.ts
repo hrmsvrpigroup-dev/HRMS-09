@@ -51,5 +51,7 @@ router.post('/salary/generate', authorize('HR', 'ADMIN'), payrollController.gene
 router.patch('/salary/:id/mark-paid', authorize('HR', 'ADMIN'), payrollController.markAsPaid)
 router.put('/salary/employee/:employeeId', authorize('HR', 'ADMIN'), payrollController.updateEmployeeSalary)
 router.post('/salary/upload', authorize('HR', 'ADMIN'), upload.single('payslip'), payrollController.uploadPayslip)
+router.post('/salary/generate-slip', authorize('HR', 'ADMIN'), payrollController.generateSinglePayslip)
+router.get('/salary/attendance-analysis', authorize('HR', 'ADMIN'), payrollController.getAttendanceAnalysis)
 
 export default router

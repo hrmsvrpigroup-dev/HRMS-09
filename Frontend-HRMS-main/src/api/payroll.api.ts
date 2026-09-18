@@ -24,6 +24,19 @@ export const payrollApi = {
       },
     }),
 
+  generateSinglePayslip: (data: {
+    employeeId: string
+    month: number
+    year: number
+    netSalary?: number
+    daysPaid?: number
+    lossOfPay?: number
+    deductions?: number
+  }) => api.post('/payroll/salary/generate-slip', data),
+
+  getAttendanceAnalysis: (employeeId: string, month: number, year: number) =>
+    api.get('/payroll/salary/attendance-analysis', { params: { employeeId, month, year } }),
+
   updateEmployeeSalary: (employeeId: string, data: {
     salaryGross?: number
     salaryStructure?: string

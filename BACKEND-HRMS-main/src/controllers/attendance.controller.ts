@@ -12,9 +12,27 @@ export const attendanceController = {
       return sendError(res, 'Tenant context not found', 400)
     }
 
+    const { employeeId, month, year } = req.query as { employeeId?: string; month?: string; year?: string }
     const whereClause: any = { tenantId }
     if (req.user?.role === UserRole.EMPLOYEE) {
       whereClause.employee = { userId: req.user.id }
+    } else if (employeeId) {
+      whereClause.employeeId = String(employeeId)
+    }
+
+    const hasMonthFilter = Boolean(month && year)
+    if (hasMonthFilter) {
+      const m = Number(month)
+      const y = Number(year)
+      if (!isNaN(m) && !isNaN(y) && m >= 1 && m <= 12) {
+        const startDate = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0))
+        const daysInMonth = new Date(y, m, 0).getDate()
+        const endDate = new Date(Date.UTC(y, m - 1, daysInMonth, 23, 59, 59, 999))
+        whereClause.date = {
+          gte: startDate,
+          lte: endDate,
+        }
+      }
     }
 
     try {
@@ -25,8 +43,8 @@ export const attendanceController = {
             select: { firstName: true, lastName: true, employeeCode: true, email: true },
           },
         },
-        orderBy: { date: 'desc' },
-        take: 150,
+        orderBy: { date: hasMonthFilter ? 'asc' : 'desc' },
+        ...(hasMonthFilter ? {} : { take: 150 }),
       })
 
       return sendSuccess(res, items)
