@@ -401,13 +401,18 @@ export const payrollService = {
     if (!emp) throw new Error('Employee not found')
 
     const totalDays = new Date(year, month, 0).getDate()
-    const monthlyCTC = (emp.salaryGross || 0) / 12
-    const basic = Math.round(monthlyCTC * 0.5)
-    const hra = Math.round(basic * 0.5)
-    const lta = Math.min(3000, Math.max(0, Math.round(monthlyCTC - basic - hra)))
+    let monthlyCTC = (emp.salaryGross || 0) / 12
     const pfDeduction = 2000
     const professionalTax = 200
     const totalDeductions = customDeductions !== undefined ? customDeductions : (pfDeduction + professionalTax)
+
+    if (monthlyCTC <= 0 && netSalary !== undefined && netSalary > 0) {
+      monthlyCTC = netSalary + totalDeductions
+    }
+
+    const basic = Math.round(monthlyCTC * 0.5)
+    const hra = Math.round(monthlyCTC * 0.3)
+    const lta = Math.min(3000, Math.max(0, Math.round(monthlyCTC - basic - hra)))
     const specialAllowance = Math.max(0, Math.round(monthlyCTC - basic - hra - lta))
     const allowances = lta + specialAllowance
 

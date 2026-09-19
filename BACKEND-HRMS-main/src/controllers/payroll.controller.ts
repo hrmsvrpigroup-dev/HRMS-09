@@ -4,6 +4,7 @@ import path from 'path'
 import { prisma } from '../config/database'
 import { AuthRequest } from '../middleware/auth.middleware'
 import { payrollService } from '../services/payroll.service'
+import { PayslipService } from '../services/payslip.service'
 import { sendError, sendSuccess } from '../utils/response.utils'
 const pdfParse = require('pdf-parse')
 
@@ -47,7 +48,16 @@ export const payrollController = {
       const { id } = req.params
       const payroll = await prisma.payroll.findUnique({
         where: { id, tenantId },
-        include: { employee: true },
+        include: {
+          employee: {
+            include: {
+              tenant: true,
+              designation: true,
+              payrollDetails: true,
+              addressInfo: true,
+            },
+          },
+        },
       })
 
       if (!payroll) return sendError(res, 'Payslip not found', 404)
@@ -61,25 +71,126 @@ export const payrollController = {
         }
       }
 
-      if (!payroll.slipUrl) {
-        return sendError(res, 'Payslip PDF has not been generated yet', 400)
+      let pdfBuffer: Buffer | null = null
+
+      // 1. Check if file exists on disk
+      if (payroll.slipUrl) {
+        const cleanSlipUrl = payroll.slipUrl.startsWith('/') ? payroll.slipUrl.slice(1) : payroll.slipUrl
+        const candidates = [
+          path.join(process.cwd(), cleanSlipUrl),
+          path.join(process.cwd(), 'public', cleanSlipUrl),
+          path.join(process.cwd(), 'uploads', 'payslips', path.basename(payroll.slipUrl)),
+          path.join(process.cwd(), 'public', 'uploads', 'payslips', path.basename(payroll.slipUrl)),
+          path.join(__dirname, '../../public', cleanSlipUrl),
+        ]
+
+        const resolvedPath = candidates.find(p => fs.existsSync(p))
+        if (resolvedPath) {
+          try {
+            pdfBuffer = fs.readFileSync(resolvedPath)
+          } catch (readErr) {
+            console.warn('Could not read existing payslip file, regenerating:', readErr)
+          }
+        }
       }
 
-      const cleanSlipUrl = payroll.slipUrl.startsWith('/') ? payroll.slipUrl.slice(1) : payroll.slipUrl
-      const candidates = [
-        path.join(process.cwd(), cleanSlipUrl),
-        path.join(process.cwd(), 'public', cleanSlipUrl),
-        path.join(process.cwd(), 'uploads', 'payslips', path.basename(payroll.slipUrl)),
-        path.join(process.cwd(), 'public', 'uploads', 'payslips', path.basename(payroll.slipUrl)),
-        path.join(__dirname, '../../public', cleanSlipUrl),
-      ]
+      // 2. If not found on disk (e.g. Render ephemeral storage, redeploys, or deleted files), generate dynamically on the fly!
+      if (!pdfBuffer) {
+        const emp = payroll.employee
+        const tenant = emp.tenant
+        const details = emp.payrollDetails
 
-      const resolvedPath = candidates.find(p => fs.existsSync(p))
-      if (!resolvedPath) {
-        return sendError(res, 'Payslip file is missing on the server', 404)
+        const MONTHS = [
+          'January', 'February', 'March', 'April', 'May', 'June',
+          'July', 'August', 'September', 'October', 'November', 'December'
+        ]
+
+        const totalDays = new Date(payroll.year, payroll.month, 0).getDate()
+
+        let basic = payroll.basicSalary || 0
+        let hra = payroll.hra || 0
+        let allowances = payroll.allowances || 0
+        const deductions = payroll.deductions || (payroll.pf + payroll.tax)
+        const netSalary = payroll.netSalary || 0
+
+        // Derive balanced breakdown if earnings are zero
+        if (basic === 0 && hra === 0 && allowances === 0 && netSalary > 0) {
+          const gross = netSalary + deductions
+          basic = Math.round(gross * 0.5)
+          hra = Math.round(gross * 0.3)
+          allowances = Math.max(0, gross - basic - hra)
+
+          prisma.payroll.update({
+            where: { id: payroll.id },
+            data: { basicSalary: basic, hra, allowances },
+          }).catch(() => {})
+        }
+
+        const lta = Math.min(3000, allowances)
+        const specialAllowance = Math.max(0, allowances - lta)
+        const pfDeduction = payroll.pf
+        const professionalTax = payroll.tax
+        const otherDeductions = Math.max(0, deductions - pfDeduction - professionalTax)
+
+        const payslipData = {
+          companyName: tenant?.name || 'VR PI TECH SOLUTIONS LLP',
+          companyLogoUrl: tenant?.logoUrl || null,
+          subdomain: tenant?.subdomain || '',
+          employeeCode: emp.employeeCode,
+          employeeName: `${emp.firstName} ${emp.lastName}`,
+          designation: emp.designation?.title || 'Employee',
+          location: emp.addressInfo?.city || 'Hyderabad',
+          panNumber: details?.panNumber || '',
+          joiningDate: emp.joiningDate ? new Date(emp.joiningDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
+          bankName: details?.bankName || '',
+          bankAccountNumber: details?.accountNumber || '',
+          uanNumber: details?.uanNumber || '',
+          pfNumber: details?.uanNumber ? 'PF-' + details.uanNumber : '-',
+          esicNumber: details?.esiEnabled ? 'ESIC-' + emp.employeeCode : '-',
+          daysPaid: totalDays,
+          lossOfPay: 0,
+          monthName: MONTHS[payroll.month - 1] || `Month ${payroll.month}`,
+          year: payroll.year,
+          basic,
+          hra,
+          lta,
+          specialAllowance,
+          professionalTax,
+          pfDeduction,
+          otherDeductions,
+          netSalary,
+        }
+
+        pdfBuffer = await PayslipService.generatePayslipPDF(payslipData)
+
+        // Cache generated PDF to disk so subsequent reads are instant
+        try {
+          const publicUploadsDir = path.join(process.cwd(), 'public', 'uploads', 'payslips')
+          const regularUploadsDir = path.join(process.cwd(), 'uploads', 'payslips')
+          if (!fs.existsSync(publicUploadsDir)) fs.mkdirSync(publicUploadsDir, { recursive: true })
+          if (!fs.existsSync(regularUploadsDir)) fs.mkdirSync(regularUploadsDir, { recursive: true })
+
+          const fileName = `payslip-${payroll.id}.pdf`
+          fs.writeFileSync(path.join(publicUploadsDir, fileName), pdfBuffer)
+          try { fs.writeFileSync(path.join(regularUploadsDir, fileName), pdfBuffer) } catch (_) {}
+
+          const fileUrl = `/uploads/payslips/${fileName}`
+          if (payroll.slipUrl !== fileUrl) {
+            prisma.payroll.update({
+              where: { id: payroll.id },
+              data: { slipUrl: fileUrl },
+            }).catch(() => {})
+          }
+        } catch (saveErr) {
+          console.warn('Could not cache generated payslip PDF to disk:', saveErr)
+        }
       }
 
-      res.download(resolvedPath, `Payslip-${payroll.month}-${payroll.year}.pdf`)
+      const fileName = `Payslip-${payroll.month}-${payroll.year}.pdf`
+      res.setHeader('Content-Type', 'application/pdf')
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+      res.setHeader('Content-Length', pdfBuffer.length)
+      return res.send(pdfBuffer)
     } catch (err: any) {
       return sendError(res, err.message || 'Failed to download payslip', 500)
     }

@@ -556,6 +556,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   const [copiedFormLink, setCopiedFormLink] = useState(false);
   const [appSourceFilter, setAppSourceFilter] = useState<'all' | 'google-form' | 'manual'>('all');
   const [allApplicantsFilter, setAllApplicantsFilter] = useState<'all' | 'accepted' | 'rejected' | 'pending'>('all');
+  const [docSubFilter, setDocSubFilter] = useState<'all' | 'pending' | 'verified'>('all');
   const [inspectCandidate, setInspectCandidate] = useState<any | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [submittingApp, setSubmittingApp] = useState(false);
@@ -737,10 +738,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   };
 
   const isCandidateDeleted = (candId?: string, candEmail?: string) => {
-    const list = getDeletedApplicants();
+    const list = getDeletedApplicants().filter(x => typeof x === 'string' && x.trim());
     if (candId && list.includes(candId)) return true;
-    if (candEmail) {
-      if (list.includes(candEmail) || list.includes(candEmail.toLowerCase())) return true;
+    if (candEmail && candEmail.trim()) {
+      const em = candEmail.trim().toLowerCase();
+      if (list.some(x => x.toLowerCase() === em)) return true;
     }
     return false;
   };
@@ -6795,39 +6797,38 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
             {activeTab === 'stage-documents-received' && (() => {
               const map = new Map<string, Candidate>();
 
-              // 1. Map ONLY the live applicant records from the Google Sheet
+              // 1. Map ALL live applicant records from the Google Sheet
               const sheetDocs: Candidate[] = liveDocumentResponses
-                .filter(r => !isCandidateDeleted(r.id, r.email))
-                .filter(r => {
+                .filter(r => !isCandidateDeleted(r.id, r.email && r.email.trim() ? r.email : undefined))
+                .map((r, idx) => {
                   const emailKey = (r.email || '').toLowerCase().trim();
                   const nameKey = (r.fullName || '').toLowerCase().trim();
-                  const matchedDbCand = candidates.find(c => 
+                  
+                  const existing = candidates.find(c => 
                     (emailKey && c.email && c.email.toLowerCase().trim() === emailKey) || 
                     c.id === r.id || 
                     (`${c.firstName} ${c.lastName}`.trim().toLowerCase() === nameKey)
                   );
-                  const dbStage = matchedDbCand?.stage;
-                  const isVerified = matchedDbCand?.documentsVerified;
 
                   const s = (emailKey && formApplicantStatuses[emailKey]) || 
                             (r.email && formApplicantStatuses[r.email]) || 
                             (r.id && formApplicantStatuses[r.id]) ||
-                            (nameKey && formApplicantStatuses[nameKey]);
+                            (nameKey && formApplicantStatuses[nameKey]) ||
+                            (existing?.id && formApplicantStatuses[existing.id]) ||
+                            (existing?.email && formApplicantStatuses[existing.email]);
 
-                  // If candidate has been verified and moved to Call Letter (or subsequent stages), vanish from Documents Received!
-                  if (s === 'call_letter' || s === 'call-letter' || s === 'callletter' || 
-                      s === 'received_call_letter' || s === 'call_letter_received' || s === 'received-call-letter' || 
-                      s === 'offer' || s === 'onboarded' || s === 'declined') return false;
-
-                  if (isVerified || dbStage === 'Call Letter' || dbStage === 'Received Call Letter' || dbStage === 'Offer' || dbStage === 'Onboarding' || dbStage === 'Rejected') return false;
-
-                  return true;
-                })
-                .map((r, idx) => {
-                  const existing = candidates.find(c => 
-                    (r.email && c.email && c.email.toLowerCase() === r.email.toLowerCase()) || 
-                    c.id === r.id || 
-                    (`${c.firstName} ${c.lastName}`.trim().toLowerCase() === (r.fullName || '').trim().toLowerCase())
+                  const isVerified = Boolean(
+                    existing?.documentsVerified ||
+                    existing?.stage === 'Call Letter' ||
+                    existing?.stage === 'Received Call Letter' ||
+                    existing?.stage === 'Offer' ||
+                    existing?.stage === 'Onboarding' ||
+                    s === 'call_letter' ||
+                    s === 'call-letter' ||
+                    s === 'callletter' ||
+                    s === 'received_call_letter' ||
+                    s === 'offer' ||
+                    s === 'onboarded'
                   );
 
                   const docObjects = (r.documents || []).map((d: any) => ({
@@ -6841,33 +6842,43 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                   const fName = existing?.firstName || nameParts[0] || 'Applicant';
                   const lName = existing?.lastName || nameParts.slice(1).join(' ') || '';
 
-                  const baseCand: Candidate = existing ? {
+                  const baseCand: any = existing ? {
                     ...existing,
-                    candidateType: r.candidateType || (existing as any).candidateType,
-                    attachmentImages: Array.from(new Set([...(existing.attachmentImages || []), ...docObjects]))
+                    firstName: fName,
+                    lastName: lName,
+                    candidateType: r.candidateType || (existing as any).candidateType || 'Freshers',
+                    attachmentImages: Array.from(new Set([...(existing.attachmentImages || []), ...docObjects])),
+                    sheetTimestamp: r.timestamp,
+                    sheetRowId: r.id,
+                    isVerified,
+                    rawDocs: docObjects
                   } : {
                     id: r.id || `sheet-doc-row-${idx + 1}`,
                     firstName: fName,
                     lastName: lName,
                     email: r.email || `applicant_${idx + 1}@vrpi.recruitment`,
                     phone: r.phone || 'N/A',
-                    stage: 'Documents',
-                    candidateType: r.candidateType || 'Experienced',
+                    stage: isVerified ? 'Call Letter' : 'Documents',
+                    candidateType: r.candidateType || 'Freshers',
                     source: 'Google Form (Documents)',
                     jobTitle: 'Selected Candidate',
-                    experience: r.candidateType || 'Experienced',
+                    experience: r.candidateType || 'Freshers',
                     location: 'Hyderabad / Wanaparthy',
                     appliedDate: r.timestamp || format(new Date(), 'dd/MM/yyyy'),
                     matchScore: 90,
-                    skills: ['Verified Credentials', r.candidateType || 'Experienced'],
+                    skills: ['Verified Credentials', r.candidateType || 'Freshers'],
                     avatarColor: 'bg-emerald-100 text-emerald-600 border-emerald-200',
-                    attachmentImages: docObjects
+                    attachmentImages: docObjects,
+                    sheetTimestamp: r.timestamp,
+                    sheetRowId: r.id,
+                    isVerified,
+                    rawDocs: docObjects
                   };
 
-                  return baseCand;
+                  return baseCand as Candidate;
                 });
 
-              // Strictly include ONLY candidate records that exist in the Google Sheet
+              // Strictly include ALL candidate records that exist in the Google Sheet
               sheetDocs.forEach(c => {
                 const key = (c.email || c.id || `${c.firstName}_${c.lastName}`).toLowerCase();
                 if (!map.has(key)) {
@@ -6875,7 +6886,31 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                 }
               });
 
+              // Also include any candidates from candidates state who have status DOCUMENTS and uploaded docs
+              candidates.forEach(c => {
+                if (isCandidateDeleted(c.id, c.email)) return;
+                const emailKey = (c.email || '').toLowerCase().trim();
+                const nameKey = `${c.firstName} ${c.lastName}`.trim().toLowerCase();
+                const alreadyExists = Array.from(map.values()).some(existing => 
+                  (emailKey && existing.email && existing.email.toLowerCase().trim() === emailKey) ||
+                  (nameKey && `${existing.firstName} ${existing.lastName}`.trim().toLowerCase() === nameKey) ||
+                  existing.id === c.id
+                );
+                if (!alreadyExists && (c.stage === 'Documents' || (c.attachmentImages && c.attachmentImages.length > 0))) {
+                  const key = emailKey || c.id || nameKey;
+                  map.set(key, c);
+                }
+              });
+
               const documentCandidates = Array.from(map.values());
+              const pendingCandidates = documentCandidates.filter(c => !(c as any).isVerified);
+              const verifiedCandidates = documentCandidates.filter(c => (c as any).isVerified);
+
+              const displayedCandidates = docSubFilter === 'pending'
+                ? pendingCandidates
+                : docSubFilter === 'verified'
+                ? verifiedCandidates
+                : documentCandidates;
 
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -6890,7 +6925,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <h2 className="rec-section-title" style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>Stage 5: Documents Received</h2>
                             <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '99px', background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0' }}>
-                              {documentCandidates.length} Candidate Submissions
+                              {documentCandidates.length} Google Sheet Profiles
                             </span>
                           </div>
                           <p className="rec-section-sub" style={{ margin: '3px 0 0 0', color: '#64748b' }}>HR audits submitted credential proofs before approving and issuing official Call Letter</p>
@@ -6898,6 +6933,58 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        {/* Sub-filter tabs */}
+                        <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '8px', padding: '3px', border: '1px solid #e2e8f0' }}>
+                          <button
+                            type="button"
+                            onClick={() => setDocSubFilter('all')}
+                            style={{
+                              padding: '4px 10px',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              borderRadius: '6px',
+                              border: 'none',
+                              cursor: 'pointer',
+                              background: docSubFilter === 'all' ? '#10b981' : 'transparent',
+                              color: docSubFilter === 'all' ? '#ffffff' : '#64748b'
+                            }}
+                          >
+                            All ({documentCandidates.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDocSubFilter('pending')}
+                            style={{
+                              padding: '4px 10px',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              borderRadius: '6px',
+                              border: 'none',
+                              cursor: 'pointer',
+                              background: docSubFilter === 'pending' ? '#f59e0b' : 'transparent',
+                              color: docSubFilter === 'pending' ? '#ffffff' : '#64748b'
+                            }}
+                          >
+                            Pending ({pendingCandidates.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDocSubFilter('verified')}
+                            style={{
+                              padding: '4px 10px',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              borderRadius: '6px',
+                              border: 'none',
+                              cursor: 'pointer',
+                              background: docSubFilter === 'verified' ? '#059669' : 'transparent',
+                              color: docSubFilter === 'verified' ? '#ffffff' : '#64748b'
+                            }}
+                          >
+                            Verified ({verifiedCandidates.length})
+                          </button>
+                        </div>
+
                         <button
                           type="button"
                           onClick={async () => {
@@ -6939,16 +7026,16 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                   {/* Candidate Document Verification Cards Matrix */}
                   <div className="rec-card" style={{ padding: '1.5rem', background: '#ffffff', borderRadius: '1.25rem', border: '1px solid #e2e8f0' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '1.5rem' }}>
-                      {documentCandidates.length === 0 ? (
+                      {displayedCandidates.length === 0 ? (
                         <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '3.5rem 1.5rem', background: '#f8fafc', borderRadius: '1rem', border: '1px solid #e2e8f0', color: '#94a3b8', fontSize: '0.82rem' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
                             <FileCheck className="h-8 w-8 text-slate-300" />
-                            <p style={{ margin: 0, fontWeight: 700, color: '#64748b' }}>No candidates currently pending Document Verification</p>
-                            <p style={{ margin: 0, fontSize: '0.75rem', color: '#94a3b8' }}>Candidates who submit documents via Google Form will automatically appear here in real time.</p>
+                            <p style={{ margin: 0, fontWeight: 700, color: '#64748b' }}>No candidates found for this filter</p>
+                            <p style={{ margin: 0, fontSize: '0.75rem', color: '#94a3b8' }}>Switch to "All" to view all Google Sheet document submissions.</p>
                           </div>
                         </div>
                       ) : (
-                        documentCandidates.map(c => {
+                        displayedCandidates.map(c => {
                           const code = getCandidateCode(c);
                           const storedDocs = getStoredCandidateDocs(c.id, c.email, code);
                           const combinedImages = [...(c.attachmentImages || [])];
@@ -6956,19 +7043,26 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                             if (!combinedImages.includes(d)) combinedImages.push(d);
                           });
                           const formAtts = combinedImages.map((att, idx) => parseAttachmentItem(att, idx));
-                          const candType = (c as any).candidateType;
+                          const candType = (c as any).candidateType || 'Freshers';
+                          const isCandVerified = Boolean((c as any).isVerified);
+                          const timestamp = (c as any).sheetTimestamp || c.appliedDate;
 
                           return (
-                            <div key={c.id} style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '1.15rem', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', boxShadow: '0 4px 15px rgba(15, 23, 42, 0.03)' }}>
+                            <div key={c.id} style={{ background: '#ffffff', border: isCandVerified ? '1.5px solid #86efac' : '1.5px solid #e2e8f0', borderRadius: '1.15rem', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', boxShadow: isCandVerified ? '0 4px 15px rgba(16, 185, 129, 0.06)' : '0 4px 15px rgba(15, 23, 42, 0.03)' }}>
                               {/* Candidate Header */}
                               <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                  <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.85rem', boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)' }}>
+                                  <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: isCandVerified ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.9rem', boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)' }}>
                                     {c.firstName.charAt(0)}
                                   </div>
                                   <div>
-                                    <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>{c.firstName} {c.lastName}</h3>
-                                    <p style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, margin: '2px 0 0 0' }}>#{code}</p>
+                                    <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>{c.firstName} {c.lastName}</h3>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+                                      <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>#{code}</span>
+                                      {timestamp && (
+                                        <span style={{ fontSize: '0.66rem', color: '#94a3b8' }}>• {timestamp}</span>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -6977,9 +7071,15 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                       {candType}
                                     </span>
                                   )}
-                                  <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '3px 8px', borderRadius: '99px', background: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0' }}>
-                                    5. Documents Received
-                                  </span>
+                                  {isCandVerified ? (
+                                    <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '3px 8px', borderRadius: '99px', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac' }}>
+                                      ✓ Verified
+                                    </span>
+                                  ) : (
+                                    <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '3px 8px', borderRadius: '99px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}>
+                                      ● Pending
+                                    </span>
+                                  )}
                                 </div>
                               </div>
 
@@ -6987,12 +7087,12 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                               <div style={{ background: '#f8fafc', borderRadius: '0.85rem', padding: '0.85rem', border: '1px solid #e2e8f0' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
                                   <p style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <FileText className="h-4 w-4 text-emerald-600" /> Submitted Documents & KYC Proofs ({formAtts.length})
+                                    <FileText className="h-4 w-4 text-emerald-600" /> Submitted Documents &amp; KYC Proofs ({formAtts.length})
                                   </p>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     {formAtts.length > 0 && (
                                       <span style={{ fontSize: '0.6rem', color: '#059669', fontWeight: 800, background: '#dcfce7', padding: '2px 6px', borderRadius: '4px' }}>
-                                        Synced
+                                        Synced from Sheet
                                       </span>
                                     )}
                                     <button
@@ -7076,25 +7176,58 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
                               {/* Verification Footer Action */}
                               <div>
-                                <button
-                                  onClick={() => handleVerifyDocumentsSubmit(c.id, c)}
-                                  className="rec-btn-primary"
-                                  style={{
-                                    width: '100%',
-                                    height: '42px',
-                                    justifyContent: 'center',
-                                    marginTop: '0.25rem',
-                                    borderRadius: '0.75rem',
-                                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                                    boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
-                                    fontWeight: 800
-                                  }}
-                                >
-                                  <UserCheck className="h-4.5 w-4.5" /> Verify & Move Candidate to Call Letter Stage
-                                </button>
-                                <p style={{ fontSize: '0.65rem', color: '#64748b', textAlign: 'center', marginTop: '6px', margin: '6px 0 0 0' }}>
-                                  Approving candidate credentials will transition profile to Stage 6: Call Letter
-                                </p>
+                                {isCandVerified ? (
+                                  <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '0.85rem', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <CheckCircle className="h-5 w-5 text-emerald-600 flex-shrink-0" />
+                                      <div>
+                                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#065f46' }}>✓ Credentials &amp; Proofs Verified</div>
+                                        <div style={{ fontSize: '0.68rem', color: '#047857' }}>Active in Stage 6: Call Letter Issuance</div>
+                                      </div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => setActiveTab('stage-call-letter')}
+                                        className="rec-btn-primary"
+                                        style={{ height: '30px', padding: '0 12px', fontSize: '0.72rem', background: '#059669', color: '#fff', fontWeight: 700, borderRadius: '6px' }}
+                                      >
+                                        View in Stage 6: Call Letter →
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleVerifyDocumentsSubmit(c.id, c)}
+                                        className="rec-btn-outline"
+                                        style={{ height: '30px', padding: '0 8px', fontSize: '0.72rem', color: '#047857', borderColor: '#a7f3d0', background: '#ffffff', fontWeight: 600, borderRadius: '6px' }}
+                                        title="Re-run verification"
+                                      >
+                                        Re-verify
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => handleVerifyDocumentsSubmit(c.id, c)}
+                                      className="rec-btn-primary"
+                                      style={{
+                                        width: '100%',
+                                        height: '42px',
+                                        justifyContent: 'center',
+                                        marginTop: '0.25rem',
+                                        borderRadius: '0.75rem',
+                                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                        boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+                                        fontWeight: 800
+                                      }}
+                                    >
+                                      <UserCheck className="h-4.5 w-4.5" /> Verify &amp; Move Candidate to Call Letter Stage
+                                    </button>
+                                    <p style={{ fontSize: '0.65rem', color: '#64748b', textAlign: 'center', marginTop: '6px', margin: '6px 0 0 0' }}>
+                                      Approving candidate credentials will transition profile to Stage 6: Call Letter
+                                    </p>
+                                  </>
+                                )}
                               </div>
                             </div>
                           );

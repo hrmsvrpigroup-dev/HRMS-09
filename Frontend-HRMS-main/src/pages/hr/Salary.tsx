@@ -8,6 +8,7 @@ import {
   PlusCircle, ThumbsUp, ThumbsDown, Zap, RotateCcw, Clock,
   Download, Eye, Printer, Calendar, Calculator, Check, Info, ChevronDown, ChevronUp
 } from 'lucide-react'
+import { VRPI_LOGO_DATA_URI } from '../../utils/offerLetterTemplate'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface EmployeeSalary {
@@ -432,23 +433,34 @@ function PayslipPreviewModal({
             <div className="payslip-preview-sheet" style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '28px', maxWidth: '750px', margin: '0 auto', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', color: '#0f172a' }}>
               
               {/* Company Banner */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #0f172a', paddingBottom: '16px', marginBottom: '20px' }}>
-                <div>
-                  <h1 style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '0.5px' }}>
-                    VR PI TECH SOLUTIONS LLP
-                  </h1>
-                  <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: '#475569' }}>
-                    Plot No. 12, Cyber Gateway, HITEC City, Hyderabad, Telangana - 500081
-                  </p>
-                  <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#64748b' }}>
-                    Corporate HRMS Payroll Division • Registered LLP
-                  </p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #0f172a', paddingBottom: '16px', marginBottom: '20px', gap: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <img
+                    src="/logo.png"
+                    alt="VR PI TECH SOLUTIONS LLP"
+                    style={{ height: '48px', maxWidth: '140px', objectFit: 'contain' }}
+                    onError={(e) => {
+                      const target = e.currentTarget
+                      if (target.src !== VRPI_LOGO_DATA_URI) target.src = VRPI_LOGO_DATA_URI
+                    }}
+                  />
+                  <div>
+                    <h1 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '0.5px' }}>
+                      VR PI TECH SOLUTIONS LLP
+                    </h1>
+                    <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: '#475569', lineHeight: 1.4 }}>
+                      Dwaraka Central, Plot no.: 57, 4th Floor, Hitech City Rd, Madhapur, Hyderabad, Telangana - 500081
+                    </p>
+                    <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#64748b' }}>
+                      Corporate HRMS Payroll Division • Registered LLP
+                    </p>
+                  </div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ display: 'inline-block', padding: '5px 12px', background: '#0f172a', color: '#ffffff', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase' }}>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ display: 'inline-block', padding: '5px 14px', background: '#0f172a', color: '#ffffff', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase' }}>
                     Payslip
                   </div>
-                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#3b82f6', marginTop: '6px' }}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#2563eb', marginTop: '6px' }}>
                     {monthName.toUpperCase()} {year}
                   </div>
                 </div>
@@ -612,6 +624,14 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
   const [showDayBreakdown, setShowDayBreakdown] = useState(true)
   const [showPreviewModal, setShowPreviewModal] = useState(false)
 
+  // Custom Add Dates Feature State (Paid / Unpaid Leave)
+  const [customLeaveMode, setCustomLeaveMode] = useState<'single' | 'range'>('single')
+  const [customFromDay, setCustomFromDay] = useState<number>(1)
+  const [customToDay, setCustomToDay] = useState<number>(1)
+  const [customLeaveType, setCustomLeaveType] = useState<'PAID_LEAVE' | 'UNPAID_ABSENT' | 'PRESENT'>('PAID_LEAVE')
+  const [customActionMsg, setCustomActionMsg] = useState<string>('')
+  const [showCustomDatePanel, setShowCustomDatePanel] = useState<boolean>(true)
+
   const activeEmployees = employees.filter(e => e.status === 'ACTIVE')
   const filteredEmployees = activeEmployees.filter(e => {
     if (!empSearch.trim()) return true
@@ -682,17 +702,43 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
 
     if (isWeekend) {
-      weekendPaidDays++
-      activeDailyBreakdown.push(defaultDay || {
-        day: d,
-        dayOfWeek,
-        dayName: dayOfWeek === 6 ? 'Sat' : 'Sun',
-        status: 'WEEKEND_PAID',
-        label: dayOfWeek === 6 ? 'Saturday (Paid Off)' : 'Sunday (Paid Off)',
-        isPaid: true,
-        isWorkingDay: false,
-        caseApplied: 'WEEKEND_PAID'
-      })
+      const override = dayOverrides[d]
+      if (override) {
+        let status: string = override
+        let label = override === 'PAID_LEAVE' ? 'Paid Leave (Custom)' : override === 'UNPAID_ABSENT' ? 'Unpaid LOP (Custom)' : 'Present (Custom)'
+        let isPaid = override !== 'UNPAID_ABSENT'
+        if (override === 'PRESENT') {
+          presentWorkingDays++
+        } else if (override === 'PAID_LEAVE') {
+          onLeaveWorkingDays++
+        } else if (override === 'UNPAID_ABSENT') {
+          unpaidAbsenceDays++
+        }
+        activeDailyBreakdown.push({
+          day: d,
+          dayOfWeek,
+          dayName: dayOfWeek === 6 ? 'Sat' : 'Sun',
+          status,
+          label,
+          isPaid,
+          isWorkingDay: true,
+          caseApplied: undefined,
+          isOverridden: true,
+        })
+      } else {
+        weekendPaidDays++
+        activeDailyBreakdown.push(defaultDay || {
+          day: d,
+          dayOfWeek,
+          dayName: dayOfWeek === 6 ? 'Sat' : 'Sun',
+          status: 'WEEKEND_PAID',
+          label: dayOfWeek === 6 ? 'Saturday (Paid Off)' : 'Sunday (Paid Off)',
+          isPaid: true,
+          isWorkingDay: false,
+          caseApplied: 'WEEKEND_PAID',
+          isOverridden: false
+        })
+      }
     } else {
       // Weekday
       const override = dayOverrides[d]
@@ -703,15 +749,15 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
 
       if (override) {
         if (override === 'PRESENT') {
-          label = 'Present (Manual)'
+          label = 'Present (Custom)'
           isPaid = true
           caseApplied = undefined
         } else if (override === 'PAID_LEAVE') {
-          label = dayOfWeek === 5 ? 'Friday Leave (Case 1)' : dayOfWeek === 1 ? 'Monday Paid Leave (Case 2)' : 'Paid Leave'
+          label = dayOfWeek === 5 ? 'Friday Leave (Case 1)' : dayOfWeek === 1 ? 'Monday Paid Leave (Case 2)' : 'Paid Leave (Custom)'
           isPaid = true
           caseApplied = dayOfWeek === 5 ? 'CASE_1' : dayOfWeek === 1 ? 'CASE_2' : undefined
         } else if (override === 'UNPAID_ABSENT') {
-          label = 'Absent / Unpaid LOP'
+          label = 'Unpaid LOP (Custom)'
           isPaid = false
           caseApplied = undefined
         }
@@ -792,9 +838,9 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
 
   // Interactive toggle day status on calendar pill click
   const handleToggleDay = (dayNum: number, currentStatus: string, isWeekend: boolean) => {
-    if (isWeekend) return // Weekends are protected
     const nextStatus: Record<string, 'PRESENT' | 'PAID_LEAVE' | 'UNPAID_ABSENT'> = {
       PRESENT: 'PAID_LEAVE',
+      WEEKEND_PAID: 'PAID_LEAVE',
       LEAVE_FRIDAY: 'UNPAID_ABSENT',
       LEAVE_MONDAY: 'UNPAID_ABSENT',
       PAID_LEAVE: 'UNPAID_ABSENT',
@@ -802,6 +848,40 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
     }
     const target = nextStatus[currentStatus] || 'PRESENT'
     setDayOverrides(prev => ({ ...prev, [dayNum]: target }))
+  }
+
+  // Custom Add Dates Actions (Paid / Unpaid Leave)
+  const handleApplyCustomDates = () => {
+    const start = customLeaveMode === 'single' ? customFromDay : Math.min(customFromDay, customToDay)
+    const end = customLeaveMode === 'single' ? customFromDay : Math.max(customFromDay, customToDay)
+    if (start < 1 || end > daysInMonth) return
+
+    setDayOverrides(prev => {
+      const updated = { ...prev }
+      for (let d = start; d <= end; d++) {
+        updated[d] = customLeaveType
+      }
+      return updated
+    })
+
+    const typeLabel = customLeaveType === 'PAID_LEAVE' ? 'Paid Leave' : customLeaveType === 'UNPAID_ABSENT' ? 'Unpaid LOP' : 'Present'
+    const daysLabel = start === end ? `Day ${start}` : `Days ${start} - ${end} (${end - start + 1} days)`
+    setCustomActionMsg(`✓ Marked ${daysLabel} as ${typeLabel}`)
+    setTimeout(() => setCustomActionMsg(''), 4000)
+  }
+
+  const handleRemoveSingleOverride = (dayNum: number) => {
+    setDayOverrides(prev => {
+      const next = { ...prev }
+      delete next[dayNum]
+      return next
+    })
+  }
+
+  const handleResetAllOverrides = () => {
+    setDayOverrides({})
+    setCustomActionMsg('✓ Reset all custom dates to original live records')
+    setTimeout(() => setCustomActionMsg(''), 3000)
   }
 
   // Handle Upload or Direct Generation
@@ -1066,6 +1146,315 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
                     </div>
                   </div>
 
+                  {/* ── Custom Add Dates Feature (Paid / Unpaid Leave) ── */}
+                  <div style={{
+                    marginTop: '12px',
+                    background: '#ffffff',
+                    border: '1.5px solid #93c5fd',
+                    borderRadius: '8px',
+                    padding: '12px 14px',
+                    boxShadow: '0 1px 4px rgba(59,130,246,0.06)'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showCustomDatePanel ? '10px' : '0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{
+                          width: '24px',
+                          height: '24px',
+                          borderRadius: '6px',
+                          background: '#dbeafe',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#2563eb'
+                        }}>
+                          <PlusCircle size={15} />
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>
+                            Custom Add Dates Feature (Paid / Unpaid Leave)
+                          </span>
+                          <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
+                            Quickly mark single dates or date ranges as Paid Leave or Loss of Pay (LOP)
+                          </div>
+                        </div>
+                        {Object.keys(dayOverrides).length > 0 && (
+                          <span style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            background: '#eff6ff',
+                            color: '#2563eb',
+                            padding: '2px 8px',
+                            borderRadius: '10px',
+                            border: '1px solid #bfdbfe'
+                          }}>
+                            {Object.keys(dayOverrides).length} customized
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowCustomDatePanel(!showCustomDatePanel)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#2563eb',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        {showCustomDatePanel ? (
+                          <>Hide Controls <ChevronUp size={13} /></>
+                        ) : (
+                          <>Open Controls <ChevronDown size={13} /></>
+                        )}
+                      </button>
+                    </div>
+
+                    {showCustomDatePanel && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+                          {/* Mode selector */}
+                          <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '3px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                            <button
+                              type="button"
+                              onClick={() => setCustomLeaveMode('single')}
+                              style={{
+                                padding: '4px 10px',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                background: customLeaveMode === 'single' ? '#ffffff' : 'transparent',
+                                color: customLeaveMode === 'single' ? '#2563eb' : '#64748b',
+                                boxShadow: customLeaveMode === 'single' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              Single Date
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setCustomLeaveMode('range')}
+                              style={{
+                                padding: '4px 10px',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                background: customLeaveMode === 'range' ? '#ffffff' : 'transparent',
+                                color: customLeaveMode === 'range' ? '#2563eb' : '#64748b',
+                                boxShadow: customLeaveMode === 'range' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              Date Range
+                            </button>
+                          </div>
+
+                          {/* Date inputs */}
+                          {customLeaveMode === 'single' ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569' }}>Day:</label>
+                              <select
+                                value={customFromDay}
+                                onChange={e => setCustomFromDay(Number(e.target.value))}
+                                style={{ fontSize: '0.75rem', height: '30px', padding: '0 8px', borderRadius: '5px', border: '1px solid #cbd5e1' }}
+                              >
+                                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(d => {
+                                  const dayOfWeek = new Date(year, month - 1, d).getDay()
+                                  const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayOfWeek]
+                                  return (
+                                    <option key={d} value={d}>Day {d} ({dayName})</option>
+                                  )
+                                })}
+                              </select>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569' }}>From:</label>
+                              <select
+                                value={customFromDay}
+                                onChange={e => setCustomFromDay(Number(e.target.value))}
+                                style={{ fontSize: '0.75rem', height: '30px', padding: '0 8px', borderRadius: '5px', border: '1px solid #cbd5e1' }}
+                              >
+                                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(d => {
+                                  const dayOfWeek = new Date(year, month - 1, d).getDay()
+                                  const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayOfWeek]
+                                  return (
+                                    <option key={d} value={d}>Day {d} ({dayName})</option>
+                                  )
+                                })}
+                              </select>
+                              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569' }}>To:</label>
+                              <select
+                                value={customToDay}
+                                onChange={e => setCustomToDay(Number(e.target.value))}
+                                style={{ fontSize: '0.75rem', height: '30px', padding: '0 8px', borderRadius: '5px', border: '1px solid #cbd5e1' }}
+                              >
+                                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(d => {
+                                  const dayOfWeek = new Date(year, month - 1, d).getDay()
+                                  const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayOfWeek]
+                                  return (
+                                    <option key={d} value={d}>Day {d} ({dayName})</option>
+                                  )
+                                })}
+                              </select>
+                            </div>
+                          )}
+
+                          {/* Leave Type */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569' }}>Status:</label>
+                            <select
+                              value={customLeaveType}
+                              onChange={e => setCustomLeaveType(e.target.value as any)}
+                              style={{
+                                fontSize: '0.75rem',
+                                height: '30px',
+                                padding: '0 8px',
+                                borderRadius: '5px',
+                                fontWeight: 700,
+                                border: customLeaveType === 'PAID_LEAVE' ? '1.5px solid #22c55e' : customLeaveType === 'UNPAID_ABSENT' ? '1.5px solid #ef4444' : '1.5px solid #3b82f6',
+                                color: customLeaveType === 'PAID_LEAVE' ? '#15803d' : customLeaveType === 'UNPAID_ABSENT' ? '#dc2626' : '#2563eb'
+                              }}
+                            >
+                              <option value="PAID_LEAVE">🌴 Paid Leave (100% Salary)</option>
+                              <option value="UNPAID_ABSENT">⛔ Unpaid Leave / LOP (Deducted)</option>
+                              <option value="PRESENT">✓ Present / Worked</option>
+                            </select>
+                          </div>
+
+                          {/* Apply button */}
+                          <button
+                            type="button"
+                            onClick={handleApplyCustomDates}
+                            style={{
+                              background: '#2563eb',
+                              color: '#ffffff',
+                              border: 'none',
+                              borderRadius: '5px',
+                              padding: '0 14px',
+                              height: '30px',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            <Check size={13} /> Apply Dates
+                          </button>
+                        </div>
+
+                        {/* Confirmation Notification */}
+                        {customActionMsg && (
+                          <div style={{
+                            fontSize: '0.74rem',
+                            color: '#065f46',
+                            background: '#d1fae5',
+                            border: '1px solid #a7f3d0',
+                            borderRadius: '5px',
+                            padding: '4px 10px',
+                            fontWeight: 600,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}>
+                            {customActionMsg}
+                          </div>
+                        )}
+
+                        {/* Overrides tags list */}
+                        {Object.keys(dayOverrides).length > 0 && (
+                          <div style={{
+                            marginTop: '2px',
+                            padding: '8px 10px',
+                            background: '#f8fafc',
+                            borderRadius: '6px',
+                            border: '1px dashed #cbd5e1'
+                          }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
+                                Active Custom Dates ({Object.keys(dayOverrides).length}):
+                              </span>
+                              <button
+                                type="button"
+                                onClick={handleResetAllOverrides}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#dc2626',
+                                  fontSize: '0.7rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px'
+                                }}
+                              >
+                                <RotateCcw size={11} /> Reset All to Default
+                              </button>
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                              {Object.entries(dayOverrides).sort((a, b) => Number(a[0]) - Number(b[0])).map(([dayStr, status]) => {
+                                const dayNum = Number(dayStr)
+                                const isPaid = status === 'PAID_LEAVE'
+                                const isLop = status === 'UNPAID_ABSENT'
+                                const tagColor = isPaid ? '#15803d' : isLop ? '#dc2626' : '#2563eb'
+                                const tagBg = isPaid ? '#dcfce7' : isLop ? '#fee2e2' : '#dbeafe'
+                                const tagBorder = isPaid ? '#86efac' : isLop ? '#fca5a5' : '#bfdbfe'
+                                const label = isPaid ? 'Paid Leave' : isLop ? 'Unpaid LOP' : 'Present'
+                                return (
+                                  <span
+                                    key={dayNum}
+                                    style={{
+                                      fontSize: '0.68rem',
+                                      fontWeight: 700,
+                                      color: tagColor,
+                                      background: tagBg,
+                                      border: `1px solid ${tagBorder}`,
+                                      borderRadius: '4px',
+                                      padding: '2px 6px',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}
+                                  >
+                                    Day {dayNum}: {label}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveSingleOverride(dayNum)}
+                                      title="Remove override"
+                                      style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        color: tagColor,
+                                        cursor: 'pointer',
+                                        padding: 0,
+                                        display: 'inline-flex',
+                                        alignItems: 'center'
+                                      }}
+                                    >
+                                      <X size={11} />
+                                    </button>
+                                  </span>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Interactive Day Breakdown Header */}
                   <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '0.72rem', color: '#64748b', fontStyle: 'italic' }}>
@@ -1106,24 +1495,38 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
                             <div
                               key={d.day}
                               onClick={() => handleToggleDay(d.day, d.status, isWeekend)}
-                              title={isWeekend ? 'Weekend Paid Day' : 'Click to toggle status'}
+                              title={d.isOverridden ? `${d.label} (Custom Override - click to toggle)` : `${d.label} (Click to toggle status)`}
                               style={{
                                 padding: '6px 4px',
                                 borderRadius: '5px',
                                 textAlign: 'center',
                                 fontSize: '0.7rem',
-                                border: d.isOverridden ? '1.5px solid #6366f1' : '1px solid #e2e8f0',
-                                background: isWeekend ? '#f8fafc' : isLeave ? '#f0fdf4' : isLop ? '#fef2f2' : '#ffffff',
-                                cursor: isWeekend ? 'default' : 'pointer',
-                                transition: 'all 0.15s ease'
+                                border: d.isOverridden
+                                  ? (isLeave ? '1.5px solid #16a34a' : isLop ? '1.5px solid #dc2626' : '1.5px solid #2563eb')
+                                  : '1px solid #e2e8f0',
+                                background: isLeave ? '#f0fdf4' : isLop ? '#fef2f2' : isWeekend ? '#f8fafc' : '#ffffff',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                                position: 'relative'
                               }}
                             >
+                              {d.isOverridden && (
+                                <span style={{
+                                  position: 'absolute',
+                                  top: '3px',
+                                  right: '3px',
+                                  width: '5px',
+                                  height: '5px',
+                                  borderRadius: '50%',
+                                  background: isLeave ? '#16a34a' : isLop ? '#dc2626' : '#2563eb'
+                                }} title="Custom Overridden Date" />
+                              )}
                               <div style={{ fontWeight: 800, color: '#0f172a' }}>Day {d.day} ({d.dayName})</div>
                               <div style={{
                                 fontSize: '0.64rem',
                                 fontWeight: 700,
                                 marginTop: '2px',
-                                color: isWeekend ? '#16a34a' : isLeave ? '#15803d' : isLop ? '#dc2626' : '#2563eb'
+                                color: isWeekend && !d.isOverridden ? '#16a34a' : isLeave ? '#15803d' : isLop ? '#dc2626' : '#2563eb'
                               }}>
                                 {d.label}
                               </div>

@@ -249,7 +249,7 @@ export class PayslipService {
         
         doc.fontSize(7.5).fillColor('#475569').font('Helvetica')
         doc.text(
-          'Plot no.: 40,41 & 42, Survey no.: 54, Kondapur, Serilingampalle, Hyderabad, Telangana, India - 500084.',
+          'Dwaraka Central, Plot no.: 57, 4th Floor, Hitech City Rd, Madhapur, Hyderabad, Telangana - 500081.',
           earnColLeft,
           footerY + 26,
           { align: 'center', width: tableWidth }

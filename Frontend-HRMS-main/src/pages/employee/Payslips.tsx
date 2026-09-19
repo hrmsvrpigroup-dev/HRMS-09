@@ -23,6 +23,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 export default function Payslips() {
   const [selectedSlip, setSelectedSlip] = useState<PayslipData | null>(null)
   const [payslips, setPayslips] = useState<PayslipData[]>([])
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
   
   useEffect(() => {
     const fetchPayslips = async () => {
@@ -43,19 +44,52 @@ export default function Payslips() {
     return (slip.basicSalary + slip.hra + slip.allowances) - (slip.pf + slip.tax)
   }
 
+  const getSlipBreakdown = (slip: PayslipData) => {
+    const netPay = calculateNetPay(slip)
+    const totalDeductions = (slip.pf || 0) + (slip.tax || 0) + (slip.deductions ? Math.max(0, slip.deductions - (slip.pf || 0) - (slip.tax || 0)) : 0)
+    let basic = slip.basicSalary || 0
+    let hra = slip.hra || 0
+    let allowances = slip.allowances || 0
+    let gross = basic + hra + allowances
+
+    if (gross === 0 && netPay > 0) {
+      gross = netPay + totalDeductions
+      basic = Math.round(gross * 0.5)
+      hra = Math.round(gross * 0.3)
+      allowances = Math.max(0, gross - basic - hra)
+    }
+
+    return { basic, hra, allowances, gross, totalDeductions, netPay }
+  }
+
   const handleDownload = async (slip: PayslipData) => {
+    setDownloadingId(slip.id)
     try {
       const response = await payrollApi.downloadPayslip(slip.id)
-      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+      const blob = new Blob([response.data], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
       link.setAttribute('download', `Payslip-${MONTHS[slip.month - 1]}-${slip.year}.pdf`)
       document.body.appendChild(link)
       link.click()
       link.remove()
-    } catch (err) {
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000)
+    } catch (err: any) {
       console.error('Failed to download payslip', err)
-      alert('Unable to download the payslip at this time. It may not be generated yet.')
+      let errorMsg = 'Unable to download the payslip at this time. Please try again.'
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text()
+          const json = JSON.parse(text)
+          if (json.message) errorMsg = json.message
+        } catch (_) {}
+      } else if (err.response?.data?.message) {
+        errorMsg = err.response.data.message
+      }
+      alert(errorMsg)
+    } finally {
+      setDownloadingId(null)
     }
   }
 
@@ -97,9 +131,8 @@ export default function Payslips() {
             </thead>
             <tbody>
               {payslips.map((slip) => {
-                const totalEarnings = slip.basicSalary + slip.hra + slip.allowances
-                const totalDeductions = slip.pf + slip.tax
-                const netPay = calculateNetPay(slip)
+                const breakdown = getSlipBreakdown(slip)
+                const isDownloading = downloadingId === slip.id
                 return (
                   <tr key={slip.id}>
                     <td className="ref-cell">
@@ -110,9 +143,9 @@ export default function Payslips() {
                       <Calendar size={16} className="text-blue-500" />
                       <span>{MONTHS[slip.month - 1]} {slip.year}</span>
                     </td>
-                    <td className="earnings-cell">₹{totalEarnings.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                    <td className="deductions-cell">₹{totalDeductions.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                    <td className="net-cell"><strong>₹{netPay.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></td>
+                    <td className="earnings-cell">₹{breakdown.gross.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                    <td className="deductions-cell">₹{breakdown.totalDeductions.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                    <td className="net-cell"><strong>₹{breakdown.netPay.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></td>
                     <td className="date-cell">{slip.paidAt ? new Date(slip.paidAt).toLocaleDateString('en-IN') : '-'}</td>
                     <td>
                       <div className="btn-actions-row">
@@ -120,9 +153,13 @@ export default function Payslips() {
                           <Eye size={14} />
                           <span>View Breakdown</span>
                         </button>
-                        <button className="btn-table-action download" onClick={() => handleDownload(slip)}>
-                          <Download size={14} />
-                          <span>Download PDF</span>
+                        <button
+                          className="btn-table-action download"
+                          disabled={isDownloading}
+                          onClick={() => handleDownload(slip)}
+                        >
+                          <Download size={14} className={isDownloading ? 'animate-bounce' : ''} />
+                          <span>{isDownloading ? 'Downloading...' : 'Download PDF'}</span>
                         </button>
                       </div>
                     </td>
@@ -135,13 +172,16 @@ export default function Payslips() {
       </div>
 
       {/* Salary Breakdown Modal */}
-      {selectedSlip && (
+      {selectedSlip && (() => {
+        const breakdown = getSlipBreakdown(selectedSlip)
+        const isDownloading = downloadingId === selectedSlip.id
+        return (
         <div className="modal-backdrop">
           <div className="modal-card">
             <div className="modal-header">
               <div className="modal-title-area">
                 <Receipt className="text-blue-500" size={20} />
-                <h3>Payslip Breakdown — {selectedSlip.month} {selectedSlip.year}</h3>
+                <h3>Payslip Breakdown — {MONTHS[selectedSlip.month - 1]} {selectedSlip.year}</h3>
               </div>
               <button className="close-btn" onClick={() => setSelectedSlip(null)}><X size={20} /></button>
             </div>
@@ -157,19 +197,19 @@ export default function Payslips() {
                   <h4>Earnings</h4>
                   <div className="item-row">
                     <span>Basic Salary</span>
-                    <strong>₹{selectedSlip.basicSalary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                    <strong>₹{breakdown.basic.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
                   </div>
                   <div className="item-row">
                     <span>House Rent Allowance (HRA)</span>
-                    <strong>₹{selectedSlip.hra.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                    <strong>₹{breakdown.hra.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
                   </div>
                   <div className="item-row">
                     <span>Special Allowances</span>
-                    <strong>₹{selectedSlip.allowances.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                    <strong>₹{breakdown.allowances.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
                   </div>
                   <div className="total-row">
                     <span>Gross Earnings</span>
-                    <strong>₹{(selectedSlip.basicSalary + selectedSlip.hra + selectedSlip.allowances).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                    <strong>₹{breakdown.gross.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
                   </div>
                 </div>
 
@@ -189,7 +229,7 @@ export default function Payslips() {
                   </div>
                   <div className="total-row deductions">
                     <span>Total Deductions</span>
-                    <strong className="text-red-500">-₹{(selectedSlip.pf + selectedSlip.tax).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                    <strong className="text-red-500">-₹{breakdown.totalDeductions.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
                   </div>
                 </div>
               </div>
@@ -197,24 +237,28 @@ export default function Payslips() {
               <div className="net-payable-block">
                 <div className="net-label-col">
                   <strong>Net Payable Salary</strong>
-                  <span>Transferred to Citibank Account (*4892)</span>
+                  <span>Transferred to Registered Bank Account</span>
                 </div>
                 <div className="net-amount">
-                  ₹{calculateNetPay(selectedSlip).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  ₹{breakdown.netPay.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                 </div>
               </div>
             </div>
 
             <div className="modal-footer">
               <button className="btn-outline" onClick={() => setSelectedSlip(null)}>Close</button>
-              <button className="btn-primary" onClick={() => handleDownload(selectedSlip)}>
-                <Download size={16} />
-                <span>Download Statement</span>
+              <button
+                className="btn-primary"
+                disabled={isDownloading}
+                onClick={() => handleDownload(selectedSlip)}
+              >
+                <Download size={16} className={isDownloading ? 'animate-bounce' : ''} />
+                <span>{isDownloading ? 'Downloading...' : 'Download Statement'}</span>
               </button>
             </div>
           </div>
         </div>
-      )}
+      )})()}
 
       <style>{`
         .payslips-page {

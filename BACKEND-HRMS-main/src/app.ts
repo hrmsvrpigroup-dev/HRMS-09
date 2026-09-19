@@ -119,7 +119,7 @@ const corsOptions: cors.CorsOptions = {
     'Access-Control-Request-Method',
     'Access-Control-Request-Headers',
   ],
-  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range', 'Content-Disposition'],
   maxAge: 86400, // Cache preflight checks for 24h to speed up API calls
   optionsSuccessStatus: 200,
 }
@@ -156,6 +156,7 @@ app.get('/api/health', (_req, res) => {
 })
 
 app.use(resolveTenant)
+app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')))
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')))
 app.use('/api', routes)
 
