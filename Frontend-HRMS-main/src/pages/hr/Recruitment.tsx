@@ -3267,7 +3267,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
     const annualCtcNum = annualCtcOverride !== undefined 
       ? annualCtcOverride 
-      : (candForm.annualCtc ? Number(candForm.annualCtc) : (cand.offerSalary ? (cand.offerSalary > 100000 ? cand.offerSalary : cand.offerSalary * 12) : 720000));
+      : (candForm.annualCtc ? Number(candForm.annualCtc) : (cand.offerSalary ? (cand.offerSalary > 100000 ? cand.offerSalary : cand.offerSalary * 12) : 420000));
 
     const joiningDateStr = joiningDateOverride || candForm.joiningDate || cand.offerJoiningDate || format(new Date(Date.now() + 7 * 86400000), 'dd-MMM-yyyy');
 
@@ -10221,7 +10221,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                   .trim() || 'Associate Software Engineer';
                 const role = candForm.designation || previewOfferCandidate.callLetterDesignation || cleanJobTitle;
                 const department = (previewOfferCandidate as any).department || 'IT Department';
-                const annualCtcNum = candForm.annualCtc ? Number(candForm.annualCtc) : (previewOfferCandidate.offerSalary ? (previewOfferCandidate.offerSalary > 100000 ? previewOfferCandidate.offerSalary : previewOfferCandidate.offerSalary * 12) : 720000);
+                const annualCtcNum = candForm.annualCtc ? Number(candForm.annualCtc) : (previewOfferCandidate.offerSalary ? (previewOfferCandidate.offerSalary > 100000 ? previewOfferCandidate.offerSalary : previewOfferCandidate.offerSalary * 12) : 420000);
                 const joiningDateStr = candForm.joiningDate || previewOfferCandidate.offerJoiningDate || format(new Date(Date.now() + 7 * 86400000), 'dd-MMM-yyyy');
                 const todayFormatted = format(new Date(), 'dd/MM/yyyy');
 

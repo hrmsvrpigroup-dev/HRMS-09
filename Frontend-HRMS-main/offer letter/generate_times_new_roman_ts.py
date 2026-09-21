@@ -89,11 +89,14 @@ def build_page_html(p_num, raw_html):
           </p>
 
           <div class="section-title-box">ANNUAL COMPENSATION</div>
-          <p class="clause-item-letter">
-            <strong>a.</strong> Your annual compensation including benefits and perquisites, if any, payable by the Organization will be <strong>INR ${b.annualCtc.toLocaleString('en-IN')}/- (${ctcWords})</strong>.
+          <p class="clause-item-letter text-justify">
+            <strong>a.</strong> Initially, your pay will be ${trainingPay} salary during training period (Training period varies from 3 months to 6 months depending on your performance). After the training you will be sent to the Client location/Project will assigned and Your annual compensation including benefits and perquisites, if any, payable by the Organization Will be increased to <strong>INR ${b.annualCtc.toLocaleString('en-IN')}/- (${ctcWords})</strong>.
           </p>
           <p class="clause-item-letter">
-            <strong>b.</strong> Besides this, you will be eligible for Gratuity and leave encashment as per and subject to the conditions specified in payment of Gratuity Act, 1972 and other applicable acts. Your compensation will be subject to income tax as per the provisions of the Income Tax Act, 1961 which may vary from time to time.
+            <strong>b.</strong> Besides this, you will be eligible for Gratuity and leave encashment as per and subject to the conditions specified in payment of Gratuity Act, 1972 and other applicable acts.
+          </p>
+          <p class="clause-item-letter">
+            <strong>c.</strong> Your compensation will be subject to income tax as per the provisions of the Income Tax Act, 1961 which may vary from time to time.
           </p>
 
           <div class="section-title-box">2. <u>DATE OF JOINING:</u></div>

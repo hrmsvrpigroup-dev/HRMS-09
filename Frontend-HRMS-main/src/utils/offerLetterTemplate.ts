@@ -19,6 +19,7 @@ export interface OfferLetterData {
   offerDate: string;
   genderPrefix?: string;
   reportingVenue?: string;
+  trainingSalary?: string | number;
 }
 
 export interface SalaryBreakdown {
@@ -97,7 +98,7 @@ export function numberToWordsINR(num: number): string {
   const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
   const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
 
-  const n = ('000000000' + num).substr(-9).match(/^(\\d{2})(\\d{2})(\\d{2})(\\d{1})(\\d{2})$/);
+  const n = ('000000000' + num).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
   if (!n) return '';
   let str = '';
   str += (Number(n[1]) !== 0) ? (a[Number(n[1])] || b[Number(n[1][0])] + ' ' + a[Number(n[1][1])]) + 'Crore ' : '';
@@ -105,12 +106,18 @@ export function numberToWordsINR(num: number): string {
   str += (Number(n[3]) !== 0) ? (a[Number(n[3])] || b[Number(n[3][0])] + ' ' + a[Number(n[3][1])]) + 'Thousand ' : '';
   str += (Number(n[4]) !== 0) ? (a[Number(n[4])] || b[Number(n[4][0])] + ' ' + a[Number(n[4][1])]) + 'Hundred ' : '';
   str += (Number(n[5]) !== 0) ? ((str !== '') ? 'and ' : '') + (a[Number(n[5])] || b[Number(n[5][0])] + ' ' + a[Number(n[5][1])]) + 'Rupees Only' : 'Rupees Only';
-  return str.replace(/\\s+/g, ' ').trim();
+  return str.replace(/\s+/g, ' ').trim();
 }
 
 export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): string {
-  const b = calculateSalaryBreakdown(d.annualCtc);
-  const ctcWords = numberToWordsINR(b.annualCtc);
+  const b = calculateSalaryBreakdown(d.annualCtc || 420000);
+  const rawWords = numberToWordsINR(b.annualCtc);
+  const ctcWords = rawWords
+    ? (rawWords.startsWith('Rupees') ? rawWords : 'Rupees ' + rawWords.replace(/\s*Rupees Only$/i, ' Only'))
+    : 'Rupees Four Lakh Twenty Thousand Only';
+  const trainingPay = d.trainingSalary
+    ? (typeof d.trainingSalary === 'number' ? `INR ${d.trainingSalary.toLocaleString('en-IN')}` : d.trainingSalary)
+    : 'INR 20,000';
   switch (pageNum) {
     case 1:
       return `
@@ -151,11 +158,14 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
           </p>
 
           <div class="section-title-box">ANNUAL COMPENSATION</div>
-          <p class="clause-item-letter">
-            <strong>a.</strong> Your annual compensation including benefits and perquisites, if any, payable by the Organization will be <strong>INR ${b.annualCtc.toLocaleString('en-IN')}/- (${ctcWords})</strong>.
+          <p class="clause-item-letter text-justify">
+            <strong>a.</strong> Initially, your pay will be ${trainingPay} salary during training period (Training period varies from 3 months to 6 months depending on your performance). After the training you will be sent to the Client location/Project will assigned and Your annual compensation including benefits and perquisites, if any, payable by the Organization Will be increased to <strong>INR ${b.annualCtc.toLocaleString('en-IN')}/- (${ctcWords})</strong>.
           </p>
-          <p class="clause-item-letter">
-            <strong>b.</strong> Besides this, you will be eligible for Gratuity and leave encashment as per and subject to the conditions specified in payment of Gratuity Act, 1972 and other applicable acts. Your compensation will be subject to income tax as per the provisions of the Income Tax Act, 1961 which may vary from time to time.
+          <p class="clause-item-letter text-justify">
+            <strong>b.</strong> Besides this, you will be eligible for Gratuity and leave encashment as per and subject to the conditions specified in payment of Gratuity Act, 1972 and other applicable acts.
+          </p>
+          <p class="clause-item-letter text-justify">
+            <strong>c.</strong> Your compensation will be subject to income tax as per the provisions of the Income Tax Act, 1961 which may vary from time to time.
           </p>
 
           <div class="section-title-box">2. <u>DATE OF JOINING:</u></div>
@@ -586,10 +596,10 @@ export function getOfferLetterStyles(): string {
     .subject-title { font-weight: bold; margin: 12px 0 12px 0; font-size: 13.5px; font-family: 'Times New Roman', Times, Georgia, serif !important; }
     .salutation-para { margin: 8px 0 6px 0; font-size: 13.5px; font-family: 'Times New Roman', Times, Georgia, serif !important; }
     .congrats { font-weight: bold; color: #16a34a; margin: 8px 0 10px 0; font-size: 14px; font-family: 'Times New Roman', Times, Georgia, serif !important; }
-    .section-title-box { font-weight: bold; font-size: 13.5px; margin-top: 16px; margin-bottom: 6px; color: #000000; text-transform: uppercase; font-family: 'Times New Roman', Times, Georgia, serif !important; }
-    .clause-header-box { font-weight: bold; font-size: 13.5px; margin-top: 14px; margin-bottom: 5px; color: #000000; font-family: 'Times New Roman', Times, Georgia, serif !important; }
-    .body-paragraph { margin-bottom: 10px; font-size: 13px; line-height: 1.5; text-align: justify; font-family: 'Times New Roman', Times, Georgia, serif !important; }
-    .clause-item-letter { margin-bottom: 8px; font-size: 13px; line-height: 1.5; text-align: justify; padding-left: 28px; font-family: 'Times New Roman', Times, Georgia, serif !important; }
+    .section-title-box { font-weight: bold; font-size: 13.5px; margin-top: 13px; margin-bottom: 5px; color: #000000; text-transform: uppercase; font-family: 'Times New Roman', Times, Georgia, serif !important; }
+    .clause-header-box { font-weight: bold; font-size: 13.5px; margin-top: 12px; margin-bottom: 4px; color: #000000; font-family: 'Times New Roman', Times, Georgia, serif !important; }
+    .body-paragraph { margin-bottom: 8px; font-size: 13px; line-height: 1.45; text-align: justify; font-family: 'Times New Roman', Times, Georgia, serif !important; }
+    .clause-item-letter { margin-bottom: 6px; font-size: 13px; line-height: 1.45; text-align: justify; padding-left: 28px; font-family: 'Times New Roman', Times, Georgia, serif !important; }
     .clause-item-roman { margin-bottom: 8px; font-size: 13px; line-height: 1.5; text-align: justify; padding-left: 24px; font-family: 'Times New Roman', Times, Georgia, serif !important; }
     .clause-item-num { margin-bottom: 8px; font-size: 13px; line-height: 1.5; text-align: justify; padding-left: 20px; font-family: 'Times New Roman', Times, Georgia, serif !important; }
     .clause-item-bullet { margin-bottom: 6px; font-size: 13px; line-height: 1.5; text-align: justify; padding-left: 24px; font-family: 'Times New Roman', Times, Georgia, serif !important; }
