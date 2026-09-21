@@ -66,12 +66,18 @@ export const resolveTenant = async (req: AuthRequest, res: Response, next: NextF
   }
 }
 
-export const tenantIsolation = (req: AuthRequest, res: Response, next: NextFunction) => {
+export const tenantIsolation = async (req: AuthRequest, res: Response, next: NextFunction) => {
   if (!req.user) {
     return res.status(401).json({ success: false, message: 'Unauthorized' })
   }
 
   if (req.user.role === 'SUPER_ADMIN') {
+    if (!req.tenantId) {
+      try {
+        const defaultTenant = await prisma.tenant.findFirst({ where: { status: 'ACTIVE' }, orderBy: { createdAt: 'asc' } })
+        if (defaultTenant) req.tenantId = defaultTenant.id
+      } catch (_) {}
+    }
     return next()
   }
 

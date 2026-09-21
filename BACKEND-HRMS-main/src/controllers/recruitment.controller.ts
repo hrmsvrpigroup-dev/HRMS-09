@@ -550,7 +550,7 @@ export const recruitmentController = {
   async updateApplicationStatus(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params
-      const { status, email, name, phone, experience, source, skills, resumeUrl, attachmentImages } = req.body
+      const { status, email, name, phone, experience, source, skills, resumeUrl, attachmentImages, offerSalary, offerJoiningDate, offerStatus } = req.body
       const tenantId = req.tenantId ?? req.user?.tenantId
       if (!tenantId) {
         return sendError(res, 'Tenant context not found', 400)
@@ -586,27 +586,38 @@ export const recruitmentController = {
         const candEmail = email || (id.includes('@') ? id : `applicant_${Date.now()}@example.com`)
         const candName = name || 'Applicant'
 
+        const createData: any = {
+          jobId: activeJob.id,
+          name: candName,
+          email: candEmail,
+          phone: phone || null,
+          experience: experience || 'Degree',
+          source: source || 'Google Form',
+          skills: Array.isArray(skills) ? skills : (skills ? skills.split(',').map((s: string) => s.trim()) : ['Google Form']),
+          resumeUrl: resumeUrl || 'uploaded-resume.pdf',
+          status: status || 'SHORTLISTED',
+          attachmentImages: Array.isArray(attachmentImages) ? attachmentImages : []
+        }
+        if (offerSalary !== undefined && offerSalary !== null) createData.offerSalary = Number(offerSalary)
+        if (offerJoiningDate) createData.offerJoiningDate = new Date(offerJoiningDate)
+        if (offerStatus) createData.offerStatus = offerStatus
+
         application = await prisma.jobApplication.create({
-          data: {
-            jobId: activeJob.id,
-            name: candName,
-            email: candEmail,
-            phone: phone || null,
-            experience: experience || 'Degree',
-            source: source || 'Google Form',
-            skills: Array.isArray(skills) ? skills : (skills ? skills.split(',').map((s: string) => s.trim()) : ['Google Form']),
-            resumeUrl: resumeUrl || 'uploaded-resume.pdf',
-            status: status || 'SHORTLISTED',
-            attachmentImages: Array.isArray(attachmentImages) ? attachmentImages : []
-          }
+          data: createData
         })
 
         return sendSuccess(res, application, 'Application status updated successfully')
       }
 
+      const updateData: any = {}
+      if (status) updateData.status = status
+      if (offerSalary !== undefined && offerSalary !== null) updateData.offerSalary = Number(offerSalary)
+      if (offerJoiningDate) updateData.offerJoiningDate = new Date(offerJoiningDate)
+      if (offerStatus) updateData.offerStatus = offerStatus
+
       const updated = await prisma.jobApplication.update({
         where: { id: application.id },
-        data: { status }
+        data: updateData
       })
 
       return sendSuccess(res, updated, 'Application status updated successfully')
@@ -698,22 +709,40 @@ export const recruitmentController = {
         sendEmailInvite = true,
         notes
       } = req.body
-      const tenantId = req.tenantId ?? req.user?.tenantId
+      let tenantId = req.tenantId ?? req.user?.tenantId
+      if (!tenantId) {
+        const defaultTenant = await prisma.tenant.findFirst({ where: { status: 'ACTIVE' }, orderBy: { createdAt: 'asc' } })
+        if (defaultTenant) tenantId = defaultTenant.id
+      }
       if (!tenantId) {
         return sendError(res, 'Tenant context not found', 400)
       }
 
+      const parseSafeDate = (val: any): Date | null => {
+        if (!val) return null
+        if (val instanceof Date && !isNaN(val.getTime())) return val
+        const str = String(val).trim()
+        const dmyMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/)
+        if (dmyMatch) {
+          const [, day, month, year] = dmyMatch
+          const d = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`)
+          if (!isNaN(d.getTime())) return d
+        }
+        const d = new Date(str)
+        return isNaN(d.getTime()) ? null : d
+      }
+      const parsedInterviewDate = parseSafeDate(interviewDate)
+
       const cleanEmail = (candidateEmail || '').trim()
       const cleanId = (id || '').trim()
       const orConditions: any[] = []
-      if (cleanId) orConditions.push({ id: cleanId })
+      if (cleanId && !cleanId.startsWith('cand-')) orConditions.push({ id: cleanId })
       if (cleanEmail) orConditions.push({ email: { equals: cleanEmail, mode: 'insensitive' } })
       if (cleanId.includes('@')) orConditions.push({ email: { equals: cleanId, mode: 'insensitive' } })
 
       let application = await prisma.jobApplication.findFirst({
         where: {
-          OR: orConditions.length > 0 ? orConditions : [{ id: 'none' }],
-          job: { tenantId }
+          OR: orConditions.length > 0 ? orConditions : [{ id: 'none' }]
         },
         include: { job: true }
       })
@@ -753,7 +782,7 @@ export const recruitmentController = {
             skills: Array.isArray(req.body.skills) ? req.body.skills : ['Scheduled Interview'],
             resumeUrl: req.body.resumeUrl || 'applicant-resume.pdf',
             status: decision ? (decision === 'pass' ? 'DOCUMENTS' : 'REJECTED') : 'INTERVIEW',
-            interviewDate: interviewDate ? new Date(interviewDate) : null,
+            interviewDate: parsedInterviewDate,
             interviewTime: interviewTime || null,
             interviewType: interviewType || 'HR Screening',
             interviewer: interviewer || null,
@@ -770,11 +799,18 @@ export const recruitmentController = {
             : await generateTeamsMeetingLink(`Interview: ${application.name}`))
 
       const updateData: any = {}
-      if (interviewDate) updateData.interviewDate = new Date(interviewDate)
+      if (parsedInterviewDate) updateData.interviewDate = parsedInterviewDate
       if (interviewTime) updateData.interviewTime = interviewTime
       if (interviewType) updateData.interviewType = interviewType
       if (interviewer) updateData.interviewer = interviewer
       updateData.interviewLink = finalMeetingLink
+
+      if (cleanEmail && cleanEmail.includes('@') && !cleanEmail.includes('@example.com')) {
+        updateData.email = cleanEmail
+      }
+      if (req.body.candidateName && req.body.candidateName.trim()) {
+        updateData.name = req.body.candidateName.trim()
+      }
 
       if (decision) {
         updateData.status = decision === 'pass' ? 'DOCUMENTS' : 'REJECTED'
@@ -789,16 +825,23 @@ export const recruitmentController = {
 
       // If scheduling a new/updated interview (not a pass/fail decision) and email invite is enabled
       let emailDispatchResult = null
-      if (!decision && sendEmailInvite && (interviewDate || application.interviewDate) && (interviewTime || application.interviewTime)) {
+      const candidateNameToUse = req.body.candidateName?.trim() || application.name || 'Candidate'
+      const candidateEmailToUse = (cleanEmail && cleanEmail.includes('@') && !cleanEmail.includes('@example.com')) ? cleanEmail : application.email
+
+      const formattedDateStr = parsedInterviewDate
+        ? parsedInterviewDate.toISOString().split('T')[0]
+        : (application.interviewDate ? new Date(application.interviewDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0])
+
+      if (!decision && sendEmailInvite && (parsedInterviewDate || application.interviewDate) && (interviewTime || application.interviewTime)) {
         try {
           emailDispatchResult = await interviewService.sendInterviewInvites({
-            candidateName: application.name,
-            candidateEmail: application.email,
-            jobTitle: application.job?.title || 'Applied Position',
+            candidateName: candidateNameToUse,
+            candidateEmail: candidateEmailToUse,
+            jobTitle: application.job?.title || req.body.jobTitle || 'Applied Position',
             interviewType: interviewType || application.interviewType || 'Interview Round',
             interviewerName: interviewer || application.interviewer || 'Interview Panel',
             interviewerEmail: interviewerEmail,
-            interviewDate: (interviewDate ? new Date(interviewDate) : (application.interviewDate || new Date())).toISOString().split('T')[0],
+            interviewDate: formattedDateStr,
             interviewTime: interviewTime || application.interviewTime || '11:30 AM',
             interviewLink: finalMeetingLink,
             taggedEmails: Array.isArray(taggedEmails) ? taggedEmails : (taggedEmails ? [taggedEmails] : []),
@@ -806,6 +849,7 @@ export const recruitmentController = {
           })
         } catch (emailErr: any) {
           console.error('[RecruitmentController] Failed to dispatch interview invite emails:', emailErr.message || emailErr)
+          emailDispatchResult = { success: false, error: emailErr.message || String(emailErr) }
         }
       }
 
@@ -1988,6 +2032,93 @@ vamshikrishna@vrpigroup.co.in`
     } catch (error: any) {
       console.error('[RecruitmentController] Failed to send Call Letter email:', error.message || error)
       return sendError(res, error.message || 'Failed to send Call Letter email', 500)
+    }
+  },
+
+  // GET /recruitment/shared-state: Fetch cross-system synchronized recruitment state
+  async getSharedState(req: AuthRequest, res: Response) {
+    try {
+      const tenantId = req.tenantId ?? req.user?.tenantId
+      if (!tenantId) {
+        return sendError(res, 'Tenant context not found', 400)
+      }
+
+      const log = await prisma.auditLog.findFirst({
+        where: {
+          tenantId,
+          action: 'RECRUITMENT_SHARED_STATE',
+          entity: 'RecruitmentState'
+        },
+        orderBy: { createdAt: 'desc' }
+      })
+
+      const details = (log?.details as any) || {}
+      return sendSuccess(res, {
+        candidateOfferForms: details.candidateOfferForms || {},
+        formApplicantStatuses: details.formApplicantStatuses || {},
+        deletedApplicants: details.deletedApplicants || [],
+        candidateCallLetters: details.candidateCallLetters || {},
+        offerCandidates: details.offerCandidates || []
+      }, 'Shared recruitment state fetched')
+    } catch (error: any) {
+      console.error('[RecruitmentController] Error fetching shared state:', error)
+      return sendError(res, error.message || 'Failed to fetch shared state', 500)
+    }
+  },
+
+  // POST /recruitment/shared-state: Persist and merge cross-system recruitment state
+  async updateSharedState(req: AuthRequest, res: Response) {
+    try {
+      const tenantId = req.tenantId ?? req.user?.tenantId
+      if (!tenantId) {
+        return sendError(res, 'Tenant context not found', 400)
+      }
+
+      const { candidateOfferForms, formApplicantStatuses, deletedApplicants, candidateCallLetters, offerCandidates } = req.body
+
+      const existing = await prisma.auditLog.findFirst({
+        where: {
+          tenantId,
+          action: 'RECRUITMENT_SHARED_STATE',
+          entity: 'RecruitmentState'
+        },
+        orderBy: { createdAt: 'desc' }
+      })
+
+      const currentDetails = (existing?.details as any) || {}
+      const mergedDetails = {
+        candidateOfferForms: { ...(currentDetails.candidateOfferForms || {}), ...(candidateOfferForms || {}) },
+        formApplicantStatuses: { ...(currentDetails.formApplicantStatuses || {}), ...(formApplicantStatuses || {}) },
+        deletedApplicants: Array.from(new Set([...(currentDetails.deletedApplicants || []), ...(deletedApplicants || [])])),
+        candidateCallLetters: { ...(currentDetails.candidateCallLetters || {}), ...(candidateCallLetters || {}) },
+        offerCandidates: offerCandidates !== undefined ? offerCandidates : (currentDetails.offerCandidates || [])
+      }
+
+      if (existing) {
+        await prisma.auditLog.update({
+          where: { id: existing.id },
+          data: {
+            details: mergedDetails,
+            userId: req.user?.id || null
+          }
+        })
+      } else {
+        await prisma.auditLog.create({
+          data: {
+            tenantId,
+            userId: req.user?.id || null,
+            action: 'RECRUITMENT_SHARED_STATE',
+            entity: 'RecruitmentState',
+            entityId: 'global',
+            details: mergedDetails
+          }
+        })
+      }
+
+      return sendSuccess(res, mergedDetails, 'Shared recruitment state updated')
+    } catch (error: any) {
+      console.error('[RecruitmentController] Error saving shared state:', error)
+      return sendError(res, error.message || 'Failed to update shared state', 500)
     }
   }
 }

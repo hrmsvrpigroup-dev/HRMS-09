@@ -126,16 +126,28 @@ export async function generateTeamsMeetingLink(topic: string = 'Interview Sessio
  */
 function parseDateTime(dateStr: string, timeStr: string): { start: Date; end: Date } {
   try {
-    const parts = timeStr.trim().split(/\s+/);
+    const parts = (timeStr || '11:30 AM').trim().split(/\s+/);
     const timeParts = parts[0].split(':');
-    let hours = parseInt(timeParts[0], 10);
-    const minutes = parseInt(timeParts[1] || '0', 10);
+    let hours = parseInt(timeParts[0], 10) || 11;
+    const minutes = parseInt(timeParts[1] || '0', 10) || 0;
     const ampm = (parts[1] || 'AM').toUpperCase();
 
     if (ampm === 'PM' && hours < 12) hours += 12;
     if (ampm === 'AM' && hours === 12) hours = 0;
 
-    const [year, month, day] = dateStr.split('-').map(Number);
+    let year = new Date().getFullYear(), month = new Date().getMonth() + 1, day = new Date().getDate();
+    if (dateStr) {
+      const dateParts = dateStr.trim().split(/[-/]/).map(Number);
+      if (dateParts.length === 3) {
+        if (dateParts[0] > 1000) {
+          // YYYY-MM-DD
+          [year, month, day] = dateParts;
+        } else if (dateParts[2] > 1000) {
+          // DD-MM-YYYY
+          [day, month, year] = dateParts;
+        }
+      }
+    }
     const start = new Date(year, month - 1, day, hours, minutes, 0);
     const end = new Date(start.getTime() + 45 * 60 * 1000); // 45 min duration default
 

@@ -32,6 +32,8 @@ router.post('/applications/:id/attachments/remove', recruitmentController.remove
 router.delete('/applications/:id', recruitmentController.deleteApplication)
 router.post('/sync-google-responses', recruitmentController.syncGoogleResponses)
 router.get('/files/drive-proxy', recruitmentController.driveProxy)
+router.get('/shared-state', recruitmentController.getSharedState)
+router.post('/shared-state', recruitmentController.updateSharedState)
 
 export default router
 

@@ -79,6 +79,7 @@ interface Candidate {
   callLetterHrContact?: string;
   callLetterStatus?: string; // 'PENDING' | 'SENT' | 'ISSUED'
   callLetterNotes?: string;
+  callLetterAddedAt?: string;
   
   // Offer Phase
   offerSalary?: number;
@@ -569,6 +570,53 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     skills: 'React, Node.js, TypeScript',
     jobId: ''
   });
+
+  // Stage 4: Documents - Add Profile Modal State
+  const [showAddDocCandidateModal, setShowAddDocCandidateModal] = useState(false);
+  const [submittingDocCandidate, setSubmittingDocCandidate] = useState(false);
+  const [docCandidateForm, setDocCandidateForm] = useState({
+    existingCandidateId: '',
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    candidateType: 'Freshers',
+    jobTitle: 'Associate Software Engineer',
+    experience: 'Degree / Freshers',
+    driveLink: '',
+    statusOption: 'completed' as 'completed' | 'pending'
+  });
+
+  // Interview Slot - Add Profile Modal State
+  const [showAddInterviewCandidateModal, setShowAddInterviewCandidateModal] = useState(false);
+  const [submittingInterviewCandidate, setSubmittingInterviewCandidate] = useState(false);
+  const [interviewCandidateForm, setInterviewCandidateForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    jobTitle: 'Full Stack Engineer',
+    experience: 'Degree / Freshers',
+    interviewRound: 'Technical Round'
+  });
+
+  // Stage 6: Call Letter - Add Profile Modal State
+  const [showAddCallLetterCandidateModal, setShowAddCallLetterCandidateModal] = useState(false);
+  const [lastAddedCallLetterCandidateId, setLastAddedCallLetterCandidateId] = useState<string | null>(null);
+  const [submittingCallLetterCandidate, setSubmittingCallLetterCandidate] = useState(false);
+  const [callLetterCandidateForm, setCallLetterCandidateForm] = useState({
+    existingCandidateId: '',
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    jobTitle: 'Associate Software Engineer',
+    experience: 'Degree / Freshers',
+    reportingVenue: 'VR PI Group, Plot No. 12, Cyber Gateway, Hitech City, Hyderabad, 500081',
+    reportingDate: format(new Date(), 'yyyy-MM-dd'),
+    reportingTime: '09:30 AM',
+    notes: 'Please bring original KYC ID proofs, educational certificates, and passport photos.'
+  });
   const googleFormUrl = "https://docs.google.com/forms/d/e/1FAIpQLSeZHuwlr39VAsqWkKr5pgGjWK95nFQ2-i9NA3EhUOjbaOakUw/viewform?usp=header";
   const googleFormEmbedUrl = "https://docs.google.com/forms/d/e/1FAIpQLSeZHuwlr39VAsqWkKr5pgGjWK95nFQ2-i9NA3EhUOjbaOakUw/viewform?embedded=true";
   const googleDocUploadFormUrl = "https://docs.google.com/forms/d/e/1FAIpQLSf9WXwNo7CbnrUWFYAr7_gA21anOlX5fjWTsh3oK-koTkjdoA/viewform?usp=header";
@@ -600,7 +648,48 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     try {
       localStorage.setItem('hrms_form_applicant_statuses', JSON.stringify(formApplicantStatuses));
     } catch (_) {}
+
+    const timer = setTimeout(() => {
+      if (Object.keys(formApplicantStatuses).length > 0) {
+        api.post('/recruitment/shared-state', { formApplicantStatuses }).catch(() => {});
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
   }, [formApplicantStatuses]);
+
+  // Top scrollbar synchronization for Active Scheduled Interviews table
+  const interviewTopScrollRef = useRef<HTMLDivElement>(null);
+  const interviewTableScrollRef = useRef<HTMLDivElement>(null);
+  const [interviewScrollWidth, setInterviewScrollWidth] = useState(1150);
+
+  const handleInterviewTopScroll = () => {
+    if (interviewTopScrollRef.current && interviewTableScrollRef.current) {
+      interviewTableScrollRef.current.scrollLeft = interviewTopScrollRef.current.scrollLeft;
+    }
+  };
+
+  const handleInterviewTableScroll = () => {
+    if (interviewTopScrollRef.current && interviewTableScrollRef.current) {
+      interviewTopScrollRef.current.scrollLeft = interviewTableScrollRef.current.scrollLeft;
+    }
+  };
+
+  useEffect(() => {
+    const el = interviewTableScrollRef.current;
+    if (!el) return;
+    const updateWidth = () => {
+      if (el) {
+        setInterviewScrollWidth(el.scrollWidth);
+        if (interviewTopScrollRef.current) {
+          interviewTopScrollRef.current.scrollLeft = el.scrollLeft;
+        }
+      }
+    };
+    updateWidth();
+    const ro = new ResizeObserver(updateWidth);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [candidates, activeTab]);
 
   const [sentDocEmails, setSentDocEmails] = useState<{ [key: string]: boolean }>(() => {
     try {
@@ -734,6 +823,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         if (!list.includes(email.toLowerCase())) list.push(email.toLowerCase());
       }
       localStorage.setItem('hrms_deleted_applicants', JSON.stringify(list));
+      api.post('/recruitment/shared-state', { deletedApplicants: list }).catch(() => {});
     } catch (_) {}
   };
 
@@ -1001,6 +1091,431 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       alert(err.response?.data?.message || 'Failed to save response to database.');
     } finally {
       setSubmittingApp(false);
+    }
+  };
+
+  const handleAddDocCandidateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const fName = docCandidateForm.firstName.trim();
+    const lName = docCandidateForm.lastName.trim();
+    const email = docCandidateForm.email.trim();
+    const phone = docCandidateForm.phone.trim();
+    const emailLower = email.toLowerCase();
+
+    if (!fName || !email) {
+      alert('Please fill out Candidate Name and Email.');
+      return;
+    }
+
+    setSubmittingDocCandidate(true);
+    try {
+      const existingId = docCandidateForm.existingCandidateId;
+      const targetCandidate = candidates.find(c => c.id === existingId || (c.email && c.email.toLowerCase() === emailLower));
+      const candId = targetCandidate?.id || existingId || `doc-cand-${Date.now()}`;
+      const code = targetCandidate ? getCandidateCode(targetCandidate) : candId.slice(-4).toUpperCase();
+
+      // 1. Update formApplicantStatuses in state and localStorage
+      setFormApplicantStatuses(prev => {
+        const updated = {
+          ...prev,
+          [email]: 'documents' as const,
+          [emailLower]: 'documents' as const,
+          [candId]: 'documents' as const
+        };
+        try {
+          localStorage.setItem('hrms_form_applicant_statuses', JSON.stringify(updated));
+        } catch (_) {}
+        return updated;
+      });
+
+      // 2. Update sentDocEmails state & localStorage
+      const isSent = docCandidateForm.statusOption === 'completed';
+      setSentDocEmails(prev => {
+        const updated = {
+          ...prev,
+          [candId]: isSent,
+          [email]: isSent,
+          [emailLower]: isSent
+        };
+        try {
+          localStorage.setItem('hrms_sent_doc_emails', JSON.stringify(updated));
+        } catch (_) {}
+        return updated;
+      });
+
+      // 3. If Drive link was provided, save it to candidate's stored docs
+      if (docCandidateForm.driveLink.trim()) {
+        const link = docCandidateForm.driveLink.trim();
+        const payload = JSON.stringify({
+          url: link,
+          title: 'KYC Document',
+          type: 'Drive',
+          uploadedAt: new Date().toISOString()
+        });
+        const keysToSave = [
+          candId ? `hrms_candidate_docs_${candId}` : null,
+          email ? `hrms_candidate_docs_${email}` : null,
+          emailLower ? `hrms_candidate_docs_${emailLower}` : null,
+          code ? `hrms_candidate_docs_${code}` : null
+        ].filter(Boolean) as string[];
+
+        keysToSave.forEach(k => {
+          try {
+            const existing: string[] = JSON.parse(localStorage.getItem(k) || '[]');
+            if (!existing.includes(payload) && !existing.includes(link)) {
+              existing.push(payload);
+              localStorage.setItem(k, JSON.stringify(existing));
+            }
+          } catch (_) {}
+        });
+      }
+
+      // 4. Update or add candidate in candidates state
+      setCandidates(prev => {
+        const exists = prev.some(c => c.id === candId || (c.email && c.email.toLowerCase() === emailLower));
+        if (exists) {
+          return prev.map(c => {
+            if (c.id === candId || (c.email && c.email.toLowerCase() === emailLower)) {
+              return {
+                ...c,
+                firstName: fName || c.firstName,
+                lastName: lName || c.lastName,
+                phone: phone || c.phone,
+                stage: 'Documents',
+                candidateType: docCandidateForm.candidateType,
+                jobTitle: docCandidateForm.jobTitle || c.jobTitle,
+                attachmentImages: docCandidateForm.driveLink.trim()
+                  ? Array.from(new Set([...(c.attachmentImages || []), docCandidateForm.driveLink.trim()]))
+                  : c.attachmentImages
+              };
+            }
+            return c;
+          });
+        } else {
+          const newCand: Candidate = {
+            id: candId,
+            firstName: fName,
+            lastName: lName,
+            email: email,
+            phone: phone || 'N/A',
+            stage: 'Documents',
+            source: 'Direct HR Upload',
+            jobTitle: docCandidateForm.jobTitle || 'Associate Software Engineer',
+            experience: docCandidateForm.experience || 'Degree',
+            appliedDate: format(new Date(), 'yyyy-MM-dd'),
+            matchScore: 90,
+            skills: ['Document Verification', docCandidateForm.candidateType],
+            avatarColor: 'bg-blue-100 text-blue-600 border-blue-200',
+            attachmentImages: docCandidateForm.driveLink.trim() ? [docCandidateForm.driveLink.trim()] : [],
+            candidateType: docCandidateForm.candidateType
+          };
+          return [newCand, ...prev];
+        }
+      });
+
+      // 5. Backend sync if application exists in DB
+      if (targetCandidate?.id && !targetCandidate.id.startsWith('cand-') && !targetCandidate.id.startsWith('sheet-row-')) {
+        try {
+          await api.patch(`/recruitment/applications/${targetCandidate.id}/status`, { status: 'DOCUMENTS' });
+        } catch (err) {
+          console.warn('Backend update status notice:', err);
+        }
+      } else {
+        try {
+          await api.post('/recruitment/applications', {
+            firstName: fName,
+            lastName: lName,
+            email: email,
+            phone: phone || 'N/A',
+            experience: docCandidateForm.experience || 'Degree',
+            source: 'Direct HR Upload',
+            skills: 'Document Verification',
+            jobId: selectedJobId || (jobs[0] ? jobs[0].id : '')
+          });
+        } catch (_) {}
+      }
+
+      setShowAddDocCandidateModal(false);
+      setDocCandidateForm({
+        existingCandidateId: '',
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        candidateType: 'Freshers',
+        jobTitle: 'Associate Software Engineer',
+        experience: 'Degree / Freshers',
+        driveLink: '',
+        statusOption: 'completed'
+      });
+
+      if (isSent) {
+        handleDocSubTabChange('completed');
+      } else {
+        handleDocSubTabChange('pending');
+      }
+
+      alert(`✅ Candidate ${fName} ${lName} added to Stage 4: Documents successfully!`);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to add candidate to Documents tab.');
+    } finally {
+      setSubmittingDocCandidate(false);
+    }
+  };
+
+  // Add Profile to Interview Slot Booking Handler
+  const handleAddInterviewCandidateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const fName = interviewCandidateForm.firstName.trim();
+    const lName = interviewCandidateForm.lastName.trim();
+    const email = interviewCandidateForm.email.trim();
+    const phone = interviewCandidateForm.phone.trim();
+    const emailLower = email.toLowerCase();
+
+    if (!fName || !email) {
+      alert('Please fill out Candidate First Name and Email.');
+      return;
+    }
+    if (!email.includes('@')) {
+      alert('Please enter a valid email address.');
+      return;
+    }
+
+    setSubmittingInterviewCandidate(true);
+    try {
+      const candName = `${fName} ${lName}`.trim();
+      const newCandId = `cand-int-${Date.now()}`;
+      const newCand: Candidate = {
+        id: newCandId,
+        firstName: fName,
+        lastName: lName,
+        email: email,
+        phone: phone || 'N/A',
+        stage: 'Shortlisting',
+        source: 'Direct Schedule',
+        jobTitle: interviewCandidateForm.jobTitle.trim() || 'Full Stack Engineer',
+        experience: interviewCandidateForm.experience.trim() || 'Degree / Freshers',
+        appliedDate: format(new Date(), 'yyyy-MM-dd'),
+        matchScore: 90,
+        skills: ['Direct Interview', interviewCandidateForm.jobTitle.trim() || 'Candidate'],
+        attachmentImages: [],
+        avatarColor: 'bg-indigo-100 text-indigo-600 border-indigo-200',
+        interviewType: interviewCandidateForm.interviewRound || 'Technical Round'
+      };
+
+      // Add to candidates state (or update if email matches)
+      setCandidates(prev => {
+        const exists = prev.some(c => (c.email && c.email.toLowerCase() === emailLower) || c.id === newCandId);
+        if (exists) {
+          return prev.map(c => (c.email && c.email.toLowerCase() === emailLower) || c.id === newCandId ? { ...c, ...newCand } : c);
+        }
+        return [newCand, ...prev];
+      });
+
+      // Update stored shortlisting / candidate status
+      setFormApplicantStatuses(prev => {
+        const updated = {
+          ...prev,
+          [email]: 'accepted' as const,
+          [emailLower]: 'accepted' as const,
+          [newCandId]: 'accepted' as const
+        };
+        try {
+          localStorage.setItem('hrms_form_applicant_statuses', JSON.stringify(updated));
+        } catch (_) {}
+        return updated;
+      });
+
+      // Select this candidate immediately for scheduling
+      setSelectedCandidate(newCand);
+
+      // Auto generate meeting link for candidate
+      setIsGeneratingTeamsLink(true);
+      const defaultAdminLink = getAdminDefaultTeamsLink();
+      let autoLink = defaultAdminLink;
+      if (!autoLink) {
+        autoLink = await generateTeamsMeetingUrl(`VRPI Interview: ${candName}`, newCand);
+      }
+      setIsGeneratingTeamsLink(false);
+
+      // Populate interview form with new candidate info
+      setInterviewForm(prev => ({
+        ...prev,
+        candidateEmail: email,
+        type: interviewCandidateForm.interviewRound || 'Technical Round',
+        link: autoLink || prev.link
+      }));
+
+      // Close modal & reset form
+      setShowAddInterviewCandidateModal(false);
+      setInterviewCandidateForm({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        jobTitle: 'Full Stack Engineer',
+        experience: 'Degree / Freshers',
+        interviewRound: 'Technical Round'
+      });
+
+      // Backend sync if jobs exist
+      try {
+        await api.post('/recruitment/applications', {
+          firstName: fName,
+          lastName: lName,
+          email: email,
+          phone: phone || 'N/A',
+          experience: interviewCandidateForm.experience || 'Degree / Freshers',
+          source: 'Direct Interview',
+          skills: 'Direct Interview Schedule',
+          jobId: selectedJobId || (jobs[0] ? jobs[0].id : '')
+        });
+      } catch (_) {}
+
+      alert(`✅ Profile "${candName}" added successfully and selected for interview scheduling!`);
+    } catch (err: any) {
+      console.error('Failed to add candidate for interview:', err);
+      alert('Failed to add candidate: ' + (err.message || String(err)));
+    } finally {
+      setSubmittingInterviewCandidate(false);
+    }
+  };
+
+  // Add Profile to Call Letter Stage Handler
+  const handleAddCallLetterCandidateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const fName = callLetterCandidateForm.firstName.trim();
+    const lName = callLetterCandidateForm.lastName.trim();
+    const email = callLetterCandidateForm.email.trim();
+    const phone = callLetterCandidateForm.phone.trim();
+    const emailLower = email.toLowerCase();
+
+    if (!fName || !email) {
+      alert('Please fill out Candidate First Name and Email.');
+      return;
+    }
+    if (!email.includes('@')) {
+      alert('Please enter a valid email address.');
+      return;
+    }
+
+    setSubmittingCallLetterCandidate(true);
+    try {
+      const existingId = callLetterCandidateForm.existingCandidateId;
+      const targetCandidate = candidates.find(c => c.id === existingId || (c.email && c.email.toLowerCase() === emailLower));
+      const candId = targetCandidate?.id || existingId || `cl-cand-${Date.now()}`;
+      const candName = `${fName} ${lName}`.trim();
+      const code = targetCandidate ? getCandidateCode(targetCandidate) : candId.slice(-4).toUpperCase();
+
+      // 1. Update formApplicantStatuses in state and localStorage
+      setFormApplicantStatuses(prev => {
+        const updated = {
+          ...prev,
+          [email]: 'call_letter' as const,
+          [emailLower]: 'call_letter' as const,
+          [candId]: 'call_letter' as const
+        };
+        try {
+          localStorage.setItem('hrms_form_applicant_statuses', JSON.stringify(updated));
+        } catch (_) {}
+        return updated;
+      });
+
+      // 2. Pre-save candidate Call Letter details in localStorage with addedAt timestamp
+      const nowIso = new Date().toISOString();
+      try {
+        const currentCLs = JSON.parse(localStorage.getItem('hrms_candidate_call_letters') || '{}');
+        const customRefNo = `VRPI/CL/2026/${code || Math.floor(1000 + Math.random() * 9000)}`;
+        currentCLs[candId] = {
+          candidateName: candName,
+          refNo: customRefNo,
+          designation: callLetterCandidateForm.jobTitle || 'Associate Software Engineer',
+          venue: callLetterCandidateForm.reportingVenue || 'VR PI Group, Cyber Gateway, Hitech City, Hyderabad',
+          reportingDate: callLetterCandidateForm.reportingDate,
+          reportingTime: callLetterCandidateForm.reportingTime,
+          issuedAt: nowIso,
+          addedAt: nowIso,
+          status: 'PENDING_DISPATCH'
+        };
+        localStorage.setItem('hrms_candidate_call_letters', JSON.stringify(currentCLs));
+      } catch (_) {}
+
+      // 3. Update candidates list: always place the candidate ON TOP (index 0)
+      const newCand: Candidate = {
+        ...(targetCandidate || {
+          id: candId,
+          firstName: fName,
+          lastName: lName,
+          email: email,
+          phone: phone || 'N/A',
+          source: 'Direct Entry',
+          appliedDate: format(new Date(), 'yyyy-MM-dd'),
+          matchScore: 92,
+          skills: ['Call Letter', callLetterCandidateForm.jobTitle],
+          avatarColor: 'bg-purple-100 text-purple-600 border-purple-200'
+        }),
+        stage: 'Call Letter',
+        jobTitle: callLetterCandidateForm.jobTitle || targetCandidate?.jobTitle || 'Associate Software Engineer',
+        experience: callLetterCandidateForm.experience || targetCandidate?.experience || 'Degree / Freshers',
+        callLetterDate: callLetterCandidateForm.reportingDate,
+        callLetterAddedAt: nowIso
+      };
+
+      setCandidates(prev => {
+        const others = prev.filter(c => c.id !== candId && (!c.email || c.email.toLowerCase() !== emailLower));
+        return [newCand, ...others];
+      });
+
+      setLastAddedCallLetterCandidateId(candId);
+
+      // 4. Backend sync if candidate exists in DB
+      if (targetCandidate?.id && !targetCandidate.id.startsWith('cand-') && !targetCandidate.id.startsWith('cl-cand-')) {
+        try {
+          await api.patch(`/recruitment/applications/${targetCandidate.id}/status`, { status: 'CALL_LETTER' });
+        } catch (_) {}
+      } else {
+        try {
+          await api.post('/recruitment/applications', {
+            firstName: fName,
+            lastName: lName,
+            email: email,
+            phone: phone || 'N/A',
+            experience: callLetterCandidateForm.experience || 'Degree',
+            source: 'Direct Call Letter Entry',
+            skills: 'Call Letter Issuance',
+            jobId: selectedJobId || (jobs[0] ? jobs[0].id : '')
+          });
+        } catch (_) {}
+      }
+
+      // Close modal & reset form
+      setShowAddCallLetterCandidateModal(false);
+      setCallLetterCandidateForm({
+        existingCandidateId: '',
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        jobTitle: 'Associate Software Engineer',
+        experience: 'Degree / Freshers',
+        reportingVenue: 'VR PI Group, Plot No. 12, Cyber Gateway, Hitech City, Hyderabad, 500081',
+        reportingDate: format(new Date(), 'yyyy-MM-dd'),
+        reportingTime: '09:30 AM',
+        notes: 'Please bring original KYC ID proofs, educational certificates, and passport photos.'
+      });
+
+      // Smooth scroll to top so new profile card is immediately visible
+      try {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (_) {}
+
+      alert(`✅ Candidate "${candName}" added to Stage 6: Call Letter Issuance successfully and placed at the top!`);
+    } catch (err: any) {
+      console.error('Failed to add candidate for Call Letter:', err);
+      alert('Failed to add candidate: ' + (err.message || String(err)));
+    } finally {
+      setSubmittingCallLetterCandidate(false);
     }
   };
 
@@ -1288,6 +1803,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     designation?: string;
     referenceNo?: string;
     venue?: string;
+    includeTraining?: boolean;
+    trainingSalary?: string;
   }>>(() => {
     try {
       const saved = localStorage.getItem('hrms_candidate_offer_forms');
@@ -1301,11 +1818,19 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     try {
       localStorage.setItem('hrms_candidate_offer_forms', JSON.stringify(candidateOfferForms));
     } catch (_) {}
+
+    const timer = setTimeout(() => {
+      if (Object.keys(candidateOfferForms).length > 0) {
+        api.post('/recruitment/shared-state', { candidateOfferForms }).catch(() => {});
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
   }, [candidateOfferForms]);
 
   const [previewOfferCandidate, setPreviewOfferCandidate] = useState<Candidate | null>(null);
   const [previewOfferPage, setPreviewOfferPage] = useState<number>(1);
   const [previewOfferMode, setPreviewOfferMode] = useState<'all' | 'single'>('all');
+  const [previewOfferWithTraining, setPreviewOfferWithTraining] = useState<boolean>(true);
 
   // Stage 8 Document uploads mock state
   const [uploadingDocType, setUploadingDocType] = useState<string | null>(null);
@@ -1360,17 +1885,18 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               const firstName = nameParts[0] || 'Applicant';
               const lastName = nameParts.slice(1).join(' ') || '';
               
-              // Stage mapper
+              // Stage mapper (respects status progression; documentsVerified only defaults when earlier than Call Letter)
               let stage = app.status;
-              if (app.status === 'AI_SCREENING' || app.status === 'AI Screening') stage = 'AI Screening';
-              else if (app.status === 'SHORTLISTED' || app.status === 'Shortlisting' || app.status === 'ACCEPTED' || app.status === 'accepted') stage = 'Shortlisting';
-              else if (app.status === 'CALL_LETTER' || app.status === 'Call Letter' || app.status === 'call_letter' || app.documentsVerified) stage = 'Call Letter';
-              else if (app.status === 'RECEIVED_CALL_LETTER' || app.status === 'Received Call Letter' || app.status === 'received_call_letter') stage = 'Received Call Letter';
+              if (app.status === 'HIRED' || app.status === 'Onboarding' || app.status === 'ONBOARDING') stage = 'Onboarding';
               else if (app.status === 'OFFER' || app.status === 'Offer') stage = 'Offer';
-              else if (app.status === 'HIRED' || app.status === 'Onboarding' || app.status === 'ONBOARDING') stage = 'Onboarding';
-              else if (app.status === 'REJECTED' || app.status === 'Rejected' || app.status === 'DECLINED' || app.status === 'declined') stage = 'Rejected';
+              else if (app.status === 'RECEIVED_CALL_LETTER' || app.status === 'Received Call Letter' || app.status === 'received_call_letter') stage = 'Received Call Letter';
+              else if (app.status === 'CALL_LETTER' || app.status === 'Call Letter' || app.status === 'call_letter') stage = 'Call Letter';
               else if (app.status === 'DOCUMENTS' || app.status === 'Documents') stage = 'Documents';
               else if (app.status === 'INTERVIEW' || app.status === 'Interviews' || app.status === 'SCHEDULED' || app.status === 'scheduled') stage = 'Interviews';
+              else if (app.status === 'SHORTLISTED' || app.status === 'Shortlisting' || app.status === 'ACCEPTED' || app.status === 'accepted') stage = 'Shortlisting';
+              else if (app.status === 'AI_SCREENING' || app.status === 'AI Screening') stage = 'AI Screening';
+              else if (app.status === 'REJECTED' || app.status === 'Rejected' || app.status === 'DECLINED' || app.status === 'declined') stage = 'Rejected';
+              else if (app.documentsVerified) stage = 'Call Letter';
               else stage = 'Applications';
 
               const rawInterviewDate = app.interviewDate 
@@ -1423,6 +1949,43 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
           if (savedStr) storedStatuses = JSON.parse(savedStr);
         } catch (_) {}
 
+        // Fetch cross-system shared recruitment state from backend
+        try {
+          const sharedRes = await api.get('/recruitment/shared-state');
+          if (sharedRes.data?.data) {
+            const shared = sharedRes.data.data;
+            if (shared.formApplicantStatuses && typeof shared.formApplicantStatuses === 'object') {
+              storedStatuses = { ...storedStatuses, ...shared.formApplicantStatuses };
+            }
+            if (shared.candidateOfferForms && typeof shared.candidateOfferForms === 'object' && Object.keys(shared.candidateOfferForms).length > 0) {
+              setCandidateOfferForms(prev => ({ ...prev, ...shared.candidateOfferForms }));
+              try {
+                const currentForms = JSON.parse(localStorage.getItem('hrms_candidate_offer_forms') || '{}');
+                localStorage.setItem('hrms_candidate_offer_forms', JSON.stringify({ ...currentForms, ...shared.candidateOfferForms }));
+              } catch (_) {}
+            }
+            if (Array.isArray(shared.deletedApplicants) && shared.deletedApplicants.length > 0) {
+              try {
+                const currentDeleted = JSON.parse(localStorage.getItem('hrms_deleted_applicants') || '[]');
+                const mergedDeleted = Array.from(new Set([...currentDeleted, ...shared.deletedApplicants]));
+                localStorage.setItem('hrms_deleted_applicants', JSON.stringify(mergedDeleted));
+              } catch (_) {}
+            }
+            if (Array.isArray(shared.offerCandidates) && shared.offerCandidates.length > 0) {
+              const currentOffers = getStoredOfferCandidates();
+              const merged = [...currentOffers];
+              shared.offerCandidates.forEach((c: Candidate) => {
+                const idx = merged.findIndex(o => (o.email && c.email && o.email.trim().toLowerCase() === c.email.trim().toLowerCase()) || o.id === c.id);
+                if (idx >= 0) merged[idx] = { ...merged[idx], ...c };
+                else merged.push(c);
+              });
+              saveStoredOfferCandidates(merged);
+            }
+          }
+        } catch (sharedErr) {
+          console.warn('[Recruitment] Could not sync shared-state from server:', sharedErr);
+        }
+
         // Pre-populate statuses from database candidates so all machines immediately reflect the current accepted/scheduled status
         allCandidates.forEach(cand => {
           if (!cand.email && !cand.id) return;
@@ -1430,6 +1993,20 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
           const emLower = em.toLowerCase();
           const id = cand.id ? cand.id.trim() : '';
           const nameKey = `${cand.firstName || ''} ${cand.lastName || ''}`.trim().toLowerCase();
+
+          // If DB explicitly has the candidate in Offer stage (and not onboarded), ensure status is 'offer'
+          if (cand.stage === 'Offer' && !cand.onboarded) {
+            if (em) { storedStatuses[em] = 'offer'; storedStatuses[emLower] = 'offer'; }
+            if (id) storedStatuses[id] = 'offer';
+            if (nameKey) storedStatuses[nameKey] = 'offer';
+            return;
+          }
+          if (cand.stage === 'Onboarding' || cand.onboarded) {
+            if (em) { storedStatuses[em] = 'onboarded'; storedStatuses[emLower] = 'onboarded'; }
+            if (id) storedStatuses[id] = 'onboarded';
+            if (nameKey) storedStatuses[nameKey] = 'onboarded';
+            return;
+          }
 
           // If this candidate was already placed in Received Call Letter, Offer, or Onboarding locally, preserve it unless DB has a newer stage
           const currentLocalStatus = storedStatuses[em] || storedStatuses[emLower] || (id ? storedStatuses[id] : undefined) || (nameKey ? storedStatuses[nameKey] : undefined);
@@ -1439,27 +2016,29 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
           if (currentLocalStatus === 'offer' && cand.stage !== 'Onboarding' && cand.stage !== 'Rejected') {
             return;
           }
-          if (currentLocalStatus === 'onboarded' && cand.stage !== 'Rejected') {
+          if (currentLocalStatus === 'onboarded' && cand.stage !== 'Offer' && cand.stage !== 'Rejected') {
             return;
           }
 
           let mappedStatus = '';
-          if (cand.stage === 'Call Letter' || cand.documentsVerified) {
-            mappedStatus = 'call_letter';
-          } else if (cand.stage === 'Received Call Letter') {
-            mappedStatus = 'received_call_letter';
+          if (cand.stage === 'Onboarding') {
+            mappedStatus = 'onboarded';
           } else if (cand.stage === 'Offer') {
             mappedStatus = 'offer';
-          } else if (cand.stage === 'Onboarding') {
-            mappedStatus = 'onboarded';
-          } else if (cand.stage === 'Rejected') {
-            mappedStatus = 'declined';
+          } else if (cand.stage === 'Received Call Letter') {
+            mappedStatus = 'received_call_letter';
+          } else if (cand.stage === 'Call Letter') {
+            mappedStatus = 'call_letter';
           } else if (cand.stage === 'Documents') {
             mappedStatus = 'documents';
           } else if (cand.stage === 'Interviews' || cand.interviewDate) {
             mappedStatus = 'scheduled';
           } else if (cand.stage === 'Shortlisting' || cand.stage === 'AI Screening') {
             mappedStatus = 'accepted';
+          } else if (cand.stage === 'Rejected') {
+            mappedStatus = 'declined';
+          } else if (cand.documentsVerified) {
+            mappedStatus = 'call_letter';
           }
 
           if (mappedStatus) {
@@ -1482,7 +2061,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
           localStorage.setItem('hrms_form_applicant_statuses', JSON.stringify(storedStatuses));
         } catch (_) {}
 
-        // Keep local shortlist & scheduled cache updated on this machine
+        // Keep local shortlist, scheduled, and offer cache updated on this machine
         const currentDbShortlisted = allCandidates.filter(c => c.stage === 'Shortlisting');
         if (currentDbShortlisted.length > 0) {
           saveStoredShortlistedCandidates(currentDbShortlisted);
@@ -1490,6 +2069,20 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         const currentDbScheduled = allCandidates.filter(c => c.stage === 'Interviews');
         if (currentDbScheduled.length > 0) {
           saveStoredScheduledInterviews(currentDbScheduled);
+        }
+        const currentDbOffer = allCandidates.filter(c => c.stage === 'Offer');
+        if (currentDbOffer.length > 0) {
+          const currentOffers = getStoredOfferCandidates();
+          const mergedOffers = [...currentOffers];
+          currentDbOffer.forEach(cand => {
+            const idx = mergedOffers.findIndex(o => (o.email && cand.email && o.email.trim().toLowerCase() === cand.email.trim().toLowerCase()) || o.id === cand.id);
+            if (idx >= 0) {
+              mergedOffers[idx] = { ...mergedOffers[idx], ...cand };
+            } else {
+              mergedOffers.push(cand);
+            }
+          });
+          saveStoredOfferCandidates(mergedOffers);
         }
 
         const deletedList = getDeletedApplicants();
@@ -2239,6 +2832,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     try {
       setIsSchedulingInterview(true);
       let backendEmailDispatched = false;
+      let emailNoticeDetail = '';
       try {
         const res = await api.patch(`/recruitment/applications/${candidateId}/interview`, {
           interviewDate: interviewForm.date,
@@ -2258,16 +2852,24 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         });
         if (res.data?.data?.emailDispatchResult?.success) {
           backendEmailDispatched = true;
+        } else if (res.data?.data?.emailDispatchResult?.error) {
+          emailNoticeDetail = `(Notice: ${res.data.data.emailDispatchResult.error})`;
         }
         await loadRecruitmentData();
-      } catch (err) {
+      } catch (err: any) {
         console.warn('Backend interview schedule sync warning:', err);
+        emailNoticeDetail = `(Notice: ${err?.response?.data?.message || err?.message || 'Email dispatch connection note'})`;
       }
 
       const recipientList = [targetCandEmail, interviewForm.interviewerEmail, ...interviewForm.taggedEmails].filter(Boolean);
-      const emailNotice = interviewForm.sendEmailInvite 
-        ? `\n\n📧 Real-time Microsoft Teams join link and Calendar (.ics) invitations have been sent to:\n• ${recipientList.join('\n• ')}`
-        : '';
+      let emailNotice = '';
+      if (interviewForm.sendEmailInvite) {
+        if (backendEmailDispatched) {
+          emailNotice = `\n\n📧 Real-time Microsoft Teams join link and Calendar (.ics) invitations have been delivered to:\n• ${recipientList.join('\n• ')}`;
+        } else {
+          emailNotice = `\n\n📧 Microsoft Teams meeting and Calendar (.ics) invitations dispatched to:\n• ${recipientList.join('\n• ')}${emailNoticeDetail ? `\n${emailNoticeDetail}` : ''}`;
+        }
+      }
 
       alert(`📅 Interview scheduled successfully for ${candName} on ${interviewForm.date} at ${interviewForm.time}!${emailNotice}`);
       setInterviewForm({
@@ -3252,7 +3854,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     designationOverride?: string,
     referenceNoOverride?: string,
     venueOverride?: string,
-    candidateNameOverride?: string
+    candidateNameOverride?: string,
+    includeTrainingOverride?: boolean
   ) => {
     const candForm = candidateOfferForms[cand.id] || (cand.email ? candidateOfferForms[cand.email] : undefined) || (cand.email ? candidateOfferForms[cand.email.toLowerCase().trim()] : undefined) || {};
     const candName = candidateNameOverride || candForm.candidateName || cand.customName || `${cand.firstName || ''} ${cand.lastName || ''}`.trim() || 'Candidate';
@@ -3278,6 +3881,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     const venue = venueOverride || candForm.venue || cand.callLetterVenue || defaultVenue;
     const todayFormatted = format(new Date(), 'dd/MM/yyyy');
 
+    const includeTraining = includeTrainingOverride !== undefined 
+      ? includeTrainingOverride 
+      : (candForm.includeTraining !== undefined ? candForm.includeTraining : true);
+
     const offerData: OfferLetterData = {
       candidateName: candName,
       jobTitle: role,
@@ -3287,7 +3894,9 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       referenceNo: refNo,
       offerDate: todayFormatted,
       genderPrefix: 'Mr./Ms.',
-      reportingVenue: venue
+      reportingVenue: venue,
+      includeTraining: includeTraining,
+      trainingSalary: candForm.trainingSalary
     };
 
     const fullHtml = renderFormalOfferFullHtml(offerData);
@@ -3592,6 +4201,21 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         }
       }
 
+      // Broadcast immediately to backend shared-state so all systems are 100% in sync
+      try {
+        await api.post('/recruitment/shared-state', {
+          formApplicantStatuses: updatedStatuses,
+          offerCandidates: currentOffers,
+          candidateOfferForms: {
+            [candidateId]: { annualCtc: ctcVal, joiningDate: defaultJoiningDate, referenceNo: autoRefNo },
+            ...(candEmail ? { [candEmail]: { annualCtc: ctcVal, joiningDate: defaultJoiningDate, referenceNo: autoRefNo } } : {}),
+            ...(cleanEmail ? { [cleanEmail]: { annualCtc: ctcVal, joiningDate: defaultJoiningDate, referenceNo: autoRefNo } } : {})
+          }
+        });
+      } catch (err) {
+        console.warn('Backend shared-state broadcast warning:', err);
+      }
+
       alert(`🎉 Candidate ${candName} successfully moved to Stage 8: Offer!`);
       await loadRecruitmentData(false);
       setActiveTab('stage-7');
@@ -3649,6 +4273,23 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         return c;
       }));
 
+      if (candidateId) {
+        try {
+          await api.patch(`/recruitment/applications/${candidateId}/status`, {
+            status: 'RECEIVED_CALL_LETTER',
+            email: candEmail || undefined
+          });
+        } catch (err) {}
+      }
+
+      // Broadcast revert to shared-state
+      try {
+        await api.post('/recruitment/shared-state', {
+          formApplicantStatuses: updatedStatuses,
+          offerCandidates: currentOffers
+        });
+      } catch (err) {}
+
       alert('↩️ Candidate profile successfully moved back to Stage 7: Received Call Letter!');
       await loadRecruitmentData();
       setActiveTab('stage-received-call-letter');
@@ -3694,13 +4335,6 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       else if (status === 'received_call_letter' || status === 'call_letter_received' || status === 'received-call-letter') stage = 'Received Call Letter';
       else if (status === 'offer') stage = 'Offer';
       else if (status === 'onboarded') stage = 'Onboarding';
-      else if (c.stage !== 'Call Letter' && c.stage !== 'Received Call Letter' && c.stage !== 'Offer' && c.stage !== 'Onboarding' && c.stage !== 'Rejected' && liveDocumentResponses.some(docR => 
-        (docR.email && c.email && docR.email.toLowerCase() === c.email.toLowerCase()) ||
-        docR.id === c.id ||
-        ((docR.fullName || '').trim().toLowerCase() === `${c.firstName} ${c.lastName}`.trim().toLowerCase())
-      )) {
-        stage = 'Documents';
-      }
 
       map.set(key, {
         ...c,
@@ -3722,13 +4356,6 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         else if (status === 'received_call_letter' || status === 'call_letter_received' || status === 'received-call-letter') stage = 'Received Call Letter';
         else if (status === 'offer') stage = 'Offer';
         else if (status === 'onboarded') stage = 'Onboarding';
-        else if (liveDocumentResponses.some(docR => 
-          (docR.email && r.email && docR.email.toLowerCase() === r.email.toLowerCase()) ||
-          docR.id === r.id ||
-          ((docR.fullName || '').trim().toLowerCase() === (r.fullName || '').trim().toLowerCase())
-        )) {
-          stage = 'Documents';
-        }
 
         if (!map.has(key)) {
           const nameParts = (r.fullName || 'Applicant').split(' ');
@@ -3814,13 +4441,6 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       else if (status === 'received_call_letter' || status === 'call_letter_received' || status === 'received-call-letter') stage = 'Received Call Letter';
       else if (status === 'offer') stage = 'Offer';
       else if (status === 'onboarded') stage = 'Onboarding';
-      else if (liveDocumentResponses.some(docR => 
-        (docR.email && fb.email && docR.email.toLowerCase() === fb.email.toLowerCase()) ||
-        docR.id === fb.id ||
-        ((docR.fullName || '').trim().toLowerCase() === `${fb.firstName} ${fb.lastName}`.trim().toLowerCase())
-      )) {
-        stage = 'Documents';
-      }
 
       if (!map.has(key) && !map.has(fb.id)) {
         map.set(key, {
@@ -5261,8 +5881,32 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                     </div>
                   </div>
 
-                  <div style={{ overflowX: 'auto', borderRadius: '0.75rem', border: '1px solid #f1f5f9' }}>
-                    <table className="rec-table" style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
+                  {/* Top Horizontal Scrollbar (Placed Upside of Table Section) */}
+                  <div
+                    ref={interviewTopScrollRef}
+                    onScroll={handleInterviewTopScroll}
+                    className="rec-top-scrollbar"
+                    style={{
+                      overflowX: 'auto',
+                      overflowY: 'hidden',
+                      marginBottom: '10px',
+                      borderRadius: '6px',
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      height: '12px'
+                    }}
+                    title="Scroll table horizontally"
+                  >
+                    <div style={{ width: `${interviewScrollWidth}px`, height: '1px' }} />
+                  </div>
+
+                  <div
+                    ref={interviewTableScrollRef}
+                    onScroll={handleInterviewTableScroll}
+                    className="hide-scrollbar"
+                    style={{ overflowX: 'auto', borderRadius: '0.75rem', border: '1px solid #f1f5f9' }}
+                  >
+                    <table className="rec-table" style={{ width: '100%', minWidth: '1050px', borderCollapse: 'separate', borderSpacing: 0 }}>
                       <thead>
                         <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                           <th style={{ padding: '10px 14px', fontSize: '0.7rem', fontWeight: 800, color: '#475569', letterSpacing: '0.04em', textTransform: 'uppercase', textAlign: 'left', minWidth: '180px' }}>Candidate Details</th>
@@ -5799,7 +6443,32 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
                             {/* Select Candidate */}
                             <div className="auth-luxury-label">
-                              Select Candidate *
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
+                                <span>Select Candidate *</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowAddInterviewCandidateModal(true)}
+                                  className="rec-btn-outline"
+                                  style={{
+                                    fontSize: '0.72rem',
+                                    fontWeight: 800,
+                                    padding: '2px 10px',
+                                    height: '26px',
+                                    borderRadius: '6px',
+                                    color: '#4f46e5',
+                                    borderColor: '#c7d2fe',
+                                    background: '#eef2ff',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    cursor: 'pointer',
+                                    boxShadow: '0 1px 2px rgba(79, 70, 229, 0.08)'
+                                  }}
+                                  title="Add a new candidate profile directly to schedule interview"
+                                >
+                                  <UserPlus className="h-3.5 w-3.5" /> + Add Profile
+                                </button>
+                              </div>
                               <select 
                                 className="rec-select" 
                                 style={{ width: '100%', height: '40px', marginTop: '4px', borderRadius: '0.75rem', fontWeight: 700 }}
@@ -6373,60 +7042,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
                 if (c.stage === 'Call Letter' || c.stage === 'Received Call Letter' || c.stage === 'Offer' || c.stage === 'Onboarding' || c.stage === 'Rejected') return;
 
-                const hasDocSubmission = liveDocumentResponses.some(r => 
-                  (r.email && c.email && r.email.toLowerCase() === c.email.toLowerCase()) ||
-                  r.id === c.id ||
-                  ((r.fullName || '').trim().toLowerCase() === nameKey)
-                ) || (c.attachmentImages && c.attachmentImages.length > 0);
-
-                if (c.stage === 'Documents' || s === 'documents' || hasDocSubmission) {
+                if (c.stage === 'Documents' || s === 'documents') {
                   const key = emailKey || c.id || nameKey;
                   if (!docsMap.has(key)) {
                     docsMap.set(key, c);
                   }
-                }
-              });
-
-              // Also include any records directly from liveDocumentResponses not yet in unifiedCandidates
-              liveDocumentResponses.forEach((r, idx) => {
-                if (isCandidateDeleted(r.id, r.email)) return;
-                const emailKey = (r.email || '').toLowerCase().trim();
-                const nameKey = (r.fullName || '').toLowerCase().trim();
-                const s = (emailKey && formApplicantStatuses[emailKey]) || 
-                          (r.email && formApplicantStatuses[r.email]) || 
-                          (r.id && formApplicantStatuses[r.id]) ||
-                          (nameKey && formApplicantStatuses[nameKey]);
-
-                if (s === 'call_letter' || s === 'call-letter' || s === 'callletter' || 
-                    s === 'received_call_letter' || s === 'call_letter_received' || s === 'received-call-letter' || 
-                    s === 'offer' || s === 'onboarded' || s === 'declined') return;
-
-                const key = emailKey || r.id || nameKey;
-                const alreadyExists = Array.from(docsMap.values()).some(existing => 
-                  (emailKey && existing.email && existing.email.toLowerCase().trim() === emailKey) ||
-                  (nameKey && `${existing.firstName} ${existing.lastName}`.trim().toLowerCase() === nameKey)
-                );
-
-                if (!docsMap.has(key) && !alreadyExists) {
-                  const nameParts = (r.fullName || 'Applicant').trim().split(' ');
-                  const fName = nameParts[0] || 'Applicant';
-                  const lName = nameParts.slice(1).join(' ') || '';
-                  docsMap.set(key, {
-                    id: r.id || `sheet-doc-row-${idx + 1}`,
-                    firstName: fName,
-                    lastName: lName,
-                    email: r.email || '',
-                    phone: r.phone || 'N/A',
-                    stage: 'Documents',
-                    source: 'Google Form',
-                    jobTitle: 'Google Form Recruitment',
-                    experience: 'Degree',
-                    appliedDate: r.timestamp || format(new Date(), 'yyyy-MM-dd'),
-                    matchScore: 85,
-                    skills: ['Document Verification'],
-                    avatarColor: 'bg-blue-100 text-blue-600 border-blue-200',
-                    attachmentImages: (r.documents || []).map((d: any) => d.url)
-                  });
                 }
               });
 
@@ -6493,6 +7113,15 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <button
                           type="button"
+                          onClick={() => setShowAddDocCandidateModal(true)}
+                          className="rec-btn-primary"
+                          style={{ fontSize: '0.72rem', height: '32px', padding: '0 14px', gap: '6px', background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)', color: '#fff', fontWeight: 700 }}
+                          title="Add a new candidate profile to Stage 4: Documents"
+                        >
+                          <UserPlus className="h-3.5 w-3.5" /> + Add Profile
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => {
                             navigator.clipboard.writeText(googleDocUploadFormUrl);
                             alert('📋 Document Upload Google Form link copied to clipboard!');
@@ -6548,6 +7177,14 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <button
                           type="button"
+                          onClick={() => setShowAddDocCandidateModal(true)}
+                          className="rec-btn-primary"
+                          style={{ fontSize: '0.72rem', height: '30px', padding: '0 12px', gap: '6px', background: '#2563eb', color: '#fff', fontWeight: 700 }}
+                        >
+                          <UserPlus className="h-3.5 w-3.5" /> + Add Profile
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => setActiveTab('stage-documents-received')}
                           className="rec-btn-outline"
                           style={{ fontSize: '0.72rem', height: '30px', padding: '0 12px', gap: '6px', color: '#059669', borderColor: '#a7f3d0', background: '#ecfdf5', fontWeight: 700 }}
@@ -6575,13 +7212,13 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                             gap: '7px',
                             transition: 'all 0.15s ease',
                             background: docSubTab === 'pending' ? '#ffffff' : 'transparent',
-                            color: docSubTab === 'pending' ? '#1d4ed8' : '#64748b',
-                            boxShadow: docSubTab === 'pending' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                            color: docSubTab === 'pending' ? '#0f172a' : '#64748b',
+                            boxShadow: docSubTab === 'pending' ? '0 2px 6px rgba(0, 0, 0, 0.06)' : 'none'
                           }}
                         >
-                          <Send className="h-3.5 w-3.5" style={{ color: docSubTab === 'pending' ? '#2563eb' : '#94a3b8' }} />
-                          <span>Pending ({pendingDocs.length})</span>
-                          <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '99px', background: docSubTab === 'pending' ? '#dbeafe' : '#e2e8f0', color: docSubTab === 'pending' ? '#1e40af' : '#64748b', fontWeight: 800 }}>
+                          <Send className="h-4 w-4 text-blue-600" />
+                          Pending ({pendingDocs.length})
+                          <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '2px 6px', borderRadius: '99px', background: docSubTab === 'pending' ? '#eff6ff' : '#f1f5f9', color: docSubTab === 'pending' ? '#2563eb' : '#94a3b8' }}>
                             Send
                           </span>
                         </button>
@@ -6601,13 +7238,13 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                             gap: '7px',
                             transition: 'all 0.15s ease',
                             background: docSubTab === 'completed' ? '#ffffff' : 'transparent',
-                            color: docSubTab === 'completed' ? '#15803d' : '#64748b',
-                            boxShadow: docSubTab === 'completed' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                            color: docSubTab === 'completed' ? '#0f172a' : '#64748b',
+                            boxShadow: docSubTab === 'completed' ? '0 2px 6px rgba(0, 0, 0, 0.06)' : 'none'
                           }}
                         >
-                          <CheckCircle className="h-3.5 w-3.5" style={{ color: docSubTab === 'completed' ? '#16a34a' : '#94a3b8' }} />
-                          <span>Completed ({completedDocs.length})</span>
-                          <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '99px', background: docSubTab === 'completed' ? '#dcfce7' : '#e2e8f0', color: docSubTab === 'completed' ? '#166534' : '#64748b', fontWeight: 800 }}>
+                          <CheckCircle className="h-4 w-4 text-emerald-600" />
+                          Completed ({completedDocs.length})
+                          <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '2px 6px', borderRadius: '99px', background: docSubTab === 'completed' ? '#ecfdf5' : '#f1f5f9', color: docSubTab === 'completed' ? '#059669' : '#94a3b8' }}>
                             Sent
                           </span>
                         </button>
@@ -6628,22 +7265,22 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                             transition: 'all 0.15s ease',
                             background: docSubTab === 'all' ? '#ffffff' : 'transparent',
                             color: docSubTab === 'all' ? '#0f172a' : '#64748b',
-                            boxShadow: docSubTab === 'all' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                            boxShadow: docSubTab === 'all' ? '0 2px 6px rgba(0, 0, 0, 0.06)' : 'none'
                           }}
                         >
-                          <FolderOpen className="h-3.5 w-3.5" style={{ color: docSubTab === 'all' ? '#4f46e5' : '#94a3b8' }} />
-                          <span>All ({pipelineDocs.length})</span>
+                          <FolderOpen className="h-4 w-4 text-slate-500" />
+                          All ({pipelineDocs.length})
                         </button>
                       </div>
 
-                      {pendingDocs.length > 0 && (
+                      {docSubTab === 'pending' && pendingDocs.length > 0 && (
                         <button
                           type="button"
                           onClick={handleMoveAllToCompleted}
                           className="rec-btn-outline"
                           style={{
-                            fontSize: '0.74rem',
-                            height: '34px',
+                            fontSize: '0.72rem',
+                            height: '32px',
                             padding: '0 14px',
                             gap: '6px',
                             color: '#15803d',
@@ -6668,11 +7305,19 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                               ? 'No completed profiles yet. Send invitations to candidates from the Pending tab.'
                               : 'No candidates currently in Stage 4: Documents'}
                         </p>
-                        <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>
+                        <p style={{ margin: '4px 0 12px 0', fontSize: '0.75rem', color: '#94a3b8' }}>
                           {docSubTab === 'pending' && completedDocs.length > 0
                             ? `You have ${completedDocs.length} profile(s) in the Completed tab. Switch to Completed to review them.`
-                            : 'Candidates who pass interviews will automatically appear here.'}
+                            : 'Candidates who pass interviews will automatically appear here, or you can add a profile directly.'}
                         </p>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddDocCandidateModal(true)}
+                          className="rec-btn-primary"
+                          style={{ fontSize: '0.75rem', height: '32px', padding: '0 16px', gap: '6px', background: '#2563eb', color: '#fff', fontWeight: 700, display: 'inline-flex', margin: '0 auto' }}
+                        >
+                          <UserPlus className="h-3.5 w-3.5" /> + Add Candidate Profile
+                        </button>
                       </div>
                     ) : (
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '1.25rem' }}>
@@ -6797,109 +7442,72 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
             {activeTab === 'stage-documents-received' && (() => {
               const map = new Map<string, Candidate>();
 
-              // 1. Map ALL live applicant records from the Google Sheet
-              const sheetDocs: Candidate[] = liveDocumentResponses
-                .filter(r => !isCandidateDeleted(r.id, r.email && r.email.trim() ? r.email : undefined))
-                .map((r, idx) => {
-                  const emailKey = (r.email || '').toLowerCase().trim();
-                  const nameKey = (r.fullName || '').toLowerCase().trim();
-                  
-                  const existing = candidates.find(c => 
-                    (emailKey && c.email && c.email.toLowerCase().trim() === emailKey) || 
-                    c.id === r.id || 
-                    (`${c.firstName} ${c.lastName}`.trim().toLowerCase() === nameKey)
-                  );
+              // Only include candidates from the pipeline who are in the Documents stage
+              const allCandidatesSource = [...unifiedCandidates, ...candidates];
 
-                  const s = (emailKey && formApplicantStatuses[emailKey]) || 
-                            (r.email && formApplicantStatuses[r.email]) || 
-                            (r.id && formApplicantStatuses[r.id]) ||
-                            (nameKey && formApplicantStatuses[nameKey]) ||
-                            (existing?.id && formApplicantStatuses[existing.id]) ||
-                            (existing?.email && formApplicantStatuses[existing.email]);
-
-                  const isVerified = Boolean(
-                    existing?.documentsVerified ||
-                    existing?.stage === 'Call Letter' ||
-                    existing?.stage === 'Received Call Letter' ||
-                    existing?.stage === 'Offer' ||
-                    existing?.stage === 'Onboarding' ||
-                    s === 'call_letter' ||
-                    s === 'call-letter' ||
-                    s === 'callletter' ||
-                    s === 'received_call_letter' ||
-                    s === 'offer' ||
-                    s === 'onboarded'
-                  );
-
-                  const docObjects = (r.documents || []).map((d: any) => ({
-                    name: d.title,
-                    url: d.url,
-                    docType: d.type,
-                    rawHeader: d.rawHeader
-                  }));
-
-                  const nameParts = (r.fullName || 'Applicant').trim().split(' ');
-                  const fName = existing?.firstName || nameParts[0] || 'Applicant';
-                  const lName = existing?.lastName || nameParts.slice(1).join(' ') || '';
-
-                  const baseCand: any = existing ? {
-                    ...existing,
-                    firstName: fName,
-                    lastName: lName,
-                    candidateType: r.candidateType || (existing as any).candidateType || 'Freshers',
-                    attachmentImages: Array.from(new Set([...(existing.attachmentImages || []), ...docObjects])),
-                    sheetTimestamp: r.timestamp,
-                    sheetRowId: r.id,
-                    isVerified,
-                    rawDocs: docObjects
-                  } : {
-                    id: r.id || `sheet-doc-row-${idx + 1}`,
-                    firstName: fName,
-                    lastName: lName,
-                    email: r.email || `applicant_${idx + 1}@vrpi.recruitment`,
-                    phone: r.phone || 'N/A',
-                    stage: isVerified ? 'Call Letter' : 'Documents',
-                    candidateType: r.candidateType || 'Freshers',
-                    source: 'Google Form (Documents)',
-                    jobTitle: 'Selected Candidate',
-                    experience: r.candidateType || 'Freshers',
-                    location: 'Hyderabad / Wanaparthy',
-                    appliedDate: r.timestamp || format(new Date(), 'dd/MM/yyyy'),
-                    matchScore: 90,
-                    skills: ['Verified Credentials', r.candidateType || 'Freshers'],
-                    avatarColor: 'bg-emerald-100 text-emerald-600 border-emerald-200',
-                    attachmentImages: docObjects,
-                    sheetTimestamp: r.timestamp,
-                    sheetRowId: r.id,
-                    isVerified,
-                    rawDocs: docObjects
-                  };
-
-                  return baseCand as Candidate;
-                });
-
-              // Strictly include ALL candidate records that exist in the Google Sheet
-              sheetDocs.forEach(c => {
-                const key = (c.email || c.id || `${c.firstName}_${c.lastName}`).toLowerCase();
-                if (!map.has(key)) {
-                  map.set(key, c);
-                }
-              });
-
-              // Also include any candidates from candidates state who have status DOCUMENTS and uploaded docs
-              candidates.forEach(c => {
+              allCandidatesSource.forEach(c => {
                 if (isCandidateDeleted(c.id, c.email)) return;
                 const emailKey = (c.email || '').toLowerCase().trim();
-                const nameKey = `${c.firstName} ${c.lastName}`.trim().toLowerCase();
-                const alreadyExists = Array.from(map.values()).some(existing => 
-                  (emailKey && existing.email && existing.email.toLowerCase().trim() === emailKey) ||
-                  (nameKey && `${existing.firstName} ${existing.lastName}`.trim().toLowerCase() === nameKey) ||
-                  existing.id === c.id
+                const nameKey = `${c.firstName || ''} ${c.lastName || ''}`.toLowerCase().trim();
+                const s = (emailKey && formApplicantStatuses[emailKey]) || 
+                          (c.email && formApplicantStatuses[c.email]) || 
+                          (c.id && formApplicantStatuses[c.id]) ||
+                          (nameKey && formApplicantStatuses[nameKey]);
+
+                // Exclude candidates who have progressed past Documents stage
+                if (s === 'call_letter' || s === 'call-letter' || s === 'callletter' || 
+                    s === 'received_call_letter' || s === 'call_letter_received' || s === 'received-call-letter' || 
+                    s === 'offer' || s === 'onboarded' || s === 'declined') return;
+
+                if (c.stage === 'Call Letter' || c.stage === 'Received Call Letter' || c.stage === 'Offer' || c.stage === 'Onboarding' || c.stage === 'Rejected') return;
+
+                // Candidate must explicitly be in Documents stage (moved by HR)
+                const isDocumentsStage = c.stage === 'Documents' || c.stage === 'Documents Received' || s === 'documents' || s === 'documents_received';
+                if (!isDocumentsStage) return;
+
+                const key = emailKey || c.id || nameKey;
+                if (map.has(key)) return;
+
+                // Match with any live document responses from Google Sheet to enrich submitted KYC proofs
+                const matchedDocResponse = liveDocumentResponses.find(r => 
+                  (emailKey && r.email && r.email.toLowerCase().trim() === emailKey) ||
+                  (r.id && r.id === c.id) ||
+                  (nameKey && (r.fullName || '').trim().toLowerCase() === nameKey)
                 );
-                if (!alreadyExists && (c.stage === 'Documents' || (c.attachmentImages && c.attachmentImages.length > 0))) {
-                  const key = emailKey || c.id || nameKey;
-                  map.set(key, c);
-                }
+
+                const docObjects = (matchedDocResponse?.documents || []).map((d: any) => ({
+                  name: d.title,
+                  url: d.url,
+                  docType: d.type,
+                  rawHeader: d.rawHeader
+                }));
+
+                const candidateCode = getCandidateCode(c);
+                const storedDocs = getStoredCandidateDocs(c.id, c.email, candidateCode);
+
+                const combinedImages = Array.from(new Set([
+                  ...docObjects,
+                  ...(storedDocs || []),
+                  ...(c.attachmentImages || [])
+                ]));
+
+                const isVerified = Boolean(
+                  c.documentsVerified ||
+                  (c as any).isVerified ||
+                  s === 'call_letter'
+                );
+
+                const candObj: Candidate = {
+                  ...c,
+                  candidateType: matchedDocResponse?.candidateType || (c as any).candidateType || 'Freshers',
+                  attachmentImages: combinedImages,
+                  sheetTimestamp: matchedDocResponse?.timestamp || (c as any).sheetTimestamp || c.appliedDate,
+                  sheetRowId: matchedDocResponse?.id || (c as any).sheetRowId,
+                  isVerified,
+                  rawDocs: docObjects
+                } as Candidate;
+
+                map.set(key, candObj);
               });
 
               const documentCandidates = Array.from(map.values());
@@ -6925,7 +7533,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <h2 className="rec-section-title" style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>Stage 5: Documents Received</h2>
                             <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '99px', background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0' }}>
-                              {documentCandidates.length} Google Sheet Profiles
+                              {documentCandidates.length} Profiles
                             </span>
                           </div>
                           <p className="rec-section-sub" style={{ margin: '3px 0 0 0', color: '#64748b' }}>HR audits submitted credential proofs before approving and issuing official Call Letter</p>
@@ -7031,18 +7639,19 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
                             <FileCheck className="h-8 w-8 text-slate-300" />
                             <p style={{ margin: 0, fontWeight: 700, color: '#64748b' }}>No candidates found for this filter</p>
-                            <p style={{ margin: 0, fontSize: '0.75rem', color: '#94a3b8' }}>Switch to "All" to view all Google Sheet document submissions.</p>
+                            <p style={{ margin: 0, fontSize: '0.75rem', color: '#94a3b8' }}>Candidates moved to Documents stage will appear here for credential verification.</p>
                           </div>
                         </div>
                       ) : (
                         displayedCandidates.map(c => {
                           const code = getCandidateCode(c);
                           const storedDocs = getStoredCandidateDocs(c.id, c.email, code);
-                          const combinedImages = [...(c.attachmentImages || [])];
-                          storedDocs.forEach(d => {
-                            if (!combinedImages.includes(d)) combinedImages.push(d);
-                          });
+                          const sheetRawDocs = (c as any).rawDocs || [];
+                          const combinedImages = sheetRawDocs.length > 0 || storedDocs.length > 0
+                            ? Array.from(new Set([...sheetRawDocs, ...storedDocs]))
+                            : (c.attachmentImages || []);
                           const formAtts = combinedImages.map((att, idx) => parseAttachmentItem(att, idx));
+                          const isSyncedFromSheet = sheetRawDocs.length > 0;
                           const candType = (c as any).candidateType || 'Freshers';
                           const isCandVerified = Boolean((c as any).isVerified);
                           const timestamp = (c as any).sheetTimestamp || c.appliedDate;
@@ -7090,7 +7699,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                     <FileText className="h-4 w-4 text-emerald-600" /> Submitted Documents &amp; KYC Proofs ({formAtts.length})
                                   </p>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    {formAtts.length > 0 && (
+                                    {isSyncedFromSheet && (
                                       <span style={{ fontSize: '0.6rem', color: '#059669', fontWeight: 800, background: '#dcfce7', padding: '2px 6px', borderRadius: '4px' }}>
                                         Synced from Sheet
                                       </span>
@@ -7255,6 +7864,23 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                 if (s === 'received_call_letter' || s === 'call_letter_received' || s === 'received-call-letter' || s === 'offer' || s === 'onboarded' || s === 'declined') return false;
                 if (c.stage === 'Received Call Letter' || c.stage === 'Offer' || c.stage === 'Onboarding' || c.stage === 'Rejected') return false;
                 return c.stage === 'Call Letter' || c.stage === 'call-letter' || s === 'call_letter' || s === 'call-letter' || s === 'callletter' || c.documentsVerified;
+              }).sort((a, b) => {
+                if (a.id === lastAddedCallLetterCandidateId) return -1;
+                if (b.id === lastAddedCallLetterCandidateId) return 1;
+
+                let storedCLs: Record<string, any> = {};
+                try {
+                  storedCLs = JSON.parse(localStorage.getItem('hrms_candidate_call_letters') || '{}');
+                } catch (_) {}
+
+                const aTime = (a as any).callLetterAddedAt || storedCLs[a.id]?.addedAt || storedCLs[a.id]?.issuedAt || 0;
+                const bTime = (b as any).callLetterAddedAt || storedCLs[b.id]?.addedAt || storedCLs[b.id]?.issuedAt || 0;
+                const aMs = aTime ? new Date(aTime).getTime() : 0;
+                const bMs = bTime ? new Date(bTime).getTime() : 0;
+                if (aMs && bMs && aMs !== bMs) return bMs - aMs;
+                if (aMs && !bMs) return -1;
+                if (!aMs && bMs) return 1;
+                return 0;
               });
 
               return (
@@ -7282,6 +7908,30 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddCallLetterCandidateModal(true)}
+                          className="rec-btn-primary"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 14px',
+                            borderRadius: '0.75rem',
+                            background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 50%, #6d28d9 100%)',
+                            color: '#ffffff',
+                            fontSize: '0.75rem',
+                            fontWeight: 800,
+                            border: 'none',
+                            cursor: 'pointer',
+                            boxShadow: '0 4px 12px rgba(124, 58, 237, 0.3)'
+                          }}
+                          title="Add candidate profile directly to Call Letter stage"
+                        >
+                          <UserPlus className="h-4 w-4" />
+                          <span>+ Add Profile</span>
+                        </button>
+
                         <a
                           href="https://docs.google.com/spreadsheets/d/1nFaAEv_99akWqw_FwyXPSDQnBLGDXNwYtBjb5oIw0q8/edit?usp=sharing"
                           target="_blank"
@@ -7347,6 +7997,40 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
                   {/* Candidate Call Letter Cards Matrix */}
                   <div className="rec-card" style={{ padding: '1.5rem', background: '#ffffff', borderRadius: '1.25rem', border: '1px solid #e2e8f0' }}>
+                    {/* Top Toolbar directly above Cards */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.85rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                          Candidates Ready for Call Letter
+                        </h4>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: '99px', background: '#f3e8ff', color: '#7e22ce', border: '1px solid #d8b4fe' }}>
+                          {callLetterCandidates.length} Active
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddCallLetterCandidateModal(true)}
+                        className="rec-btn-primary"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 14px',
+                          borderRadius: '0.75rem',
+                          background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 50%, #6d28d9 100%)',
+                          color: '#ffffff',
+                          fontSize: '0.75rem',
+                          fontWeight: 800,
+                          border: 'none',
+                          cursor: 'pointer',
+                          boxShadow: '0 4px 12px rgba(124, 58, 237, 0.25)'
+                        }}
+                      >
+                        <UserPlus className="h-4 w-4" />
+                        <span>+ Add Profile</span>
+                      </button>
+                    </div>
+
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '1.5rem' }}>
                       {callLetterCandidates.length === 0 ? (
                         <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '3.5rem 1.5rem', background: '#f8fafc', borderRadius: '1rem', border: '1px solid #e2e8f0', color: '#94a3b8', fontSize: '0.82rem' }}>
@@ -7368,9 +8052,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                             c.callLetterDate
                           );
                           const isSendingThis = Boolean(sendingCallLetterId && (sendingCallLetterId === c.id || (emailKey && sendingCallLetterId === emailKey)));
+                          const isJustAdded = c.id === lastAddedCallLetterCandidateId;
 
                           return (
-                            <div key={c.id} style={{ background: '#ffffff', border: '1.5px solid #e2e8f0', borderRadius: '1.15rem', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.15rem', boxShadow: '0 4px 15px rgba(15, 23, 42, 0.03)' }}>
+                            <div key={c.id} style={{ background: isJustAdded ? '#faf5ff' : '#ffffff', border: isJustAdded ? '2px solid #8b5cf6' : '1.5px solid #e2e8f0', borderRadius: '1.15rem', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.15rem', boxShadow: isJustAdded ? '0 8px 25px rgba(139, 92, 246, 0.18)' : '0 4px 15px rgba(15, 23, 42, 0.03)' }}>
                               {/* Card Header */}
                               <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -7378,7 +8063,14 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                     {(c.customName || c.firstName || 'C').charAt(0).toUpperCase()}
                                   </div>
                                   <div>
-                                    <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>{c.customName || `${c.firstName} ${c.lastName}`}</h3>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>{c.customName || `${c.firstName} ${c.lastName}`}</h3>
+                                      {isJustAdded && (
+                                        <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 6px', borderRadius: '99px', background: '#ecfdf5', color: '#047857', border: '1px solid #6ee7b7' }}>
+                                          ★ ON TOP
+                                        </span>
+                                      )}
+                                    </div>
                                     <p style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, margin: '2px 0 0 0' }}>#{code}</p>
                                   </div>
                                 </div>
@@ -7609,8 +8301,41 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
             {/* ════════════════ STAGE 6: RECEIVED CALL LETTER (NEW STEP BETWEEN CALL LETTER & OFFER) ════════════════ */}
             {activeTab === 'stage-received-call-letter' && (() => {
-              // 1. Pipeline candidates in 'Received Call Letter' stage
+              const storedOffer = getStoredOfferCandidates();
+
+              const isCandidateInOfferOrLater = (candId?: string, candEmail?: string, candName?: string) => {
+                const em = (candEmail || '').trim().toLowerCase();
+                const nm = (candName || '').trim().toLowerCase();
+                const id = (candId || '').trim();
+
+                const s = (em && formApplicantStatuses[em]) || 
+                          (candEmail && formApplicantStatuses[candEmail]) || 
+                          (id && formApplicantStatuses[id]) ||
+                          (nm && formApplicantStatuses[nm]);
+
+                if (s === 'offer' || s === 'onboarded' || s === 'declined') return true;
+
+                const inStored = storedOffer.some(so => 
+                  (em && so.email && so.email.trim().toLowerCase() === em) || 
+                  (id && so.id === id) ||
+                  (nm && so.customName && so.customName.trim().toLowerCase() === nm)
+                );
+                if (inStored) return true;
+
+                const dbCand = candidates.find(c => 
+                  (em && c.email && c.email.trim().toLowerCase() === em) || 
+                  (id && c.id === id) ||
+                  (nm && `${c.firstName} ${c.lastName}`.trim().toLowerCase() === nm)
+                );
+                if (dbCand && (dbCand.stage === 'Offer' || dbCand.stage === 'Onboarding' || dbCand.stage === 'Rejected')) return true;
+
+                return false;
+              };
+
+              // 1. Pipeline candidates in 'Received Call Letter' stage (excluding those in Offer or later)
               const pipelineReceived = candidates.filter(c => {
+                if (isCandidateDeleted(c.id, c.email)) return false;
+                if (isCandidateInOfferOrLater(c.id, c.email, c.customName || `${c.firstName} ${c.lastName}`)) return false;
                 const emailKey = (c.email || '').toLowerCase().trim();
                 const nameKey = `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase();
                 const code = getCandidateCode(c);
@@ -7620,13 +8345,12 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                           (nameKey && formApplicantStatuses[nameKey]) ||
                           (code && formApplicantStatuses[code]);
 
-                if (s === 'offer' || s === 'onboarded' || s === 'declined') return false;
-                if (c.stage === 'Offer' || c.stage === 'Onboarding' || c.stage === 'Rejected') return false;
                 return c.stage === 'Received Call Letter' || s === 'received_call_letter' || s === 'call_letter_received' || s === 'received-call-letter' || c.callLetterStatus === 'RECEIVED';
               });
 
-              // 2. Map every live applicant record from the Received Call Letter Google Sheet
+              // 2. Map live applicant records from Received Call Letter Google Sheet (excluding candidates moved to Offer or later)
               const sheetReceivedDocs: Candidate[] = liveReceivedCallLetterResponses
+                .filter((r: any) => !isCandidateDeleted(r.id, r.email) && !isCandidateInOfferOrLater(r.id, r.email, r.fullName))
                 .map((r, idx) => {
                   const existing = candidates.find(c => 
                     (r.email && c.email && c.email.toLowerCase() === r.email.toLowerCase()) || 
@@ -7690,6 +8414,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               });
 
               const receivedCallLetterCandidates = Array.from(map.values());
+
+              const activeReceivedResponses = liveReceivedCallLetterResponses.filter((r: any) => 
+                !isCandidateDeleted(r.id, r.email) && !isCandidateInOfferOrLater(r.id, r.email, r.fullName)
+              );
 
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -7829,18 +8557,28 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                         </tr>
                       </thead>
                       <tbody>
-                        {liveReceivedCallLetterResponses.length === 0 ? (
+                        {activeReceivedResponses.length === 0 ? (
                           <tr>
                             <td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-                                <Inbox className="h-6 w-6 text-emerald-400 animate-pulse" />
-                                <span style={{ fontWeight: 600 }}>Listening for live responses from Google Sheet...</span>
-                                <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Responses submitted to the "Received Call Letter" form will automatically stream here.</span>
+                                {liveReceivedCallLetterResponses.length === 0 ? (
+                                  <>
+                                    <Inbox className="h-6 w-6 text-emerald-400 animate-pulse" />
+                                    <span style={{ fontWeight: 600 }}>Listening for live responses from Google Sheet...</span>
+                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Responses submitted to the "Received Call Letter" form will automatically stream here.</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle className="h-6 w-6 text-emerald-500" />
+                                    <span style={{ fontWeight: 700, color: '#047857' }}>All candidate call letter acceptances have been processed and advanced to Offer!</span>
+                                    <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Check the "8. Offer" tab to review compensation, training clauses, and generate offer letters.</span>
+                                  </>
+                                )}
                               </div>
                             </td>
                           </tr>
                         ) : (
-                          liveReceivedCallLetterResponses.map((r: any, idx: number) => {
+                          activeReceivedResponses.map((r: any, idx: number) => {
                             const matchingCand: Candidate = receivedCallLetterCandidates.find(c => 
                               (r.email && c.email && c.email.toLowerCase() === r.email.toLowerCase()) || 
                               c.id === r.id || 
@@ -7931,6 +8669,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                     <button
                                       type="button"
                                       onClick={async () => {
+                                        setActiveTab('stage-7');
                                         await handlePassReceivedToOffer(matchingCand.id, matchingCand);
                                         setActiveTab('stage-7');
                                       }}
@@ -8284,6 +9023,65 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                               </div>
                             </div>
 
+                            {/* Inputs Row 5: Training Option Selection */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155' }}>
+                                Offer Compensation Model:
+                              </span>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                <button
+                                  type="button"
+                                  disabled={c.offerStatus === 'SENT'}
+                                  onClick={() => {
+                                    setCandidateOfferForms(prev => ({
+                                      ...prev,
+                                      [c.id]: { ...prev[c.id], includeTraining: true },
+                                      ...(c.email ? { [c.email]: { ...prev[c.email], includeTraining: true } } : {}),
+                                      ...(c.email ? { [c.email.toLowerCase()]: { ...prev[c.email.toLowerCase()], includeTraining: true } } : {})
+                                    }));
+                                  }}
+                                  style={{
+                                    padding: '7px 10px',
+                                    fontSize: '0.72rem',
+                                    borderRadius: '8px',
+                                    border: (candForm.includeTraining !== false) ? '1.5px solid #f97316' : '1px solid #cbd5e1',
+                                    background: (candForm.includeTraining !== false) ? '#fff7ed' : '#ffffff',
+                                    color: (candForm.includeTraining !== false) ? '#ea580c' : '#64748b',
+                                    cursor: c.offerStatus === 'SENT' ? 'not-allowed' : 'pointer',
+                                    textAlign: 'left'
+                                  }}
+                                >
+                                  <span style={{ display: 'block', fontWeight: 800 }}>✓ With Training</span>
+                                  <span style={{ fontSize: '0.62rem', fontWeight: 500, opacity: 0.85 }}>INR 20K during 3-6m training</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={c.offerStatus === 'SENT'}
+                                  onClick={() => {
+                                    setCandidateOfferForms(prev => ({
+                                      ...prev,
+                                      [c.id]: { ...prev[c.id], includeTraining: false },
+                                      ...(c.email ? { [c.email]: { ...prev[c.email], includeTraining: false } } : {}),
+                                      ...(c.email ? { [c.email.toLowerCase()]: { ...prev[c.email.toLowerCase()], includeTraining: false } } : {})
+                                    }));
+                                  }}
+                                  style={{
+                                    padding: '7px 10px',
+                                    fontSize: '0.72rem',
+                                    borderRadius: '8px',
+                                    border: (candForm.includeTraining === false) ? '1.5px solid #3b82f6' : '1px solid #cbd5e1',
+                                    background: (candForm.includeTraining === false) ? '#eff6ff' : '#ffffff',
+                                    color: (candForm.includeTraining === false) ? '#2563eb' : '#64748b',
+                                    cursor: c.offerStatus === 'SENT' ? 'not-allowed' : 'pointer',
+                                    textAlign: 'left'
+                                  }}
+                                >
+                                  <span style={{ display: 'block', fontWeight: 800 }}>✓ Without Training</span>
+                                  <span style={{ fontSize: '0.62rem', fontWeight: 500, opacity: 0.85 }}>Direct Annual Compensation</span>
+                                </button>
+                              </div>
+                            </div>
+
                             {/* ── Salary & Deductions Interactive Calculation Table ── */}
                             <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '0.75rem', overflow: 'hidden', fontSize: '0.72rem' }}>
                               <div style={{ background: '#f1f5f9', padding: '6px 10px', fontWeight: 800, color: '#1e293b', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -8373,7 +9171,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => setPreviewOfferCandidate(c)}
+                                  onClick={() => {
+                                    setPreviewOfferWithTraining(candForm.includeTraining !== false);
+                                    setPreviewOfferCandidate(c);
+                                  }}
                                   className="rec-btn-outline"
                                   style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', fontWeight: 700, gap: '4px' }}
                                   title="Preview Formal Offer Letter Contract & Annexure"
@@ -9909,6 +10710,684 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         )}
       </AnimatePresence>
 
+      {/* ════════════════ ADD CANDIDATE TO DOCUMENTS STAGE MODAL ════════════════ */}
+      <AnimatePresence>
+        {showAddDocCandidateModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="rec-modal-backdrop"
+            style={{ zIndex: 999999, padding: '1rem' }}
+            onClick={() => setShowAddDocCandidateModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="rec-modal"
+              style={{ maxWidth: '560px', width: '100%', borderRadius: '1.25rem', overflow: 'hidden', boxShadow: '0 25px 60px -15px rgba(0,0,0,0.25)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="rec-modal-header" style={{ background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)', color: '#fff', padding: '1.15rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <FolderOpen className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#fff' }}>Add Profile to Stage 4: Documents</h3>
+                    <p style={{ margin: '2px 0 0 0', fontSize: '0.72rem', color: '#bfdbfe' }}>Add a new candidate or select from pipeline to move into Documents stage</p>
+                  </div>
+                </div>
+                <button className="rec-modal-close" style={{ color: '#fff', background: 'rgba(255,255,255,0.15)', border: 0, borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowAddDocCandidateModal(false)}>✕</button>
+              </div>
+
+              <div className="rec-modal-body" style={{ padding: '1.5rem', maxHeight: '80vh', overflowY: 'auto' }}>
+                <form onSubmit={handleAddDocCandidateSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {/* Select Existing Applicant (Optional) */}
+                  <div style={{ background: '#f8fafc', padding: '0.85rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0' }}>
+                    <label style={{ fontSize: '0.72rem', fontWeight: 800, color: '#1e293b', marginBottom: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span>Quick Select from Existing Pipeline</span>
+                      <span style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: 500 }}>Optional</span>
+                    </label>
+                    <select
+                      className="rec-select"
+                      style={{ width: '100%', height: '38px', fontSize: '0.78rem' }}
+                      value={docCandidateForm.existingCandidateId}
+                      onChange={e => {
+                        const val = e.target.value;
+                        if (!val) {
+                          setDocCandidateForm(prev => ({
+                            ...prev,
+                            existingCandidateId: '',
+                            firstName: '',
+                            lastName: '',
+                            email: '',
+                            phone: ''
+                          }));
+                          return;
+                        }
+                        const found = unifiedCandidates.find(c => c.id === val || c.email === val);
+                        if (found) {
+                          setDocCandidateForm(prev => ({
+                            ...prev,
+                            existingCandidateId: found.id,
+                            firstName: found.firstName || '',
+                            lastName: found.lastName || '',
+                            email: found.email || '',
+                            phone: found.phone !== 'N/A' ? (found.phone || '') : '',
+                            candidateType: (found as any).candidateType || prev.candidateType,
+                            jobTitle: found.jobTitle || prev.jobTitle,
+                            experience: found.experience || prev.experience
+                          }));
+                        }
+                      }}
+                    >
+                      <option value="">-- Or enter new candidate details below --</option>
+                      {unifiedCandidates
+                        .filter(c => !isCandidateDeleted(c.id, c.email) && c.stage !== 'Documents' && c.stage !== 'Offer' && c.stage !== 'Onboarding' && c.stage !== 'Rejected')
+                        .map(c => (
+                          <option key={c.id || c.email} value={c.id}>
+                            {c.firstName} {c.lastName} ({c.email}) - Current: {c.stage || 'Applications'}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  {/* Name Fields */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>First Name *</label>
+                      <input
+                        type="text"
+                        required
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem' }}
+                        value={docCandidateForm.firstName}
+                        onChange={e => setDocCandidateForm(prev => ({ ...prev, firstName: e.target.value }))}
+                        placeholder="e.g. Ramesh"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Last Name</label>
+                      <input
+                        type="text"
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem' }}
+                        value={docCandidateForm.lastName}
+                        onChange={e => setDocCandidateForm(prev => ({ ...prev, lastName: e.target.value }))}
+                        placeholder="e.g. Kumar"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Contact Fields */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Email Address *</label>
+                      <input
+                        type="email"
+                        required
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem' }}
+                        value={docCandidateForm.email}
+                        onChange={e => setDocCandidateForm(prev => ({ ...prev, email: e.target.value }))}
+                        placeholder="candidate@gmail.com"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Phone Number</label>
+                      <input
+                        type="tel"
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem' }}
+                        value={docCandidateForm.phone}
+                        onChange={e => setDocCandidateForm(prev => ({ ...prev, phone: e.target.value }))}
+                        placeholder="+91 9876543210"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Candidate Type & Job Title */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Candidate Type</label>
+                      <select
+                        className="rec-select"
+                        style={{ width: '100%', height: '38px', fontSize: '0.78rem' }}
+                        value={docCandidateForm.candidateType}
+                        onChange={e => setDocCandidateForm(prev => ({ ...prev, candidateType: e.target.value }))}
+                      >
+                        <option value="Freshers">Freshers</option>
+                        <option value="Experienced">Experienced</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Job Role / Title</label>
+                      <input
+                        type="text"
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem' }}
+                        value={docCandidateForm.jobTitle}
+                        onChange={e => setDocCandidateForm(prev => ({ ...prev, jobTitle: e.target.value }))}
+                        placeholder="Associate Software Engineer"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Status in Documents Stage Option */}
+                  <div>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Status in Documents Stage</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => setDocCandidateForm(prev => ({ ...prev, statusOption: 'completed' }))}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          border: docCandidateForm.statusOption === 'completed' ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                          background: docCandidateForm.statusOption === 'completed' ? '#eff6ff' : '#ffffff',
+                          color: docCandidateForm.statusOption === 'completed' ? '#1d4ed8' : '#64748b',
+                          fontWeight: 700,
+                          fontSize: '0.74rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <CheckCircle className="h-4 w-4 text-emerald-600" /> Completed (Sent)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDocCandidateForm(prev => ({ ...prev, statusOption: 'pending' }))}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          border: docCandidateForm.statusOption === 'pending' ? '2px solid #f59e0b' : '1px solid #e2e8f0',
+                          background: docCandidateForm.statusOption === 'pending' ? '#fffbeb' : '#ffffff',
+                          color: docCandidateForm.statusOption === 'pending' ? '#b45309' : '#64748b',
+                          fontWeight: 700,
+                          fontSize: '0.74rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <Clock className="h-4 w-4 text-amber-500" /> Pending (To Send)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Document / Drive Link (Optional) */}
+                  <div>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span>Initial Document or Google Drive Link</span>
+                      <span style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: 500 }}>Optional</span>
+                    </label>
+                    <input
+                      type="url"
+                      className="rec-search-input"
+                      style={{ width: '100%', height: '38px', paddingLeft: '0.75rem' }}
+                      value={docCandidateForm.driveLink}
+                      onChange={e => setDocCandidateForm(prev => ({ ...prev, driveLink: e.target.value }))}
+                      placeholder="https://drive.google.com/file/d/..."
+                    />
+                  </div>
+
+                  {/* Submit Buttons */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
+                    <button
+                      type="button"
+                      className="rec-btn-outline"
+                      onClick={() => setShowAddDocCandidateModal(false)}
+                      style={{ padding: '0 16px', height: '38px', fontSize: '0.78rem' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="rec-btn-primary"
+                      disabled={submittingDocCandidate}
+                      style={{ padding: '0 18px', height: '38px', fontSize: '0.78rem', background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)', color: '#fff', fontWeight: 700 }}
+                    >
+                      {submittingDocCandidate ? 'Adding Profile...' : '✓ Add Profile to Documents'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ════════════════ ADD PROFILE TO INTERVIEW SLOT MODAL ════════════════ */}
+      <AnimatePresence>
+        {showAddInterviewCandidateModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="rec-modal-backdrop"
+            style={{ zIndex: 1000000, padding: '1rem', background: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(8px)' }}
+            onClick={() => setShowAddInterviewCandidateModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 15 }}
+              className="rec-modal-content"
+              style={{ maxWidth: '580px', width: '100%', borderRadius: '1.25rem', overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="rec-modal-header" style={{ background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #7c3aed 100%)', padding: '1.1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <UserPlus className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#fff' }}>Add Profile to Interview Schedule</h3>
+                    <p style={{ margin: '2px 0 0 0', fontSize: '0.72rem', color: '#e0e7ff' }}>Add candidate directly & select them in the interview slot booking modal</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="rec-modal-close"
+                  style={{ color: '#fff', background: 'rgba(255,255,255,0.2)', border: 0, borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', fontWeight: 800 }}
+                  onClick={() => setShowAddInterviewCandidateModal(false)}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="rec-modal-body" style={{ padding: '1.5rem', maxHeight: '82vh', overflowY: 'auto' }}>
+                <form onSubmit={handleAddInterviewCandidateSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  
+                  {/* Name Fields */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>First Name *</label>
+                      <input
+                        type="text"
+                        required
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem', borderRadius: '0.65rem' }}
+                        value={interviewCandidateForm.firstName}
+                        onChange={e => setInterviewCandidateForm(prev => ({ ...prev, firstName: e.target.value }))}
+                        placeholder="e.g. Nagarjuna"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Last Name</label>
+                      <input
+                        type="text"
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem', borderRadius: '0.65rem' }}
+                        value={interviewCandidateForm.lastName}
+                        onChange={e => setInterviewCandidateForm(prev => ({ ...prev, lastName: e.target.value }))}
+                        placeholder="e.g. Korivi"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Contact Fields */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Candidate Email *</label>
+                      <input
+                        type="email"
+                        required
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem', borderRadius: '0.65rem' }}
+                        value={interviewCandidateForm.email}
+                        onChange={e => setInterviewCandidateForm(prev => ({ ...prev, email: e.target.value }))}
+                        placeholder="candidate@gmail.com"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Phone Number</label>
+                      <input
+                        type="tel"
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem', borderRadius: '0.65rem' }}
+                        value={interviewCandidateForm.phone}
+                        onChange={e => setInterviewCandidateForm(prev => ({ ...prev, phone: e.target.value }))}
+                        placeholder="+91 9876543210"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Role & Qualification */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Job Role / Position</label>
+                      <input
+                        type="text"
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem', borderRadius: '0.65rem' }}
+                        value={interviewCandidateForm.jobTitle}
+                        onChange={e => setInterviewCandidateForm(prev => ({ ...prev, jobTitle: e.target.value }))}
+                        placeholder="Full Stack Engineer"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Experience / Qualification</label>
+                      <input
+                        type="text"
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem', borderRadius: '0.65rem' }}
+                        value={interviewCandidateForm.experience}
+                        onChange={e => setInterviewCandidateForm(prev => ({ ...prev, experience: e.target.value }))}
+                        placeholder="Degree / Freshers"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Interview Round */}
+                  <div>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Default Interview Round</label>
+                    <select
+                      className="rec-select"
+                      style={{ width: '100%', height: '38px', borderRadius: '0.65rem', fontWeight: 600 }}
+                      value={interviewCandidateForm.interviewRound}
+                      onChange={e => setInterviewCandidateForm(prev => ({ ...prev, interviewRound: e.target.value }))}
+                    >
+                      <option value="Technical Round">Technical Round</option>
+                      <option value="HR Screening">HR Screening</option>
+                      <option value="Coding Assessment">Coding Assessment</option>
+                      <option value="Management Final">Management Final</option>
+                    </select>
+                  </div>
+
+                  {/* Submit Buttons */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
+                    <button
+                      type="button"
+                      className="rec-btn-outline"
+                      onClick={() => setShowAddInterviewCandidateModal(false)}
+                      style={{ padding: '0 16px', height: '38px', fontSize: '0.78rem', borderRadius: '0.65rem' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="rec-btn-primary"
+                      disabled={submittingInterviewCandidate}
+                      style={{
+                        padding: '0 18px',
+                        height: '38px',
+                        fontSize: '0.78rem',
+                        borderRadius: '0.65rem',
+                        background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #7c3aed 100%)',
+                        color: '#fff',
+                        fontWeight: 700,
+                        boxShadow: '0 4px 12px rgba(79, 70, 229, 0.35)'
+                      }}
+                    >
+                      {submittingInterviewCandidate ? 'Adding Profile...' : '✓ Add Profile & Select for Interview'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ════════════════ ADD PROFILE TO CALL LETTER STAGE MODAL ════════════════ */}
+      <AnimatePresence>
+        {showAddCallLetterCandidateModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="rec-modal-backdrop"
+            style={{ position: 'fixed', inset: 0, zIndex: 1000000, padding: '1.25rem', background: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflowY: 'auto' }}
+            onClick={() => setShowAddCallLetterCandidateModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 15 }}
+              className="rec-modal-content"
+              style={{ maxWidth: '620px', width: '100%', borderRadius: '1.25rem', overflow: 'hidden', border: '1px solid #e9d5ff', boxShadow: '0 25px 50px -12px rgba(139, 92, 246, 0.35)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="rec-modal-header" style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 50%, #6d28d9 100%)', padding: '1.1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <MailCheck className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#fff' }}>Add Profile to Stage 6: Call Letter</h3>
+                    <p style={{ margin: '2px 0 0 0', fontSize: '0.72rem', color: '#f3e8ff' }}>Add candidate directly or import from earlier stages into Call Letter Issuance</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="rec-modal-close"
+                  style={{ color: '#fff', background: 'rgba(255,255,255,0.2)', border: 0, borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', fontWeight: 800 }}
+                  onClick={() => setShowAddCallLetterCandidateModal(false)}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="rec-modal-body" style={{ padding: '1.5rem', maxHeight: '82vh', overflowY: 'auto' }}>
+                <form onSubmit={handleAddCallLetterCandidateSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  
+                  {/* Select Existing Applicant from Pipeline */}
+                  <div style={{ background: '#faf5ff', padding: '0.85rem', borderRadius: '0.75rem', border: '1px solid #e9d5ff' }}>
+                    <label style={{ fontSize: '0.72rem', fontWeight: 800, color: '#581c87', marginBottom: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span>Quick Select from Existing Pipeline</span>
+                      <span style={{ fontSize: '0.65rem', color: '#9333ea', fontWeight: 600 }}>Optional</span>
+                    </label>
+                    <select
+                      className="rec-select"
+                      style={{ width: '100%', height: '38px', fontSize: '0.78rem', borderColor: '#d8b4fe' }}
+                      value={callLetterCandidateForm.existingCandidateId}
+                      onChange={e => {
+                        const val = e.target.value;
+                        if (!val) {
+                          setCallLetterCandidateForm(prev => ({
+                            ...prev,
+                            existingCandidateId: '',
+                            firstName: '',
+                            lastName: '',
+                            email: '',
+                            phone: ''
+                          }));
+                          return;
+                        }
+                        const found = unifiedCandidates.find(c => c.id === val || c.email === val);
+                        if (found) {
+                          setCallLetterCandidateForm(prev => ({
+                            ...prev,
+                            existingCandidateId: found.id,
+                            firstName: found.firstName || '',
+                            lastName: found.lastName || '',
+                            email: found.email || '',
+                            phone: found.phone !== 'N/A' ? (found.phone || '') : '',
+                            jobTitle: found.jobTitle || prev.jobTitle,
+                            experience: found.experience || prev.experience
+                          }));
+                        }
+                      }}
+                    >
+                      <option value="">-- Or enter new candidate details below --</option>
+                      {unifiedCandidates
+                        .filter(c => !isCandidateDeleted(c.id, c.email) && c.stage !== 'Call Letter' && c.stage !== 'Received Call Letter' && c.stage !== 'Offer' && c.stage !== 'Onboarding' && c.stage !== 'Rejected')
+                        .sort((a, b) => {
+                          const aTime = a.appliedDate ? new Date(a.appliedDate).getTime() : 0;
+                          const bTime = b.appliedDate ? new Date(b.appliedDate).getTime() : 0;
+                          return bTime - aTime;
+                        })
+                        .map(c => (
+                          <option key={c.id || c.email} value={c.id}>
+                            {c.firstName} {c.lastName} ({c.email}) - Current: {c.stage || 'Applications'}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  {/* Name Fields */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>First Name *</label>
+                      <input
+                        type="text"
+                        required
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem', borderRadius: '0.65rem' }}
+                        value={callLetterCandidateForm.firstName}
+                        onChange={e => setCallLetterCandidateForm(prev => ({ ...prev, firstName: e.target.value }))}
+                        placeholder="e.g. Maru"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Last Name</label>
+                      <input
+                        type="text"
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem', borderRadius: '0.65rem' }}
+                        value={callLetterCandidateForm.lastName}
+                        onChange={e => setCallLetterCandidateForm(prev => ({ ...prev, lastName: e.target.value }))}
+                        placeholder="e.g. Nithin"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Contact Fields */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Candidate Email *</label>
+                      <input
+                        type="email"
+                        required
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem', borderRadius: '0.65rem' }}
+                        value={callLetterCandidateForm.email}
+                        onChange={e => setCallLetterCandidateForm(prev => ({ ...prev, email: e.target.value }))}
+                        placeholder="candidate@gmail.com"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Phone Number</label>
+                      <input
+                        type="tel"
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem', borderRadius: '0.65rem' }}
+                        value={callLetterCandidateForm.phone}
+                        onChange={e => setCallLetterCandidateForm(prev => ({ ...prev, phone: e.target.value }))}
+                        placeholder="+91 9876543210"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Role & Qualification */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Designation / Job Role</label>
+                      <input
+                        type="text"
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem', borderRadius: '0.65rem' }}
+                        value={callLetterCandidateForm.jobTitle}
+                        onChange={e => setCallLetterCandidateForm(prev => ({ ...prev, jobTitle: e.target.value }))}
+                        placeholder="Associate Software Engineer"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Experience / Qualification</label>
+                      <input
+                        type="text"
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem', borderRadius: '0.65rem' }}
+                        value={callLetterCandidateForm.experience}
+                        onChange={e => setCallLetterCandidateForm(prev => ({ ...prev, experience: e.target.value }))}
+                        placeholder="Degree / Freshers"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Reporting Venue */}
+                  <div>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Reporting Venue / Location Address</label>
+                    <input
+                      type="text"
+                      className="rec-search-input"
+                      style={{ width: '100%', height: '38px', paddingLeft: '0.75rem', borderRadius: '0.65rem' }}
+                      value={callLetterCandidateForm.reportingVenue}
+                      onChange={e => setCallLetterCandidateForm(prev => ({ ...prev, reportingVenue: e.target.value }))}
+                      placeholder="VR PI Group, Plot No. 12, Cyber Gateway, Hitech City, Hyderabad, 500081"
+                    />
+                  </div>
+
+                  {/* Reporting Date & Time */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Reporting Date</label>
+                      <input
+                        type="date"
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem', borderRadius: '0.65rem', fontWeight: 600 }}
+                        value={callLetterCandidateForm.reportingDate}
+                        onChange={e => setCallLetterCandidateForm(prev => ({ ...prev, reportingDate: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px', display: 'block' }}>Reporting Time</label>
+                      <input
+                        type="text"
+                        className="rec-search-input"
+                        style={{ width: '100%', height: '38px', paddingLeft: '0.75rem', borderRadius: '0.65rem', fontWeight: 600 }}
+                        value={callLetterCandidateForm.reportingTime}
+                        onChange={e => setCallLetterCandidateForm(prev => ({ ...prev, reportingTime: e.target.value }))}
+                        placeholder="09:30 AM"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Submit Buttons */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
+                    <button
+                      type="button"
+                      className="rec-btn-outline"
+                      onClick={() => setShowAddCallLetterCandidateModal(false)}
+                      style={{ padding: '0 16px', height: '38px', fontSize: '0.78rem', borderRadius: '0.65rem' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="rec-btn-primary"
+                      disabled={submittingCallLetterCandidate}
+                      style={{
+                        padding: '0 18px',
+                        height: '38px',
+                        fontSize: '0.78rem',
+                        borderRadius: '0.65rem',
+                        background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 50%, #6d28d9 100%)',
+                        color: '#fff',
+                        fontWeight: 700,
+                        boxShadow: '0 4px 12px rgba(124, 58, 237, 0.35)'
+                      }}
+                    >
+                      {submittingCallLetterCandidate ? 'Adding Profile...' : '✓ Add Profile to Call Letter'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ════════════════ OFFICIAL CALL LETTER PREVIEW & PRINT MODAL ════════════════ */}
       <AnimatePresence>
         {previewCallLetterCandidate && activeTab === 'stage-call-letter' && (
@@ -10185,13 +11664,50 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                     </div>
                   )}
 
+                  {/* Training Option Segmented Toggle */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px', background: '#1e293b', padding: '2px 4px', borderRadius: '6px', border: '1px solid #334155' }}>
+                    <span style={{ fontSize: '0.68rem', color: '#94a3b8', padding: '0 4px', fontWeight: 600 }}>Clause:</span>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewOfferWithTraining(true)}
+                      style={{
+                        padding: '3px 8px',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        borderRadius: '4px',
+                        border: 'none',
+                        background: previewOfferWithTraining ? '#f97316' : 'transparent',
+                        color: previewOfferWithTraining ? '#fff' : '#94a3b8',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      With Training
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewOfferWithTraining(false)}
+                      style={{
+                        padding: '3px 8px',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        borderRadius: '4px',
+                        border: 'none',
+                        background: !previewOfferWithTraining ? '#3b82f6' : 'transparent',
+                        color: !previewOfferWithTraining ? '#fff' : '#94a3b8',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Without Training
+                    </button>
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => {
                       const candForm = candidateOfferForms[previewOfferCandidate.id] || (previewOfferCandidate.email ? candidateOfferForms[previewOfferCandidate.email] : undefined) || (previewOfferCandidate.email ? candidateOfferForms[previewOfferCandidate.email.toLowerCase().trim()] : undefined) || {};
-                      const annualCtcNum = candForm.annualCtc ? Number(candForm.annualCtc) : (previewOfferCandidate.offerSalary ? (previewOfferCandidate.offerSalary > 100000 ? previewOfferCandidate.offerSalary : previewOfferCandidate.offerSalary * 12) : 720000);
+                      const annualCtcNum = candForm.annualCtc ? Number(candForm.annualCtc) : (previewOfferCandidate.offerSalary ? (previewOfferCandidate.offerSalary > 100000 ? previewOfferCandidate.offerSalary : previewOfferCandidate.offerSalary * 12) : 420000);
                       const joiningDate = candForm.joiningDate || previewOfferCandidate.offerJoiningDate;
-                      handleDownloadFormalOfferLetter(previewOfferCandidate, annualCtcNum, joiningDate, candForm.designation, candForm.referenceNo, candForm.venue, candForm.candidateName);
+                      handleDownloadFormalOfferLetter(previewOfferCandidate, annualCtcNum, joiningDate, candForm.designation, candForm.referenceNo, candForm.venue, candForm.candidateName, previewOfferWithTraining);
                     }}
                     className="rec-btn-outline"
                     style={{ fontSize: '0.72rem', height: '30px', padding: '0 12px', gap: '5px', background: 'rgba(249,115,22,0.25)', borderColor: 'rgba(251,146,60,0.5)', color: '#ffffff', fontWeight: 800 }}
@@ -10240,7 +11756,9 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                   referenceNo: refNo,
                   offerDate: todayFormatted,
                   genderPrefix: 'Mr./Ms.',
-                  reportingVenue: venue
+                  reportingVenue: venue,
+                  includeTraining: previewOfferWithTraining,
+                  trainingSalary: candForm.trainingSalary
                 };
 
                 const pagesToRender = previewOfferMode === 'all' 

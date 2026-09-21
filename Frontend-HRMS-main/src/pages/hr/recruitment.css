@@ -403,6 +403,40 @@ input:checked + .rec-slider:before {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+.rec-top-scrollbar {
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 12px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  scrollbar-width: thin;
+}
+.rec-top-scrollbar::-webkit-scrollbar {
+  height: 10px;
+}
+.rec-top-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 6px;
+}
+.rec-top-scrollbar::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 6px;
+  border: 2px solid #f1f5f9;
+}
+.rec-top-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 .rec-timeline-card-header {
   border-bottom: 1px solid #f1f5f9;
   padding-bottom: 1rem;
