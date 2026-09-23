@@ -1002,6 +1002,7 @@ export const recruitmentController = {
       const updateData: any = {}
       if (offerSalary) updateData.offerSalary = Number(offerSalary)
       if (offerJoiningDate) updateData.offerJoiningDate = new Date(offerJoiningDate)
+      if (req.body.name || req.body.candidateName) updateData.name = req.body.name || req.body.candidateName
       if (offerStatus) {
         updateData.offerStatus = offerStatus
         if (offerStatus === 'ACCEPTED') {
@@ -2180,11 +2181,36 @@ Recruitment Communication`
       })
 
       const currentDetails = (existing?.details as any) || {}
+
+      const mergedCandidateOfferForms = { ...(currentDetails.candidateOfferForms || {}) }
+      if (candidateOfferForms && typeof candidateOfferForms === 'object') {
+        for (const [k, v] of Object.entries(candidateOfferForms)) {
+          if (v && typeof v === 'object') {
+            mergedCandidateOfferForms[k] = {
+              ...(mergedCandidateOfferForms[k] || {}),
+              ...v
+            }
+          }
+        }
+      }
+
+      const mergedCandidateCallLetters = { ...(currentDetails.candidateCallLetters || {}) }
+      if (candidateCallLetters && typeof candidateCallLetters === 'object') {
+        for (const [k, v] of Object.entries(candidateCallLetters)) {
+          if (v && typeof v === 'object') {
+            mergedCandidateCallLetters[k] = {
+              ...(mergedCandidateCallLetters[k] || {}),
+              ...v
+            }
+          }
+        }
+      }
+
       const mergedDetails = {
-        candidateOfferForms: { ...(currentDetails.candidateOfferForms || {}), ...(candidateOfferForms || {}) },
+        candidateOfferForms: mergedCandidateOfferForms,
         formApplicantStatuses: { ...(currentDetails.formApplicantStatuses || {}), ...(formApplicantStatuses || {}) },
         deletedApplicants: Array.from(new Set([...(currentDetails.deletedApplicants || []), ...(deletedApplicants || [])])),
-        candidateCallLetters: { ...(currentDetails.candidateCallLetters || {}), ...(candidateCallLetters || {}) },
+        candidateCallLetters: mergedCandidateCallLetters,
         offerCandidates: offerCandidates !== undefined ? offerCandidates : (currentDetails.offerCandidates || []),
         googleMailConfig: googleMailConfig !== undefined ? googleMailConfig : (currentDetails.googleMailConfig || null)
       }

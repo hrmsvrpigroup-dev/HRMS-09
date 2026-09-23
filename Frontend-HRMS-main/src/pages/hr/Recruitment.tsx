@@ -2073,6 +2073,94 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   const [previewOfferPage, setPreviewOfferPage] = useState<number>(1);
   const [previewOfferMode, setPreviewOfferMode] = useState<'all' | 'single'>('all');
   const [previewOfferWithTraining, setPreviewOfferWithTraining] = useState<boolean>(true);
+  const [editingOfferIds, setEditingOfferIds] = useState<Record<string, boolean>>({});
+
+  const toggleOfferEditing = (candidateId: string) => {
+    setEditingOfferIds(prev => ({
+      ...prev,
+      [candidateId]: !prev[candidateId]
+    }));
+  };
+
+  const handleUpdateCandidateOfferForm = (
+    candidateId: string,
+    candEmail: string | undefined,
+    updates: Partial<{
+      candidateName: string;
+      designation: string;
+      referenceNo: string;
+      annualCtc: string;
+      joiningDate: string;
+      venue: string;
+      includeTraining: boolean;
+      trainingSalary: string;
+    }>
+  ) => {
+    const emailKey = candEmail ? candEmail.trim().toLowerCase() : undefined;
+
+    setCandidateOfferForms(prev => {
+      const existingForId = prev[candidateId] || (candEmail ? prev[candEmail] : undefined) || (emailKey ? prev[emailKey] : undefined) || {};
+      const merged = { ...existingForId, ...updates };
+      const nextState = {
+        ...prev,
+        [candidateId]: merged,
+        ...(candEmail ? { [candEmail]: merged } : {}),
+        ...(emailKey ? { [emailKey]: merged } : {})
+      };
+      try {
+        localStorage.setItem('hrms_candidate_offer_forms', JSON.stringify(nextState));
+      } catch (_) {}
+      return nextState;
+    });
+
+    // Update in memory candidates
+    setCandidates(prev => prev.map(cand => {
+      if (cand.id === candidateId || (emailKey && cand.email && cand.email.trim().toLowerCase() === emailKey)) {
+        return {
+          ...cand,
+          ...(updates.candidateName !== undefined ? { customName: updates.candidateName } : {}),
+          ...(updates.designation !== undefined ? { callLetterDesignation: updates.designation } : {}),
+          ...(updates.referenceNo !== undefined ? { callLetterReferenceNo: updates.referenceNo } : {}),
+          ...(updates.annualCtc !== undefined ? { offerSalary: Math.round(Number(updates.annualCtc) / 12) } : {}),
+          ...(updates.joiningDate !== undefined ? { offerJoiningDate: updates.joiningDate } : {}),
+          ...(updates.venue !== undefined ? { callLetterVenue: updates.venue } : {})
+        };
+      }
+      return cand;
+    }));
+
+    // Update storedOffer candidates in localStorage
+    try {
+      const currentOffers = getStoredOfferCandidates();
+      let matched = false;
+      const updatedOffers = currentOffers.map(cand => {
+        if (cand.id === candidateId || (emailKey && cand.email && cand.email.trim().toLowerCase() === emailKey)) {
+          matched = true;
+          return {
+            ...cand,
+            ...(updates.candidateName !== undefined ? { customName: updates.candidateName } : {}),
+            ...(updates.designation !== undefined ? { callLetterDesignation: updates.designation } : {}),
+            ...(updates.referenceNo !== undefined ? { callLetterReferenceNo: updates.referenceNo } : {}),
+            ...(updates.annualCtc !== undefined ? { offerSalary: Math.round(Number(updates.annualCtc) / 12) } : {}),
+            ...(updates.joiningDate !== undefined ? { offerJoiningDate: updates.joiningDate } : {}),
+            ...(updates.venue !== undefined ? { callLetterVenue: updates.venue } : {})
+          };
+        }
+        return cand;
+      });
+      if (matched) {
+        saveStoredOfferCandidates(updatedOffers);
+      }
+    } catch (_) {}
+
+    // Dispatch update to backend shared-state
+    api.post('/recruitment/shared-state', {
+      candidateOfferForms: {
+        [candidateId]: updates,
+        ...(emailKey ? { [emailKey]: updates } : {})
+      }
+    }).catch(() => {});
+  };
 
   // Stage 8 Document uploads mock state
   const [uploadingDocType, setUploadingDocType] = useState<string | null>(null);
@@ -2149,6 +2237,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                 id: app.id,
                 firstName,
                 lastName,
+                customName: (app.name && !app.name.toLowerCase().includes('applicant')) ? app.name : undefined,
                 email: app.email ? app.email.trim() : '',
                 phone: app.phone || 'N/A',
                 stage,
@@ -2200,10 +2289,28 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               storedStatuses = { ...storedStatuses, ...shared.formApplicantStatuses };
             }
             if (shared.candidateOfferForms && typeof shared.candidateOfferForms === 'object' && Object.keys(shared.candidateOfferForms).length > 0) {
-              setCandidateOfferForms(prev => ({ ...prev, ...shared.candidateOfferForms }));
+              setCandidateOfferForms(prev => {
+                const updated = { ...prev };
+                for (const [key, serverForm] of Object.entries(shared.candidateOfferForms)) {
+                  if (!serverForm || typeof serverForm !== 'object') continue;
+                  const localForm = prev[key] || {};
+                  updated[key] = {
+                    ...(serverForm as any),
+                    ...localForm,
+                    candidateName: (localForm.candidateName !== undefined && localForm.candidateName !== '') ? localForm.candidateName : (serverForm as any).candidateName,
+                    designation: (localForm.designation !== undefined && localForm.designation !== '') ? localForm.designation : (serverForm as any).designation,
+                    referenceNo: (localForm.referenceNo !== undefined && localForm.referenceNo !== '') ? localForm.referenceNo : (serverForm as any).referenceNo,
+                    annualCtc: (localForm.annualCtc !== undefined && localForm.annualCtc !== '') ? localForm.annualCtc : (serverForm as any).annualCtc,
+                    joiningDate: (localForm.joiningDate !== undefined && localForm.joiningDate !== '') ? localForm.joiningDate : (serverForm as any).joiningDate,
+                    venue: (localForm.venue !== undefined && localForm.venue !== '') ? localForm.venue : (serverForm as any).venue,
+                    includeTraining: localForm.includeTraining !== undefined ? localForm.includeTraining : (serverForm as any).includeTraining,
+                  };
+                }
+                return updated;
+              });
               try {
                 const currentForms = JSON.parse(localStorage.getItem('hrms_candidate_offer_forms') || '{}');
-                localStorage.setItem('hrms_candidate_offer_forms', JSON.stringify({ ...currentForms, ...shared.candidateOfferForms }));
+                localStorage.setItem('hrms_candidate_offer_forms', JSON.stringify({ ...shared.candidateOfferForms, ...currentForms }));
               } catch (_) {}
             }
             if (Array.isArray(shared.deletedApplicants) && shared.deletedApplicants.length > 0) {
@@ -3317,11 +3424,21 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   };
 
   // Generate & extend Offer
-  const handleExtendOfferSubmit = async (candidateId: string) => {
+  const handleExtendOfferSubmit = async (candidateId: string, isUpdate: boolean = false) => {
     const candForm = candidateOfferForms[candidateId] || {};
     const cand = candidates.find(c => c.id === candidateId);
     const annualCtcStr = candForm.annualCtc || (cand?.offerSalary ? (cand.offerSalary > 100000 ? cand.offerSalary.toString() : (cand.offerSalary * 12).toString()) : offerForm.salary);
     const joiningDate = candForm.joiningDate || offerForm.joiningDate || format(new Date(Date.now() + 7 * 86400000), 'yyyy-MM-dd');
+    const candName = candForm.candidateName !== undefined ? candForm.candidateName : (cand?.customName || `${cand?.firstName || ''} ${cand?.lastName || ''}`.trim() || 'Candidate');
+    const cleanJobTitle = (cand?.jobTitle || '')
+      .replace(/\s*\([^)]*Google\s*Form[^)]*\)/gi, '')
+      .replace(/\s*\(Google Form Recruitment\)/gi, '')
+      .replace(/Google Form Recruitment/gi, '')
+      .replace(/Selected Candidate/gi, 'Associate Software Engineer')
+      .trim() || 'Associate Software Engineer';
+    const designation = candForm.designation !== undefined ? candForm.designation : (cand?.callLetterDesignation || cleanJobTitle);
+    const referenceNo = candForm.referenceNo || cand?.callLetterReferenceNo;
+    const venue = candForm.venue || cand?.callLetterVenue;
 
     if (!joiningDate || !annualCtcStr) {
       alert('Please fill out Joining Date and Annual CTC.');
@@ -3337,7 +3454,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
           offerSalary: monthlyGross,
           offerJoiningDate: joiningDate,
           offerStatus: 'SENT',
-          name: candForm.candidateName || undefined,
+          name: candName || undefined,
+          jobTitle: designation,
           googleMailConfig: getGoogleMailConfig()
         });
       }
@@ -3347,13 +3465,15 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         offerSalary: monthlyGross,
         offerJoiningDate: joiningDate,
         offerStatus: 'SENT',
-        customName: candForm.candidateName || c.customName,
-        callLetterDesignation: candForm.designation || c.callLetterDesignation,
-        callLetterReferenceNo: candForm.referenceNo || c.callLetterReferenceNo,
-        callLetterVenue: candForm.venue || c.callLetterVenue
+        customName: candName || c.customName,
+        callLetterDesignation: designation || c.callLetterDesignation,
+        callLetterReferenceNo: referenceNo || c.callLetterReferenceNo,
+        callLetterVenue: venue || c.callLetterVenue
       } : c));
 
-      alert(`🎉 Offer Letter issued successfully with Annual CTC ₹${annualCtc.toLocaleString('en-IN')} (Gross: ₹${monthlyGross.toLocaleString('en-IN')}/mo)!`);
+      setEditingOfferIds(prev => ({ ...prev, [candidateId]: false }));
+
+      alert(`🎉 Offer Letter ${isUpdate ? 'updated & re-issued' : 'issued'} successfully with Annual CTC ₹${annualCtc.toLocaleString('en-IN')} (Gross: ₹${monthlyGross.toLocaleString('en-IN')}/mo)!`);
       await loadRecruitmentData();
     } catch (err) {
       alert('Failed to extend offer.');
@@ -9510,8 +9630,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                           ? candForm.candidateName 
                           : (c.customName || `${c.firstName || ''} ${c.lastName || ''}`.trim() || 'Candidate');
 
+                        const isEditing = !!editingOfferIds[c.id];
+                        const isLocked = c.offerStatus === 'SENT' && !isEditing;
+
                         return (
-                          <div key={c.id} style={{ background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: '1rem', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.85rem', boxShadow: '0 4px 15px -3px rgba(0,0,0,0.04)' }}>
+                          <div key={c.id} style={{ background: '#fff', border: isEditing ? '1.5px solid #3b82f6' : '1.5px solid #e2e8f0', borderRadius: '1rem', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.85rem', boxShadow: isEditing ? '0 4px 20px -2px rgba(59, 130, 246, 0.15)' : '0 4px 15px -3px rgba(0,0,0,0.04)' }}>
                             {/* Candidate Header */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
                               <div>
@@ -9530,10 +9653,30 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 >
                                   <ArrowLeft className="h-3 w-3" /> Back
                                 </button>
+                                {c.offerStatus === 'SENT' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleOfferEditing(c.id)}
+                                    className="rec-btn-outline"
+                                    style={{
+                                      fontSize: '0.65rem',
+                                      height: '24px',
+                                      padding: '0 8px',
+                                      color: isEditing ? '#dc2626' : '#2563eb',
+                                      borderColor: isEditing ? '#fca5a5' : '#bfdbfe',
+                                      background: isEditing ? '#fef2f2' : '#eff6ff',
+                                      gap: '4px',
+                                      fontWeight: 700
+                                    }}
+                                    title={isEditing ? 'Cancel editing' : 'Edit offer details'}
+                                  >
+                                    <Edit2 className="h-3 w-3" /> {isEditing ? 'Cancel' : 'Edit'}
+                                  </button>
+                                )}
                                 <span className={cn(
                                   'px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase',
                                   c.offerStatus === 'SENT' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-amber-50 text-amber-600 border-amber-100'
-                               )}>
+                                )}>
                                   {c.offerStatus || 'PENDING'}
                                 </span>
                               </div>
@@ -9544,20 +9687,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                               Candidate Name *
                               <input 
                                 type="text" 
-                                disabled={c.offerStatus === 'SENT'}
+                                disabled={isLocked}
                                 className="rec-search-input" 
-                                style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', fontWeight: 700, color: '#0f172a', background: c.offerStatus === 'SENT' ? '#f8fafc' : '#ffffff' }}
+                                style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', fontWeight: 700, color: '#0f172a', background: isLocked ? '#f8fafc' : '#ffffff' }}
                                 value={candName}
-                                onChange={e => {
-                                  const val = e.target.value;
-                                  setCandidateOfferForms(prev => ({
-                                    ...prev,
-                                    [c.id]: { ...prev[c.id], candidateName: val },
-                                    ...(c.email ? { [c.email]: { ...prev[c.email], candidateName: val } } : {}),
-                                    ...(c.email ? { [c.email.toLowerCase()]: { ...prev[c.email.toLowerCase()], candidateName: val } } : {})
-                                  }));
-                                  setCandidates(prev => prev.map(cand => (cand.id === c.id || (c.email && cand.email === c.email)) ? { ...cand, customName: val } : cand));
-                                }}
+                                onChange={e => handleUpdateCandidateOfferForm(c.id, c.email, { candidateName: e.target.value })}
                                 placeholder="e.g. Shiva Prasad"
                               />
                             </div>
@@ -9568,19 +9702,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 Designation *
                                 <input 
                                   type="text" 
-                                  disabled={c.offerStatus === 'SENT'}
+                                  disabled={isLocked}
                                   className="rec-search-input" 
-                                  style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', fontWeight: 700, color: '#0f172a', background: c.offerStatus === 'SENT' ? '#f8fafc' : '#ffffff' }}
+                                  style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', fontWeight: 700, color: '#0f172a', background: isLocked ? '#f8fafc' : '#ffffff' }}
                                   value={designation}
-                                  onChange={e => {
-                                    const val = e.target.value;
-                                    setCandidateOfferForms(prev => ({
-                                      ...prev,
-                                      [c.id]: { ...prev[c.id], designation: val },
-                                      ...(c.email ? { [c.email]: { ...prev[c.email], designation: val } } : {}),
-                                      ...(c.email ? { [c.email.toLowerCase()]: { ...prev[c.email.toLowerCase()], designation: val } } : {})
-                                    }));
-                                  }}
+                                  onChange={e => handleUpdateCandidateOfferForm(c.id, c.email, { designation: e.target.value })}
                                   placeholder="e.g. Associate Software Engineer"
                                 />
                               </div>
@@ -9589,19 +9715,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 Call Letter Reference No. *
                                 <input 
                                   type="text" 
-                                  disabled={c.offerStatus === 'SENT'}
+                                  disabled={isLocked}
                                   className="rec-search-input" 
-                                  style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', fontWeight: 600, color: '#0f172a', background: c.offerStatus === 'SENT' ? '#f8fafc' : '#ffffff' }}
+                                  style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', fontWeight: 600, color: '#0f172a', background: isLocked ? '#f8fafc' : '#ffffff' }}
                                   value={referenceNo}
-                                  onChange={e => {
-                                    const val = e.target.value;
-                                    setCandidateOfferForms(prev => ({
-                                      ...prev,
-                                      [c.id]: { ...prev[c.id], referenceNo: val },
-                                      ...(c.email ? { [c.email]: { ...prev[c.email], referenceNo: val } } : {}),
-                                      ...(c.email ? { [c.email.toLowerCase()]: { ...prev[c.email.toLowerCase()], referenceNo: val } } : {})
-                                    }));
-                                  }}
+                                  onChange={e => handleUpdateCandidateOfferForm(c.id, c.email, { referenceNo: e.target.value })}
                                   placeholder="e.g. 2627/0917/0001"
                                 />
                               </div>
@@ -9614,19 +9732,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 <input 
                                   type="number" 
                                   step="1000"
-                                  disabled={c.offerStatus === 'SENT'}
+                                  disabled={isLocked}
                                   className="rec-search-input" 
-                                  style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', fontWeight: 700, color: '#0f172a', background: c.offerStatus === 'SENT' ? '#f8fafc' : '#ffffff' }}
+                                  style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', fontWeight: 700, color: '#0f172a', background: isLocked ? '#f8fafc' : '#ffffff' }}
                                   value={annualCtcStr}
-                                  onChange={e => {
-                                    const val = e.target.value;
-                                    setCandidateOfferForms(prev => ({
-                                      ...prev,
-                                      [c.id]: { ...prev[c.id], annualCtc: val },
-                                      ...(c.email ? { [c.email]: { ...prev[c.email], annualCtc: val } } : {}),
-                                      ...(c.email ? { [c.email.toLowerCase()]: { ...prev[c.email.toLowerCase()], annualCtc: val } } : {})
-                                    }));
-                                  }}
+                                  onChange={e => handleUpdateCandidateOfferForm(c.id, c.email, { annualCtc: e.target.value })}
                                   placeholder="e.g. 720000"
                                 />
                               </div>
@@ -9635,19 +9745,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 Joining Date *
                                 <input 
                                   type="date" 
-                                  disabled={c.offerStatus === 'SENT'}
+                                  disabled={isLocked}
                                   className="rec-search-input" 
-                                  style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', background: c.offerStatus === 'SENT' ? '#f8fafc' : '#ffffff' }}
+                                  style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', background: isLocked ? '#f8fafc' : '#ffffff' }}
                                   value={joiningDate}
-                                  onChange={e => {
-                                    const val = e.target.value;
-                                    setCandidateOfferForms(prev => ({
-                                      ...prev,
-                                      [c.id]: { ...prev[c.id], joiningDate: val },
-                                      ...(c.email ? { [c.email]: { ...prev[c.email], joiningDate: val } } : {}),
-                                      ...(c.email ? { [c.email.toLowerCase()]: { ...prev[c.email.toLowerCase()], joiningDate: val } } : {})
-                                    }));
-                                  }}
+                                  onChange={e => handleUpdateCandidateOfferForm(c.id, c.email, { joiningDate: e.target.value })}
                                 />
                               </div>
                             </div>
@@ -9660,15 +9762,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                                 <button
                                   type="button"
-                                  disabled={c.offerStatus === 'SENT'}
-                                  onClick={() => {
-                                    setCandidateOfferForms(prev => ({
-                                      ...prev,
-                                      [c.id]: { ...prev[c.id], includeTraining: true },
-                                      ...(c.email ? { [c.email]: { ...prev[c.email], includeTraining: true } } : {}),
-                                      ...(c.email ? { [c.email.toLowerCase()]: { ...prev[c.email.toLowerCase()], includeTraining: true } } : {})
-                                    }));
-                                  }}
+                                  disabled={isLocked}
+                                  onClick={() => handleUpdateCandidateOfferForm(c.id, c.email, { includeTraining: true })}
                                   style={{
                                     padding: '7px 10px',
                                     fontSize: '0.72rem',
@@ -9676,7 +9771,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                     border: (candForm.includeTraining !== false) ? '1.5px solid #f97316' : '1px solid #cbd5e1',
                                     background: (candForm.includeTraining !== false) ? '#fff7ed' : '#ffffff',
                                     color: (candForm.includeTraining !== false) ? '#ea580c' : '#64748b',
-                                    cursor: c.offerStatus === 'SENT' ? 'not-allowed' : 'pointer',
+                                    cursor: isLocked ? 'not-allowed' : 'pointer',
                                     textAlign: 'left'
                                   }}
                                 >
@@ -9685,15 +9780,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 </button>
                                 <button
                                   type="button"
-                                  disabled={c.offerStatus === 'SENT'}
-                                  onClick={() => {
-                                    setCandidateOfferForms(prev => ({
-                                      ...prev,
-                                      [c.id]: { ...prev[c.id], includeTraining: false },
-                                      ...(c.email ? { [c.email]: { ...prev[c.email], includeTraining: false } } : {}),
-                                      ...(c.email ? { [c.email.toLowerCase()]: { ...prev[c.email.toLowerCase()], includeTraining: false } } : {})
-                                    }));
-                                  }}
+                                  disabled={isLocked}
+                                  onClick={() => handleUpdateCandidateOfferForm(c.id, c.email, { includeTraining: false })}
                                   style={{
                                     padding: '7px 10px',
                                     fontSize: '0.72rem',
@@ -9701,7 +9789,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                     border: (candForm.includeTraining === false) ? '1.5px solid #3b82f6' : '1px solid #cbd5e1',
                                     background: (candForm.includeTraining === false) ? '#eff6ff' : '#ffffff',
                                     color: (candForm.includeTraining === false) ? '#2563eb' : '#64748b',
-                                    cursor: c.offerStatus === 'SENT' ? 'not-allowed' : 'pointer',
+                                    cursor: isLocked ? 'not-allowed' : 'pointer',
                                     textAlign: 'left'
                                   }}
                                 >
@@ -9801,8 +9889,17 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    const latestCand: Candidate = {
+                                      ...c,
+                                      customName: candName,
+                                      callLetterDesignation: designation,
+                                      callLetterReferenceNo: referenceNo,
+                                      offerSalary: Math.round(annualCtcNum / 12),
+                                      offerJoiningDate: joiningDate,
+                                      callLetterVenue: venue
+                                    };
                                     setPreviewOfferWithTraining(candForm.includeTraining !== false);
-                                    setPreviewOfferCandidate(c);
+                                    setPreviewOfferCandidate(latestCand);
                                   }}
                                   className="rec-btn-outline"
                                   style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', fontWeight: 700, gap: '4px' }}
@@ -9829,12 +9926,91 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   <Search className="h-3.5 w-3.5" /> Track
                                 </button>
                               </div>
-                            ) : (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                            ) : isEditing ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.25rem' }}>
+                                <div style={{ padding: '8px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', fontSize: '0.72rem', color: '#1e40af', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                  <span><strong>✏️ Edit Mode Active:</strong> Modify details above and click Save to update this offer.</span>
+                                  <button 
+                                    type="button"
+                                    onClick={() => toggleOfferEditing(c.id)}
+                                    style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 700 }}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                  <button 
+                                    onClick={() => handleExtendOfferSubmit(c.id, true)} 
+                                    className="rec-btn-primary" 
+                                    style={{ flex: 1, minWidth: '140px', height: '36px', justifyContent: 'center', background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)', fontWeight: 800 }}
+                                  >
+                                    <Send className="h-4 w-4" /> Save &amp; Update Offer
+                                  </button>
                                   <button
                                     type="button"
-                                    onClick={() => setPreviewOfferCandidate(c)}
+                                    onClick={() => {
+                                      const latestCand: Candidate = {
+                                        ...c,
+                                        customName: candName,
+                                        callLetterDesignation: designation,
+                                        callLetterReferenceNo: referenceNo,
+                                        offerSalary: Math.round(annualCtcNum / 12),
+                                        offerJoiningDate: joiningDate,
+                                        callLetterVenue: venue
+                                      };
+                                      setPreviewOfferWithTraining(candForm.includeTraining !== false);
+                                      setPreviewOfferCandidate(latestCand);
+                                    }}
+                                    className="rec-btn-outline"
+                                    style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', fontWeight: 700, gap: '4px' }}
+                                  >
+                                    <Eye className="h-3.5 w-3.5" /> Preview
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDownloadFormalOfferLetter(c, annualCtcNum, joiningDate, designation, referenceNo, venue, candName)}
+                                    className="rec-btn-outline"
+                                    style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff', fontWeight: 700, gap: '4px' }}
+                                  >
+                                    <Download className="h-3.5 w-3.5" /> PDF
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleOfferEditing(c.id)}
+                                    className="rec-btn-outline"
+                                    style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#dc2626', borderColor: '#fca5a5', background: '#fef2f2', fontWeight: 700 }}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleOfferEditing(c.id)}
+                                    className="rec-btn-outline"
+                                    style={{ height: '32px', padding: '0 12px', fontSize: '0.7rem', color: '#2563eb', borderColor: '#bfdbfe', background: '#eff6ff', fontWeight: 700, gap: '4px' }}
+                                    title="Edit offer details (Salary, Designation, Joining Date, Model)"
+                                  >
+                                    <Edit2 className="h-3.5 w-3.5" /> Edit Offer
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const latestCand: Candidate = {
+                                        ...c,
+                                        customName: candName,
+                                        callLetterDesignation: designation,
+                                        callLetterReferenceNo: referenceNo,
+                                        offerSalary: Math.round(annualCtcNum / 12),
+                                        offerJoiningDate: joiningDate,
+                                        callLetterVenue: venue
+                                      };
+                                      setPreviewOfferWithTraining(candForm.includeTraining !== false);
+                                      setPreviewOfferCandidate(latestCand);
+                                    }}
                                     className="rec-btn-outline"
                                     style={{ height: '32px', padding: '0 12px', fontSize: '0.7rem', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', fontWeight: 700, gap: '4px' }}
                                   >
