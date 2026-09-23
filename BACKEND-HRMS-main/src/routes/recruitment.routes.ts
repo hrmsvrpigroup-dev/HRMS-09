@@ -34,6 +34,8 @@ router.post('/sync-google-responses', recruitmentController.syncGoogleResponses)
 router.get('/files/drive-proxy', recruitmentController.driveProxy)
 router.get('/shared-state', recruitmentController.getSharedState)
 router.post('/shared-state', recruitmentController.updateSharedState)
+router.post('/test-gmail-connection', recruitmentController.testGmailConnection)
+router.post('/test-teams-connection', recruitmentController.testTeamsConnection)
 
 export default router
 

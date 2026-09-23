@@ -13,7 +13,7 @@ import {
   ArrowUpRight, Activity, Layers, Settings, RefreshCw, ChevronDown,
   BookOpen, FileText, BarChart2, PieChart as PieChartIcon, Cpu, Copy, ExternalLink,
   FileCode, Video, FileSpreadsheet, Package, Paperclip, AlertTriangle, File, Check, X,
-  MailCheck, Printer, Building2, Trash2, FastForward, ArrowLeft, FileCheck
+  MailCheck, Printer, Building2, Trash2, FastForward, ArrowLeft, FileCheck, Edit2
 } from 'lucide-react';
 import api from '../../api/axios';
 import { format } from 'date-fns';
@@ -31,7 +31,25 @@ import {
   OfferLetterData,
   VRPI_WATERMARK_DATA_URI
 } from '../../utils/offerLetterTemplate';
+import { RecruitmentGoogleConfigModal } from './RecruitmentGoogleConfigModal';
+import { getGoogleMailConfig, isGoogleMailConfigured } from '../../utils/googleMailConfig';
+import { RecruitmentTeamsConfigModal } from './RecruitmentTeamsConfigModal';
+import { getTeamsConfig, isTeamsConfigured } from '../../utils/teamsConfig';
 import './recruitment.css';
+
+export function sanitizeEmail(email: string): string {
+  let clean = (email || '').trim();
+  clean = clean.replace(/@gmai\.com$/i, '@gmail.com');
+  clean = clean.replace(/@gamil\.com$/i, '@gmail.com');
+  clean = clean.replace(/@gamail\.com$/i, '@gmail.com');
+  clean = clean.replace(/@gmaill\.com$/i, '@gmail.com');
+  clean = clean.replace(/@gmaii\.com$/i, '@gmail.com');
+  clean = clean.replace(/@yaho\.com$/i, '@yahoo.com');
+  clean = clean.replace(/@yahooo\.com$/i, '@yahoo.com');
+  clean = clean.replace(/@hotmial\.com$/i, '@hotmail.com');
+  clean = clean.replace(/@outlok\.com$/i, '@outlook.com');
+  return clean;
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -548,6 +566,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   const [liveDocumentResponses, setLiveDocumentResponses] = useState<any[]>([]);
   const [liveReceivedCallLetterResponses, setLiveReceivedCallLetterResponses] = useState<any[]>([]);
   const [isSyncingDocs, setIsSyncingDocs] = useState<boolean>(false);
+  const [showGoogleConfigModal, setShowGoogleConfigModal] = useState(false);
+  const [isGoogleConfigured, setIsGoogleConfigured] = useState(() => isGoogleMailConfigured());
+  const [showTeamsConfigModal, setShowTeamsConfigModal] = useState(false);
+  const [isTeamsActive, setIsTeamsActive] = useState(() => isTeamsConfigured());
   
   // State for forms & UI flows
   const [selectedJobId, setSelectedJobId] = useState<string>('');
@@ -584,7 +606,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     jobTitle: 'Associate Software Engineer',
     experience: 'Degree / Freshers',
     driveLink: '',
-    statusOption: 'completed' as 'completed' | 'pending'
+    statusOption: 'pending' as 'completed' | 'pending'
   });
 
   // Interview Slot - Add Profile Modal State
@@ -693,6 +715,15 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
   const [sentDocEmails, setSentDocEmails] = useState<{ [key: string]: boolean }>(() => {
     try {
+      // One-time cleanup to ensure candidates show in Pending first until mail is actually sent
+      const resetDone = localStorage.getItem('hrms_doc_sent_reset_v4');
+      if (!resetDone) {
+        localStorage.setItem('hrms_doc_sent_reset_v4', 'true');
+        localStorage.removeItem('hrms_sent_doc_emails');
+        localStorage.removeItem('hrms_doc_sub_tab');
+        localStorage.removeItem('hrms_doc_sub_tab_v3_completed');
+        return {};
+      }
       const saved = localStorage.getItem('hrms_sent_doc_emails');
       return saved ? JSON.parse(saved) : {};
     } catch (_) {
@@ -702,18 +733,12 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   const [sendingDocEmailId, setSendingDocEmailId] = useState<string | null>(null);
   const [docSubTab, setDocSubTab] = useState<'pending' | 'completed' | 'all'>(() => {
     try {
-      const initialized = localStorage.getItem('hrms_doc_sub_tab_v3_completed');
-      if (!initialized) {
-        localStorage.setItem('hrms_doc_sub_tab_v3_completed', 'true');
-        localStorage.setItem('hrms_doc_sub_tab', 'completed');
-        return 'completed';
-      }
       const saved = localStorage.getItem('hrms_doc_sub_tab');
       if (saved && ['pending', 'completed', 'all'].includes(saved)) {
         return saved as any;
       }
     } catch (_) {}
-    return 'completed';
+    return 'pending';
   });
 
   const handleDocSubTabChange = (tab: 'pending' | 'completed' | 'all') => {
@@ -759,6 +784,208 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     } catch (_) {}
   }, [sentCallLetterEmails]);
 
+  // Global override map for candidate emails (e.g. corrected typos from Google Form responses)
+  const [candidateEmailOverrides, setCandidateEmailOverrides] = useState<{ [key: string]: string }>(() => {
+    try {
+      const saved = localStorage.getItem('hrms_candidate_email_overrides');
+      return saved ? JSON.parse(saved) : {};
+    } catch (_) {
+      return {};
+    }
+  });
+
+  const getEffectiveEmail = (c: { email?: string; id?: string }) => {
+    const rawEmail = (c?.email || '').trim();
+    const idKey = c?.id || '';
+    if (idKey && candidateEmailOverrides[idKey]) return candidateEmailOverrides[idKey];
+    if (rawEmail && candidateEmailOverrides[rawEmail.toLowerCase()]) return candidateEmailOverrides[rawEmail.toLowerCase()];
+    if (rawEmail && candidateEmailOverrides[rawEmail]) return candidateEmailOverrides[rawEmail];
+    return rawEmail;
+  };
+
+  const handleUpdateCandidateEmail = async (candidate: Candidate, newEmail: string) => {
+    const cleanNew = sanitizeEmail(newEmail);
+    const oldEmail = (candidate.email || '').trim();
+    if (!cleanNew || !cleanNew.includes('@')) {
+      alert('Please enter a valid email address.');
+      return;
+    }
+
+    const candId = candidate.id;
+
+    // 1. Update candidateEmailOverrides in state & localStorage
+    setCandidateEmailOverrides(prev => {
+      const updated = {
+        ...prev,
+        [candId]: cleanNew,
+        ...(oldEmail ? { [oldEmail.toLowerCase()]: cleanNew, [oldEmail]: cleanNew } : {})
+      };
+      try {
+        localStorage.setItem('hrms_candidate_email_overrides', JSON.stringify(updated));
+      } catch (_) {}
+      return updated;
+    });
+
+    // 2. Mutate in-memory candidate
+    candidate.email = cleanNew;
+
+    // 3. Update candidates list in React state
+    setCandidates(prev => prev.map(c => (c.id === candId || (oldEmail && c.email && c.email.toLowerCase() === oldEmail.toLowerCase())) ? { ...c, email: cleanNew } : c));
+
+    // 4. Update formApplicantStatuses so stage and statuses transfer to new email
+    setFormApplicantStatuses(prev => {
+      const currentStatus = (oldEmail && (prev[oldEmail.toLowerCase()] || prev[oldEmail])) || prev[candId] || 'documents';
+      const updated = {
+        ...prev,
+        [cleanNew]: currentStatus,
+        [cleanNew.toLowerCase()]: currentStatus
+      };
+      try {
+        localStorage.setItem('hrms_form_applicant_statuses', JSON.stringify(updated));
+      } catch (_) {}
+      return updated;
+    });
+
+    // 5. Update sentDocEmails so completed/sent status transfers to new email
+    setSentDocEmails(prev => {
+      const isSent = (oldEmail && (prev[oldEmail.toLowerCase()] || prev[oldEmail])) || prev[candId] || false;
+      const updated = {
+        ...prev,
+        [candId]: isSent,
+        [cleanNew]: isSent,
+        [cleanNew.toLowerCase()]: isSent
+      };
+      try {
+        localStorage.setItem('hrms_sent_doc_emails', JSON.stringify(updated));
+      } catch (_) {}
+      return updated;
+    });
+
+    // 5b. Update verifiedDocCandidates so verified status transfers to new email
+    setVerifiedDocCandidates(prev => {
+      const isVer = (oldEmail && (prev[oldEmail.toLowerCase()] || prev[oldEmail])) || prev[candId] || false;
+      const updated = {
+        ...prev,
+        [candId]: isVer,
+        [cleanNew]: isVer,
+        [cleanNew.toLowerCase()]: isVer
+      };
+      try {
+        localStorage.setItem('hrms_verified_doc_candidates', JSON.stringify(updated));
+      } catch (_) {}
+      return updated;
+    });
+
+    // 6. Update scheduled_interviews in localStorage
+    try {
+      const scheduled = getStoredScheduledInterviews();
+      const updatedScheduled = scheduled.map(c => (c.id === candId || (oldEmail && c.email && c.email.toLowerCase() === oldEmail.toLowerCase())) ? { ...c, email: cleanNew } : c);
+      saveStoredScheduledInterviews(updatedScheduled);
+    } catch (_) {}
+
+    // 7. Sync with backend API
+    try {
+      await api.patch(`/recruitment/applications/${candId}/status`, { email: cleanNew });
+    } catch (_) {
+      try {
+        await api.post('/recruitment/applications', {
+          id: candId,
+          name: `${candidate.firstName} ${candidate.lastName}`.trim(),
+          email: cleanNew,
+          phone: candidate.phone,
+          status: 'DOCUMENTS'
+        });
+      } catch (_) {}
+    }
+
+    alert(`✅ Candidate email updated to: ${cleanNew}`);
+  };
+
+  // Stage 5: Documents Received - Verified status persistence
+  const [verifiedDocCandidates, setVerifiedDocCandidates] = useState<{ [key: string]: boolean }>(() => {
+    try {
+      const saved = localStorage.getItem('hrms_verified_doc_candidates');
+      return saved ? JSON.parse(saved) : {};
+    } catch (_) {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('hrms_verified_doc_candidates', JSON.stringify(verifiedDocCandidates));
+    } catch (_) {}
+  }, [verifiedDocCandidates]);
+
+  const handleToggleCandidateDocVerification = async (candidate: Candidate | any, isVerified: boolean) => {
+    const cId = candidate.id;
+    const cEmail = (candidate.email || '').toLowerCase().trim();
+    const cName = (candidate.customName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim()).toLowerCase();
+    const cCode = getCandidateCode(candidate);
+
+    setVerifiedDocCandidates(prev => {
+      const updated = {
+        ...prev,
+        ...(cId ? { [cId]: isVerified } : {}),
+        ...(cEmail ? { [cEmail]: isVerified } : {}),
+        ...(cName ? { [cName]: isVerified } : {}),
+        ...(cCode ? { [cCode]: isVerified } : {})
+      };
+      try {
+        localStorage.setItem('hrms_verified_doc_candidates', JSON.stringify(updated));
+      } catch (_) {}
+      return updated;
+    });
+
+    // Also update candidate in state
+    setCandidates(prev => prev.map(c => {
+      const match = (cId && c.id === cId) ||
+                    (cEmail && c.email && c.email.toLowerCase().trim() === cEmail) ||
+                    (cName && `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase() === cName);
+      if (match) {
+        return { ...c, documentsVerified: isVerified, isVerified: isVerified };
+      }
+      return c;
+    }));
+
+    // Optional background sync
+    if (isVerified && cId) {
+      try {
+        await api.patch(`/recruitment/applications/${cId}/documents-verify`, {
+          verified: true,
+          email: cEmail,
+          name: candidate.customName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
+          candidateType: candidate.candidateType
+        });
+      } catch (_) {}
+    }
+  };
+
+  const handleVerifyAllPendingDocs = (pendingList: Candidate[]) => {
+    setVerifiedDocCandidates(prev => {
+      const updated = { ...prev };
+      pendingList.forEach(c => {
+        if (c.id) updated[c.id] = true;
+        if (c.email) updated[c.email.toLowerCase().trim()] = true;
+        const nm = (c.customName || `${c.firstName || ''} ${c.lastName || ''}`.trim()).toLowerCase();
+        if (nm) updated[nm] = true;
+        const cd = getCandidateCode(c);
+        if (cd) updated[cd] = true;
+      });
+      try {
+        localStorage.setItem('hrms_verified_doc_candidates', JSON.stringify(updated));
+      } catch (_) {}
+      return updated;
+    });
+
+    setCandidates(prev => prev.map(c => {
+      const isPending = pendingList.some(p => p.id === c.id || (p.email && c.email && p.email.toLowerCase().trim() === c.email.toLowerCase().trim()));
+      if (isPending) {
+        return { ...c, documentsVerified: true, isVerified: true };
+      }
+      return c;
+    }));
+  };
 
   const getStoredShortlistedCandidates = (): Candidate[] => {
     try {
@@ -1246,7 +1473,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         jobTitle: 'Associate Software Engineer',
         experience: 'Degree / Freshers',
         driveLink: '',
-        statusOption: 'completed'
+        statusOption: 'pending'
       });
 
       if (isSent) {
@@ -1613,6 +1840,14 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
   // Helper to auto-generate or retrieve dedicated video interview meeting URL (1 per person)
   const generateTeamsMeetingUrl = async (topic: string = 'Interview Session', candidate?: Candidate | null, forceRefresh: boolean = false) => {
+    // 0. Check if user configured a custom Teams link in frontend Teams Config
+    const teamsCfg = getTeamsConfig();
+    if (teamsCfg?.enabled !== false && teamsCfg?.customMeetingLink && !forceRefresh) {
+      const customUrl = teamsCfg.customMeetingLink.trim();
+      if (candidate) saveMeetingLinkForCandidate(candidate, customUrl);
+      return customUrl;
+    }
+
     // 1. Check if candidate already has an existing link (unless forceRefresh requested)
     if (candidate && !forceRefresh) {
       const existing = getMeetingLinkForCandidate(candidate);
@@ -1624,7 +1859,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         topic,
         candidateEmail: candidate?.email,
         candidateId: candidate?.id,
-        forceRefresh
+        forceRefresh,
+        teamsConfig: teamsCfg
       });
       if (res.data?.data?.link) {
         const link = res.data.data.link;
@@ -1632,6 +1868,12 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         return link;
       }
     } catch (_) {}
+
+    if (teamsCfg?.enabled !== false && teamsCfg?.customMeetingLink) {
+      const customUrl = teamsCfg.customMeetingLink.trim();
+      if (candidate) saveMeetingLinkForCandidate(candidate, customUrl);
+      return customUrl;
+    }
 
     const tenantId = '25276fbe-5e50-46cc-b2b0-f5d73c1ae606';
     const randPart = Array.from(crypto.getRandomValues(new Uint8Array(16)))
@@ -2729,35 +2971,42 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       return;
     }
 
-    const normTime = interviewForm.time.trim().toLowerCase();
-    const normDate = interviewForm.date.trim();
-    const todayStr = format(new Date(), 'yyyy-MM-dd');
-
-    if (normDate < todayStr) {
-      alert('⚠️ Cannot schedule an interview on a past date. Please select today or a future date.');
-      return;
-    }
-
-    if (normDate === todayStr) {
-      const now = new Date();
-      const currentMinutes = now.getHours() * 60 + now.getMinutes();
-      const slotMinutes = parseTimeToMinutes(interviewForm.time);
-      if (slotMinutes < currentMinutes) {
-        alert(`⚠️ Time slot "${interviewForm.time}" has already passed today. Please select a current or future time slot.`);
-        return;
+    const normTime = (interviewForm.time || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const normDate = (() => {
+      const s = (interviewForm.date || '').trim();
+      if (s.includes('T')) return s.split('T')[0];
+      const parts = s.split(/[-/]/);
+      if (parts.length === 3) {
+        if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+        if (parts[2].length === 4) return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
       }
-    }
+      return s;
+    })();
 
-    // Block duplicate time slot on the same date
-    const conflictingCand = candidates.find(c => 
-      c.id !== candidateId && 
-      c.email !== candidateId &&
-      c.interviewDate === normDate && 
-      (c.interviewTime || '').trim().toLowerCase() === normTime
-    );
+    // Strictly block duplicate time slot on the same date across other candidates
+    const conflictingCand = candidates.find(c => {
+      if (candidateId && (c.id === candidateId || (c.email && c.email.toLowerCase() === candidateId.toLowerCase()))) {
+        return false;
+      }
+      if (interviewForm.candidateEmail && c.email && c.email.toLowerCase() === interviewForm.candidateEmail.toLowerCase()) {
+        return false;
+      }
+      const cDate = (() => {
+        const s = (c.interviewDate || '').trim();
+        if (s.includes('T')) return s.split('T')[0];
+        const parts = s.split(/[-/]/);
+        if (parts.length === 3) {
+          if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+          if (parts[2].length === 4) return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        }
+        return s;
+      })();
+      const cTime = (c.interviewTime || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      return cDate && cTime && cDate === normDate && cTime === normTime;
+    });
 
     if (conflictingCand) {
-      alert(`⚠️ Time slot "${interviewForm.time}" is already booked on ${normDate} for candidate ${conflictingCand.firstName} ${conflictingCand.lastName}. Please select a different time slot.`);
+      alert(`⚠️ Time slot "${interviewForm.time}" is already booked on ${normDate} for candidate ${conflictingCand.firstName} ${conflictingCand.lastName}. Duplicate bookings are not allowed. Please choose an open slot.`);
       return;
     }
 
@@ -2848,7 +3097,9 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
           phone: targetCand?.phone,
           jobTitle: targetCand?.jobTitle || 'Google Form Recruitment',
           experience: targetCand?.experience || 'Degree',
-          source: targetCand?.source || 'Google Form'
+          source: targetCand?.source || 'Google Form',
+          googleMailConfig: getGoogleMailConfig(),
+          teamsConfig: getTeamsConfig()
         });
         if (res.data?.data?.emailDispatchResult?.success) {
           backendEmailDispatched = true;
@@ -3017,31 +3268,49 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
   // Direct send/resend Document Upload invitation email
   const handleSendDocUploadInviteEmail = async (candidate: Candidate) => {
-    const key = candidate.id || candidate.email;
+    const rawEmail = (candidate.email || '').trim();
+    const cleanEmail = sanitizeEmail(rawEmail);
+
+    if (!cleanEmail || !cleanEmail.includes('@') || cleanEmail.includes('@example.com')) {
+      alert('Candidate has an invalid or placeholder email address. Please click the ✎ icon on the card to correct it.');
+      return;
+    }
+
+    // Auto-fix typo in state & backend if detected (e.g. @gmai.com -> @gmail.com)
+    if (cleanEmail.toLowerCase() !== rawEmail.toLowerCase()) {
+      candidate.email = cleanEmail;
+      setCandidates(prev => prev.map(c => c.id === candidate.id ? { ...c, email: cleanEmail } : c));
+      try {
+        await api.patch(`/recruitment/applications/${candidate.id}/status`, { email: cleanEmail });
+      } catch (_) {}
+    }
+
+    const key = candidate.id || cleanEmail;
     setSendingDocEmailId(key);
     try {
-      const candidateEmail = candidate.email;
       const candidateName = `${candidate.firstName} ${candidate.lastName}`.trim();
+      const googleCfg = getGoogleMailConfig();
       await api.post('/recruitment/send-document-upload-invite', {
-        candidateEmail,
+        candidateEmail: cleanEmail,
         candidateName,
-        formUrl: googleDocUploadFormUrl
+        formUrl: googleDocUploadFormUrl,
+        googleMailConfig: googleCfg && googleCfg.enabled ? googleCfg : undefined
       });
       // Mark as sent in state & localStorage to prevent data loss on refresh
       setSentDocEmails(prev => {
         const updated = {
           ...prev,
           [candidate.id]: true,
-          ...(candidate.email ? { [candidate.email.toLowerCase()]: true } : {})
+          [cleanEmail.toLowerCase()]: true
         };
         try {
           localStorage.setItem('hrms_sent_doc_emails', JSON.stringify(updated));
         } catch (_) {}
         return updated;
       });
-      alert(`📧 Document Upload invitation email sent successfully to ${candidateName} (${candidateEmail})!`);
+      alert(`📧 Document Upload invitation email sent successfully to ${candidateName} (${cleanEmail})!`);
     } catch (err: any) {
-      alert(`Failed to send email: ${err?.response?.data?.message || err.message}`);
+      alert(`Failed to send email: ${err?.response?.data?.message || err?.response?.data?.error || err.message}`);
     } finally {
       setSendingDocEmailId(null);
     }
@@ -3068,7 +3337,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
           offerSalary: monthlyGross,
           offerJoiningDate: joiningDate,
           offerStatus: 'SENT',
-          name: candForm.candidateName || undefined
+          name: candForm.candidateName || undefined,
+          googleMailConfig: getGoogleMailConfig()
         });
       }
 
@@ -3381,6 +3651,20 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       } catch (_) {}
       setFormApplicantStatuses(updatedStatuses);
 
+      // 1b. Mark verified in verifiedDocCandidates
+      setVerifiedDocCandidates(prev => {
+        const up = { ...prev };
+        if (candidateId) up[candidateId] = true;
+        if (candEmail) up[candEmail.toLowerCase()] = true;
+        if (target?.id) up[target.id] = true;
+        if (nameKey) up[nameKey] = true;
+        if (code) up[code] = true;
+        try {
+          localStorage.setItem('hrms_verified_doc_candidates', JSON.stringify(up));
+        } catch (_) {}
+        return up;
+      });
+
       // 2. Update scheduled interviews in localStorage
       const currentScheduled = getStoredScheduledInterviews();
       let existsInScheduled = false;
@@ -3615,7 +3899,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
             salary: repSalary,
             hrEmail: repHrEmail,
             hrPhone: repHrPhone,
-            notes: repNotes
+            notes: repNotes,
+            googleMailConfig: getGoogleMailConfig()
           });
           if (emailRes.data?.success) {
             emailSuccess = true;
@@ -4530,6 +4815,102 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               onChange={e => setSearchQuery(e.target.value)}
             />
           </div>
+          {/* Google Credentials Configuration Button */}
+          <button
+            type="button"
+            className="rec-google-config-btn"
+            id="rec-google-config-btn"
+            onClick={() => setShowGoogleConfigModal(true)}
+            title="Configure Google Gmail Credentials for Automated Recruitment Emails"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              background: isGoogleConfigured ? '#f0fdf4' : '#ffffff',
+              border: `1.5px solid ${isGoogleConfigured ? '#86efac' : '#e2e8f0'}`,
+              borderRadius: '2rem',
+              padding: '0.4rem 0.85rem',
+              cursor: 'pointer',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+              transition: 'all 0.2s ease',
+              height: '42px'
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+              <path
+                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                fill="#4285F4"
+              />
+              <path
+                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                fill="#34A853"
+              />
+              <path
+                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                fill="#FBBC05"
+              />
+              <path
+                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                fill="#EA4335"
+              />
+            </svg>
+            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#1e293b' }}>
+              Gmail Config
+            </span>
+            <span
+              style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                backgroundColor: isGoogleConfigured ? '#22c55e' : '#cbd5e1',
+                boxShadow: isGoogleConfigured ? '0 0 0 2px rgba(34, 197, 94, 0.25)' : 'none'
+              }}
+              title={isGoogleConfigured ? 'Gmail Active' : 'Not configured'}
+            />
+          </button>
+
+          {/* Microsoft Teams Configuration Button */}
+          <button
+            type="button"
+            className="rec-teams-config-btn"
+            id="rec-teams-config-btn"
+            onClick={() => setShowTeamsConfigModal(true)}
+            title="Configure Microsoft Teams Meeting Link for Automated Interview Invites"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              background: isTeamsActive ? '#f5f3ff' : '#ffffff',
+              border: `1.5px solid ${isTeamsActive ? '#c4b5fd' : '#e2e8f0'}`,
+              borderRadius: '2rem',
+              padding: '0.4rem 0.85rem',
+              cursor: 'pointer',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+              transition: 'all 0.2s ease',
+              height: '42px'
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+              <path d="M19.5 7.5A2.5 2.5 0 1 0 17 5a2.5 2.5 0 0 0 2.5 2.5z" fill="#4f46e5" />
+              <path d="M21.5 9h-4a1.5 1.5 0 0 0-1.5 1.5V15h7v-4.5A1.5 1.5 0 0 0 21.5 9z" fill="#6366f1" />
+              <path d="M12.5 6A3.5 3.5 0 1 0 9 2.5 3.5 3.5 0 0 0 12.5 6z" fill="#4338ca" />
+              <path d="M15 8.5H10a2 2 0 0 0-2 2V18a2 2 0 0 0 2 2h5a2 2 0 0 0 2-2v-7.5a2 2 0 0 0-2-2z" fill="#4f46e5" />
+            </svg>
+            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#1e293b' }}>
+              Teams Config
+            </span>
+            <span
+              style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                backgroundColor: isTeamsActive ? '#8b5cf6' : '#cbd5e1',
+                boxShadow: isTeamsActive ? '0 0 0 2px rgba(139, 92, 246, 0.25)' : 'none'
+              }}
+              title={isTeamsActive ? 'Teams Configured' : 'Default Meeting Generator'}
+            />
+          </button>
+
           <button className="rec-icon-btn" id="rec-refresh-btn" onClick={() => loadRecruitmentData(true)} title="Refresh recruitment data">
             <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
           </button>
@@ -6547,20 +6928,9 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   className="rec-search-input" 
                                   style={{ width: '100%', paddingLeft: '0.85rem', height: '40px', marginTop: '4px', borderRadius: '0.75rem', fontWeight: 700 }}
                                   value={interviewForm.date}
-                                  min={format(new Date(), 'yyyy-MM-dd')}
                                   onChange={e => {
                                     const newDate = e.target.value;
-                                    setInterviewForm(prev => {
-                                      let newTime = prev.time;
-                                      const todayStr = format(new Date(), 'yyyy-MM-dd');
-                                      if (newDate === todayStr && newTime) {
-                                        const curMin = new Date().getHours() * 60 + new Date().getMinutes();
-                                        if (parseTimeToMinutes(newTime) < curMin) {
-                                          newTime = '';
-                                        }
-                                      }
-                                      return { ...prev, date: newDate, time: newTime };
-                                    });
+                                    setInterviewForm(prev => ({ ...prev, date: newDate }));
                                   }}
                                   required
                                 />
@@ -6568,7 +6938,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                               <div className="auth-luxury-label">
                                 Time Slot *
                                 {(() => {
-                                  const allSlots = [
+                                  const defaultSlots = [
                                     '08:00 AM', '08:30 AM', '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM',
                                     '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM',
                                     '02:00 PM', '02:30 PM', '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM',
@@ -6576,33 +6946,66 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                     '08:00 PM'
                                   ];
 
-                                  const todayStr = format(new Date(), 'yyyy-MM-dd');
-                                  const isSelectedDateToday = interviewForm.date === todayStr;
-                                  const isSelectedDatePast = Boolean(interviewForm.date && interviewForm.date < todayStr);
-                                  const now = new Date();
-                                  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-                                  // Filter slots: If today, only show current and future time slots (hide overed/past slots)
-                                  const slots = allSlots.filter(s => {
-                                    if (isSelectedDatePast) return false;
-                                    if (isSelectedDateToday) {
-                                      return parseTimeToMinutes(s) >= currentMinutes;
+                                  const normFormDate = (() => {
+                                    const s = (interviewForm.date || '').trim();
+                                    if (s.includes('T')) return s.split('T')[0];
+                                    const parts = s.split(/[-/]/);
+                                    if (parts.length === 3) {
+                                      if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                                      if (parts[2].length === 4) return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
                                     }
-                                    return true;
+                                    return s;
+                                  })();
+
+                                  // Identify all slots already booked on this date by ANY OTHER candidate
+                                  const bookedSlotsMap = new Map<string, Candidate>();
+                                  candidates.forEach(c => {
+                                    if (selectedCandidate?.id && (c.id === selectedCandidate.id || (c.email && c.email.toLowerCase() === selectedCandidate.email?.toLowerCase()))) {
+                                      return;
+                                    }
+                                    if (interviewForm.candidateEmail && c.email && c.email.toLowerCase() === interviewForm.candidateEmail.toLowerCase()) {
+                                      return;
+                                    }
+
+                                    const cDate = (() => {
+                                      const s = (c.interviewDate || '').trim();
+                                      if (s.includes('T')) return s.split('T')[0];
+                                      const parts = s.split(/[-/]/);
+                                      if (parts.length === 3) {
+                                        if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                                        if (parts[2].length === 4) return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                                      }
+                                      return s;
+                                    })();
+                                    const cTime = (c.interviewTime || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+                                    if (cDate && cTime && cDate === normFormDate) {
+                                      bookedSlotsMap.set(cTime, c);
+                                    }
                                   });
 
-                                  const isConflict = candidates.some(c => 
-                                    c.interviewDate === interviewForm.date && 
-                                    (c.interviewTime || '').trim().toLowerCase() === (interviewForm.time || '').trim().toLowerCase() && 
-                                    c.id !== selectedCandidate?.id &&
-                                    c.email !== selectedCandidate?.id
+                                  // Filter out booked slots so they DO NOT show up in the dropdown
+                                  const availableSlots = defaultSlots.filter(s => {
+                                    const normS = s.trim().toLowerCase().replace(/\s+/g, ' ');
+                                    return !bookedSlotsMap.has(normS);
+                                  });
+
+                                  // If the current candidate already owns this slot, keep it visible for them
+                                  if (interviewForm.time) {
+                                    const currentNormTime = interviewForm.time.trim().toLowerCase().replace(/\s+/g, ' ');
+                                    if (!availableSlots.some(s => s.toLowerCase().replace(/\s+/g, ' ') === currentNormTime)) {
+                                      if (!bookedSlotsMap.has(currentNormTime)) {
+                                        availableSlots.unshift(interviewForm.time.trim());
+                                      }
+                                    }
+                                  }
+
+                                  const isSelectedSlotConflict = Boolean(
+                                    interviewForm.time && bookedSlotsMap.has(interviewForm.time.trim().toLowerCase().replace(/\s+/g, ' '))
                                   );
-                                  const conflictingCand = candidates.find(c => 
-                                    c.interviewDate === interviewForm.date && 
-                                    (c.interviewTime || '').trim().toLowerCase() === (interviewForm.time || '').trim().toLowerCase() && 
-                                    c.id !== selectedCandidate?.id &&
-                                    c.email !== selectedCandidate?.id
-                                  );
+                                  const conflictingCand = isSelectedSlotConflict 
+                                    ? bookedSlotsMap.get(interviewForm.time.trim().toLowerCase().replace(/\s+/g, ' ')) 
+                                    : null;
 
                                   return (
                                     <div>
@@ -6614,47 +7017,32 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                           marginTop: '4px',
                                           borderRadius: '0.75rem',
                                           fontWeight: 700,
-                                          borderColor: isConflict ? '#fca5a5' : undefined,
-                                          background: isConflict ? '#fef2f2' : undefined
+                                          borderColor: isSelectedSlotConflict ? '#fca5a5' : undefined,
+                                          background: isSelectedSlotConflict ? '#fef2f2' : undefined
                                         }}
                                         value={interviewForm.time}
                                         onChange={e => setInterviewForm({ ...interviewForm, time: e.target.value })}
                                         required
                                       >
                                         <option value="">
-                                          {isSelectedDatePast 
-                                            ? '-- Past Date (No Slots Available) --' 
-                                            : isSelectedDateToday && slots.length === 0
-                                            ? '-- No Remaining Slots Available Today --'
-                                            : '-- Select Available Slot --'}
+                                          {availableSlots.length > 0 
+                                            ? `-- Select Available Slot (${availableSlots.length} Open) --` 
+                                            : '-- All Slots Booked For This Date --'}
                                         </option>
-                                        {slots.map(s => {
-                                          const bookedCand = candidates.find(c => 
-                                            c.interviewDate === interviewForm.date && 
-                                            (c.interviewTime || '').trim().toLowerCase() === s.toLowerCase() && 
-                                            c.id !== selectedCandidate?.id &&
-                                            c.email !== selectedCandidate?.id
-                                          );
-                                          return (
-                                            <option 
-                                              key={s} 
-                                              value={s} 
-                                              disabled={!!bookedCand}
-                                              style={{ color: bookedCand ? '#94a3b8' : '#0f172a', fontWeight: bookedCand ? 400 : 700 }}
-                                            >
-                                              {s} {bookedCand ? `⛔ (BOOKED - ${bookedCand.firstName} ${bookedCand.lastName})` : '✅ (Available)'}
-                                            </option>
-                                          );
-                                        })}
+                                        {availableSlots.map(s => (
+                                          <option key={s} value={s} style={{ color: '#0f172a', fontWeight: 700 }}>
+                                            {s} (Available)
+                                          </option>
+                                        ))}
                                       </select>
-                                      {isConflict && conflictingCand && (
+                                      {isSelectedSlotConflict && conflictingCand && (
                                         <p style={{ fontSize: '0.68rem', color: '#dc2626', fontWeight: 800, margin: '4px 0 0 0' }}>
-                                          ⚠️ Slot "{interviewForm.time}" is BOOKED for {conflictingCand.firstName} {conflictingCand.lastName}.
+                                          ⚠️ Slot "{interviewForm.time}" is already BOOKED for {conflictingCand.firstName} {conflictingCand.lastName}. Please select an open slot from the list above.
                                         </p>
                                       )}
-                                      {isSelectedDateToday && slots.length === 0 && (
-                                        <p style={{ fontSize: '0.68rem', color: '#ea580c', fontWeight: 700, margin: '4px 0 0 0' }}>
-                                          ℹ️ All interview slots for today have already passed. Please choose a future date.
+                                      {bookedSlotsMap.size > 0 && !isSelectedSlotConflict && (
+                                        <p style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600, margin: '4px 0 0 0' }}>
+                                          🔒 {bookedSlotsMap.size} booked slot{bookedSlotsMap.size > 1 ? 's' : ''} on {normFormDate} hidden to prevent duplicate bookings.
                                         </p>
                                       )}
                                     </div>
@@ -7027,12 +7415,16 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               const allCandidatesSource = [...unifiedCandidates, ...candidates];
 
               allCandidatesSource.forEach(c => {
-                if (isCandidateDeleted(c.id, c.email)) return;
-                const emailKey = (c.email || '').toLowerCase().trim();
-                const nameKey = `${c.firstName || ''} ${c.lastName || ''}`.toLowerCase().trim();
+                const effEmail = getEffectiveEmail(c);
+                const cWithEff = { ...c, email: effEmail };
+                if (isCandidateDeleted(cWithEff.id, cWithEff.email) || isCandidateDeleted(c.id, c.email)) return;
+                const emailKey = (cWithEff.email || '').toLowerCase().trim();
+                const rawEmailKey = (c.email || '').toLowerCase().trim();
+                const nameKey = `${cWithEff.firstName || ''} ${cWithEff.lastName || ''}`.toLowerCase().trim();
                 const s = (emailKey && formApplicantStatuses[emailKey]) || 
-                          (c.email && formApplicantStatuses[c.email]) || 
-                          (c.id && formApplicantStatuses[c.id]) ||
+                          (rawEmailKey && formApplicantStatuses[rawEmailKey]) || 
+                          (cWithEff.email && formApplicantStatuses[cWithEff.email]) || 
+                          (cWithEff.id && formApplicantStatuses[cWithEff.id]) ||
                           (nameKey && formApplicantStatuses[nameKey]);
 
                 // If candidate moved to Call Letter, Offer, Onboarding, or Rejected, exclude from Documents tab
@@ -7040,12 +7432,12 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                     s === 'received_call_letter' || s === 'call_letter_received' || s === 'received-call-letter' || 
                     s === 'offer' || s === 'onboarded' || s === 'declined') return;
 
-                if (c.stage === 'Call Letter' || c.stage === 'Received Call Letter' || c.stage === 'Offer' || c.stage === 'Onboarding' || c.stage === 'Rejected') return;
+                if (cWithEff.stage === 'Call Letter' || cWithEff.stage === 'Received Call Letter' || cWithEff.stage === 'Offer' || cWithEff.stage === 'Onboarding' || cWithEff.stage === 'Rejected') return;
 
-                if (c.stage === 'Documents' || s === 'documents') {
-                  const key = emailKey || c.id || nameKey;
+                if (cWithEff.stage === 'Documents' || s === 'documents') {
+                  const key = emailKey || rawEmailKey || cWithEff.id || nameKey;
                   if (!docsMap.has(key)) {
-                    docsMap.set(key, c);
+                    docsMap.set(key, cWithEff);
                   }
                 }
               });
@@ -7053,12 +7445,15 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               const pipelineDocs = Array.from(docsMap.values());
 
               const isCandidateDocSent = (c: Candidate) => {
-                // If explicitly marked as pending (false), keep as pending
-                if (sentDocEmails[c.id] === false || (c.email && sentDocEmails[c.email.toLowerCase()] === false)) {
-                  return false;
-                }
-                // All existing document candidate profiles default to Completed as requested
-                return true;
+                const effEmail = getEffectiveEmail(c);
+                const emailKey = (effEmail || '').toLowerCase().trim();
+                const rawEmailKey = (c.email || '').toLowerCase().trim();
+                // A candidate is in Completed ONLY if their email was explicitly sent or marked sent
+                return Boolean(
+                  sentDocEmails[c.id] || 
+                  (emailKey && sentDocEmails[emailKey]) ||
+                  (rawEmailKey && sentDocEmails[rawEmailKey])
+                );
               };
 
               const completedDocs = pipelineDocs.filter(c => isCandidateDocSent(c));
@@ -7077,6 +7472,21 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                   return updated;
                 });
                 handleDocSubTabChange('completed');
+              };
+
+              const handleMoveAllToPending = () => {
+                setSentDocEmails(prev => {
+                  const updated = { ...prev };
+                  pipelineDocs.forEach(c => {
+                    delete updated[c.id];
+                    if (c.email) delete updated[c.email.toLowerCase()];
+                  });
+                  try {
+                    localStorage.setItem('hrms_sent_doc_emails', JSON.stringify(updated));
+                  } catch (_) {}
+                  return updated;
+                });
+                handleDocSubTabChange('pending');
               };
 
               const displayedDocs = docSubTab === 'pending'
@@ -7293,6 +7703,27 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                           <Check className="h-3.5 w-3.5 text-emerald-600" /> Move All to Completed ({pendingDocs.length})
                         </button>
                       )}
+
+                      {docSubTab === 'completed' && completedDocs.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleMoveAllToPending}
+                          className="rec-btn-outline"
+                          style={{
+                            fontSize: '0.72rem',
+                            height: '32px',
+                            padding: '0 14px',
+                            gap: '6px',
+                            color: '#2563eb',
+                            borderColor: '#bfdbfe',
+                            background: '#eff6ff',
+                            fontWeight: 700
+                          }}
+                          title="Reset profiles back to Pending tab"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5 text-blue-600" /> Reset All to Pending ({completedDocs.length})
+                        </button>
+                      )}
                     </div>
 
                     {displayedDocs.length === 0 ? (
@@ -7344,61 +7775,176 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                     <p style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, margin: '2px 0 0 0' }}>#{code}</p>
                                   </div>
                                 </div>
-                                {hasSubmitted ? (
-                                  <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '3px 8px', borderRadius: '99px', background: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0' }}>
+                                {isDocEmailSent || hasSubmitted ? (
+                                  <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '3px 8px', borderRadius: '99px', background: '#dcfce7', color: '#166534', border: '1px solid #bbf7d0', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                     ✓ Submitted
                                   </span>
                                 ) : (
-                                  <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '3px 8px', borderRadius: '99px', background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a' }}>
+                                  <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '3px 8px', borderRadius: '99px', background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                     ⏳ Pending Upload
                                   </span>
                                 )}
                               </div>
 
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.73rem', color: '#475569' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <Mail className="h-3.5 w-3.5 text-slate-400" />
-                                  <span style={{ fontWeight: 600 }}>{c.email || 'No email'}</span>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <Phone className="h-3.5 w-3.5 text-slate-400" />
-                                  <span>{c.phone || 'No phone'}</span>
-                                </div>
-                              </div>
+                              {(() => {
+                                const effEmail = getEffectiveEmail(c);
+                                const hasTypo = Boolean(effEmail && sanitizeEmail(effEmail).toLowerCase() !== effEmail.trim().toLowerCase());
+                                return (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.73rem', color: '#475569' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                      <Mail className="h-3.5 w-3.5 text-slate-400" />
+                                      <span style={{ fontWeight: 600 }}>{effEmail || 'No email'}</span>
+                                      {hasTypo && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleUpdateCandidateEmail(c, sanitizeEmail(effEmail))}
+                                          style={{
+                                            fontSize: '0.62rem',
+                                            padding: '2px 7px',
+                                            background: '#fef2f2',
+                                            color: '#dc2626',
+                                            border: '1px solid #fecaca',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            fontWeight: 800
+                                          }}
+                                          title={`Fix email typo to: ${sanitizeEmail(effEmail)}`}
+                                        >
+                                          Fix to {sanitizeEmail(effEmail)}
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const newEmail = prompt('Edit Candidate Email Address:', effEmail || '');
+                                          if (newEmail && newEmail.trim() && newEmail.includes('@')) {
+                                            handleUpdateCandidateEmail(c, newEmail.trim());
+                                          }
+                                        }}
+                                        style={{
+                                          background: 'transparent',
+                                          border: 'none',
+                                          padding: '0 2px',
+                                          cursor: 'pointer',
+                                          color: '#6366f1',
+                                          display: 'inline-flex',
+                                          alignItems: 'center'
+                                        }}
+                                        title="Edit candidate email"
+                                      >
+                                        <Edit2 className="h-3 w-3" />
+                                      </button>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <Phone className="h-3.5 w-3.5 text-slate-400" />
+                                      <span>{c.phone || 'No phone'}</span>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
 
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: 'auto', paddingTop: '0.5rem', borderTop: '1px solid #f8fafc' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleSendDocUploadInviteEmail(c)}
-                                  disabled={isSendingThisDocEmail}
-                                  className="rec-btn-outline"
-                                  style={{
-                                    fontSize: '0.68rem',
-                                    height: '28px',
-                                    padding: '0 10px',
-                                    gap: '4px',
-                                    color: isDocEmailSent ? '#166534' : '#2563eb',
-                                    borderColor: isDocEmailSent ? '#bbf7d0' : '#bfdbfe',
-                                    background: isDocEmailSent ? '#dcfce7' : '#eff6ff',
-                                    fontWeight: 700,
-                                    cursor: isSendingThisDocEmail ? 'not-allowed' : 'pointer'
-                                  }}
-                                  title={isDocEmailSent ? "Document Upload invitation sent. Click to send again." : "Send Document Upload Google Form email to candidate"}
-                                >
-                                  {isSendingThisDocEmail ? (
-                                    <>
-                                      <Loader2 className="h-3 w-3 animate-spin" /> Sending...
-                                    </>
-                                  ) : isDocEmailSent ? (
-                                    <>
-                                      <Check className="h-3 w-3" /> Sent
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Send className="h-3 w-3" /> Send
-                                    </>
-                                  )}
-                                </button>
+                                {isDocEmailSent ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSendDocUploadInviteEmail(c)}
+                                      disabled={isSendingThisDocEmail}
+                                      className="rec-btn-outline"
+                                      style={{
+                                        fontSize: '0.68rem',
+                                        height: '28px',
+                                        padding: '0 10px',
+                                        gap: '4px',
+                                        color: '#166534',
+                                        borderColor: '#bbf7d0',
+                                        background: '#dcfce7',
+                                        fontWeight: 700,
+                                        cursor: isSendingThisDocEmail ? 'not-allowed' : 'pointer'
+                                      }}
+                                      title="Document Upload invitation sent. Click to resend."
+                                    >
+                                      {isSendingThisDocEmail ? (
+                                        <>
+                                          <Loader2 className="h-3 w-3 animate-spin" /> Sending...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Check className="h-3 w-3" /> Sent
+                                        </>
+                                      )}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleDocCandidateStatus(c, false)}
+                                      className="rec-btn-outline"
+                                      style={{
+                                        fontSize: '0.68rem',
+                                        height: '28px',
+                                        padding: '0 8px',
+                                        gap: '4px',
+                                        color: '#64748b',
+                                        borderColor: '#e2e8f0',
+                                        background: '#f8fafc',
+                                        fontWeight: 600
+                                      }}
+                                      title="Move candidate back to Pending tab"
+                                    >
+                                      <RefreshCw className="h-3 w-3 text-slate-500" /> To Pending
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSendDocUploadInviteEmail(c)}
+                                      disabled={isSendingThisDocEmail}
+                                      className="rec-btn-primary"
+                                      style={{
+                                        fontSize: '0.68rem',
+                                        height: '28px',
+                                        padding: '0 12px',
+                                        gap: '5px',
+                                        color: '#ffffff',
+                                        background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        fontWeight: 700,
+                                        cursor: isSendingThisDocEmail ? 'not-allowed' : 'pointer',
+                                        boxShadow: '0 2px 6px rgba(37, 99, 235, 0.2)'
+                                      }}
+                                      title="Send Document Upload Google Form email to candidate"
+                                    >
+                                      {isSendingThisDocEmail ? (
+                                        <>
+                                          <Loader2 className="h-3 w-3 animate-spin" /> Sending...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Send className="h-3 w-3" /> Send
+                                        </>
+                                      )}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleDocCandidateStatus(c, true)}
+                                      className="rec-btn-outline"
+                                      style={{
+                                        fontSize: '0.68rem',
+                                        height: '28px',
+                                        padding: '0 10px',
+                                        gap: '4px',
+                                        color: '#15803d',
+                                        borderColor: '#bbf7d0',
+                                        background: '#f0fdf4',
+                                        fontWeight: 700
+                                      }}
+                                      title="Move this candidate to Completed tab"
+                                    >
+                                      <CheckCircle className="h-3.5 w-3.5 text-emerald-600" /> To Completed
+                                    </button>
+                                  </>
+                                )}
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -7462,7 +8008,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                 if (c.stage === 'Call Letter' || c.stage === 'Received Call Letter' || c.stage === 'Offer' || c.stage === 'Onboarding' || c.stage === 'Rejected') return;
 
                 // Candidate must explicitly be in Documents stage (moved by HR)
-                const isDocumentsStage = c.stage === 'Documents' || c.stage === 'Documents Received' || s === 'documents' || s === 'documents_received';
+                const isDocumentsStage = c.stage === 'Documents' || c.stage === 'Documents Received' || s === 'documents' || s === 'documents_received' || s === 'documents_verified';
                 if (!isDocumentsStage) return;
 
                 const key = emailKey || c.id || nameKey;
@@ -7491,11 +8037,13 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                   ...(c.attachmentImages || [])
                 ]));
 
-                const isVerified = Boolean(
-                  c.documentsVerified ||
-                  (c as any).isVerified ||
-                  s === 'call_letter'
-                );
+                const isVerified = (() => {
+                  if (c.id && verifiedDocCandidates[c.id] !== undefined) return verifiedDocCandidates[c.id];
+                  if (emailKey && verifiedDocCandidates[emailKey] !== undefined) return verifiedDocCandidates[emailKey];
+                  if (nameKey && verifiedDocCandidates[nameKey] !== undefined) return verifiedDocCandidates[nameKey];
+                  if (candidateCode && verifiedDocCandidates[candidateCode] !== undefined) return verifiedDocCandidates[candidateCode];
+                  return Boolean(c.documentsVerified || (c as any).isVerified || s === 'documents_verified');
+                })();
 
                 const candObj: Candidate = {
                   ...c,
@@ -7593,6 +8141,22 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                           </button>
                         </div>
 
+                        {pendingCandidates.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Mark all ${pendingCandidates.length} pending candidate(s) as Verified in Stage 5?`)) {
+                                handleVerifyAllPendingDocs(pendingCandidates);
+                              }
+                            }}
+                            className="rec-btn-outline"
+                            style={{ fontSize: '0.72rem', height: '32px', padding: '0 10px', gap: '6px', color: '#15803d', borderColor: '#86efac', background: '#dcfce7', fontWeight: 700 }}
+                            title="Mark all pending candidates as verified in Stage 5"
+                          >
+                            <CheckCircle className="h-3.5 w-3.5" /> Verify All ({pendingCandidates.length})
+                          </button>
+                        )}
+
                         <button
                           type="button"
                           onClick={async () => {
@@ -7653,7 +8217,13 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                           const formAtts = combinedImages.map((att, idx) => parseAttachmentItem(att, idx));
                           const isSyncedFromSheet = sheetRawDocs.length > 0;
                           const candType = (c as any).candidateType || 'Freshers';
-                          const isCandVerified = Boolean((c as any).isVerified);
+                          const isCandVerified = (() => {
+                            if (c.id && verifiedDocCandidates[c.id] !== undefined) return verifiedDocCandidates[c.id];
+                            const emailLower = (c.email || '').toLowerCase().trim();
+                            if (emailLower && verifiedDocCandidates[emailLower] !== undefined) return verifiedDocCandidates[emailLower];
+                            if (code && verifiedDocCandidates[code] !== undefined) return verifiedDocCandidates[code];
+                            return Boolean((c as any).isVerified || c.documentsVerified);
+                          })();
                           const timestamp = (c as any).sheetTimestamp || c.appliedDate;
 
                           return (
@@ -7681,13 +8251,46 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                     </span>
                                   )}
                                   {isCandVerified ? (
-                                    <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '3px 8px', borderRadius: '99px', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac' }}>
-                                      ✓ Verified
-                                    </span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '3px 8px', borderRadius: '99px', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                        <CheckCircle className="h-3 w-3" /> Verified
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleCandidateDocVerification(c, false)}
+                                        style={{ fontSize: '0.60rem', fontWeight: 700, padding: '2px 6px', borderRadius: '6px', background: '#f1f5f9', color: '#64748b', border: '1px solid #cbd5e1', cursor: 'pointer' }}
+                                        title="Mark as pending / unverify"
+                                      >
+                                        ↩ Pending
+                                      </button>
+                                    </div>
                                   ) : (
-                                    <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '3px 8px', borderRadius: '99px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}>
-                                      ● Pending
-                                    </span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '3px 8px', borderRadius: '99px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}>
+                                        ● Pending
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleCandidateDocVerification(c, true)}
+                                        style={{
+                                          fontSize: '0.62rem',
+                                          fontWeight: 800,
+                                          padding: '2px 8px',
+                                          borderRadius: '99px',
+                                          background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                          color: '#ffffff',
+                                          border: 'none',
+                                          cursor: 'pointer',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '3px',
+                                          boxShadow: '0 2px 6px rgba(16, 185, 129, 0.3)'
+                                        }}
+                                        title="Click to mark candidate as verified"
+                                      >
+                                        <CheckCircle className="h-3 w-3" /> Verified
+                                      </button>
+                                    </div>
                                   )}
                                 </div>
                               </div>
@@ -7786,56 +8389,82 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                               {/* Verification Footer Action */}
                               <div>
                                 {isCandVerified ? (
-                                  <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '0.85rem', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                                  <div style={{ background: '#ecfdf5', border: '1.5px solid #86efac', borderRadius: '0.85rem', padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                      <CheckCircle className="h-5 w-5 text-emerald-600 flex-shrink-0" />
+                                      <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#15803d', flexShrink: 0 }}>
+                                        <CheckCircle className="h-5 w-5" />
+                                      </div>
                                       <div>
-                                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#065f46' }}>✓ Credentials &amp; Proofs Verified</div>
-                                        <div style={{ fontSize: '0.68rem', color: '#047857' }}>Active in Stage 6: Call Letter Issuance</div>
+                                        <div style={{ fontSize: '0.80rem', fontWeight: 800, color: '#065f46' }}>✓ Credentials &amp; KYC Proofs Verified</div>
+                                        <div style={{ fontSize: '0.68rem', color: '#047857' }}>Candidate is verified in Stage 5. Ready for Stage 6 Call Letter.</div>
                                       </div>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                       <button
                                         type="button"
-                                        onClick={() => setActiveTab('stage-call-letter')}
+                                        onClick={() => handleVerifyDocumentsSubmit(c.id, c)}
                                         className="rec-btn-primary"
-                                        style={{ height: '30px', padding: '0 12px', fontSize: '0.72rem', background: '#059669', color: '#fff', fontWeight: 700, borderRadius: '6px' }}
+                                        style={{ height: '34px', padding: '0 12px', fontSize: '0.74rem', background: '#059669', color: '#fff', fontWeight: 700, borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                                        title="Move candidate to Stage 6: Call Letter"
                                       >
-                                        View in Stage 6: Call Letter →
+                                        <UserCheck className="h-4 w-4" /> Move to Call Letter Stage →
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleCandidateDocVerification(c, false)}
+                                        className="rec-btn-outline"
+                                        style={{ height: '34px', padding: '0 10px', fontSize: '0.72rem', color: '#dc2626', borderColor: '#fca5a5', background: '#ffffff', fontWeight: 600, borderRadius: '6px' }}
+                                        title="Revert verification back to pending"
+                                      >
+                                        ↩ Move to Pending
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', marginTop: '0.25rem' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleCandidateDocVerification(c, true)}
+                                        className="rec-btn-primary"
+                                        style={{
+                                          height: '42px',
+                                          justifyContent: 'center',
+                                          borderRadius: '0.75rem',
+                                          background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                          boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+                                          fontWeight: 800,
+                                          fontSize: '0.84rem',
+                                          gap: '8px'
+                                        }}
+                                        title="Mark candidate proofs as verified in Stage 5"
+                                      >
+                                        <CheckCircle className="h-4.5 w-4.5" /> Verified
                                       </button>
                                       <button
                                         type="button"
                                         onClick={() => handleVerifyDocumentsSubmit(c.id, c)}
                                         className="rec-btn-outline"
-                                        style={{ height: '30px', padding: '0 8px', fontSize: '0.72rem', color: '#047857', borderColor: '#a7f3d0', background: '#ffffff', fontWeight: 600, borderRadius: '6px' }}
-                                        title="Re-run verification"
+                                        style={{
+                                          height: '42px',
+                                          justifyContent: 'center',
+                                          borderRadius: '0.75rem',
+                                          borderColor: '#10b981',
+                                          color: '#047857',
+                                          background: '#f0fdf4',
+                                          fontWeight: 700,
+                                          fontSize: '0.80rem',
+                                          gap: '8px'
+                                        }}
+                                        title="Verify and immediately transition candidate to Stage 6: Call Letter"
                                       >
-                                        Re-verify
+                                        <UserCheck className="h-4.5 w-4.5" /> Verify &amp; Move to Call Letter →
                                       </button>
                                     </div>
-                                  </div>
-                                ) : (
-                                  <>
-                                    <button
-                                      onClick={() => handleVerifyDocumentsSubmit(c.id, c)}
-                                      className="rec-btn-primary"
-                                      style={{
-                                        width: '100%',
-                                        height: '42px',
-                                        justifyContent: 'center',
-                                        marginTop: '0.25rem',
-                                        borderRadius: '0.75rem',
-                                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                                        boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
-                                        fontWeight: 800
-                                      }}
-                                    >
-                                      <UserCheck className="h-4.5 w-4.5" /> Verify &amp; Move Candidate to Call Letter Stage
-                                    </button>
-                                    <p style={{ fontSize: '0.65rem', color: '#64748b', textAlign: 'center', marginTop: '6px', margin: '6px 0 0 0' }}>
-                                      Approving candidate credentials will transition profile to Stage 6: Call Letter
+                                    <p style={{ fontSize: '0.65rem', color: '#64748b', textAlign: 'center', margin: '4px 0 0 0' }}>
+                                      Click <strong>"Verified"</strong> to audit and mark verified in Stage 5, or <strong>"Verify &amp; Move"</strong> to transition directly to Stage 6
                                     </p>
-                                  </>
+                                  </div>
                                 )}
                               </div>
                             </div>
@@ -10718,7 +11347,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="rec-modal-backdrop"
-            style={{ zIndex: 999999, padding: '1rem' }}
+            style={{ position: 'fixed', inset: 0, zIndex: 1000000, padding: '1.25rem', background: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflowY: 'auto' }}
             onClick={() => setShowAddDocCandidateModal(false)}
           >
             <motion.div
@@ -10726,7 +11355,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 10 }}
               className="rec-modal"
-              style={{ maxWidth: '560px', width: '100%', borderRadius: '1.25rem', overflow: 'hidden', boxShadow: '0 25px 60px -15px rgba(0,0,0,0.25)' }}
+              style={{ maxWidth: '560px', width: '100%', borderRadius: '1.25rem', background: '#ffffff', overflow: 'hidden', boxShadow: '0 25px 60px -15px rgba(0,0,0,0.25)' }}
               onClick={e => e.stopPropagation()}
             >
               <div className="rec-modal-header" style={{ background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)', color: '#fff', padding: '1.15rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -10972,7 +11601,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="rec-modal-backdrop"
-            style={{ zIndex: 1000000, padding: '1rem', background: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(8px)' }}
+            style={{ position: 'fixed', inset: 0, zIndex: 1000000, padding: '1.25rem', background: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflowY: 'auto' }}
             onClick={() => setShowAddInterviewCandidateModal(false)}
           >
             <motion.div
@@ -10980,7 +11609,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 15 }}
               className="rec-modal-content"
-              style={{ maxWidth: '580px', width: '100%', borderRadius: '1.25rem', overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)' }}
+              style={{ maxWidth: '580px', width: '100%', borderRadius: '1.25rem', background: '#ffffff', overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)' }}
               onClick={e => e.stopPropagation()}
             >
               <div className="rec-modal-header" style={{ background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #7c3aed 100%)', padding: '1.1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -11153,7 +11782,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 15 }}
               className="rec-modal-content"
-              style={{ maxWidth: '620px', width: '100%', borderRadius: '1.25rem', overflow: 'hidden', border: '1px solid #e9d5ff', boxShadow: '0 25px 50px -12px rgba(139, 92, 246, 0.35)' }}
+              style={{ maxWidth: '620px', width: '100%', borderRadius: '1.25rem', background: '#ffffff', overflow: 'hidden', border: '1px solid #e9d5ff', boxShadow: '0 25px 50px -12px rgba(139, 92, 246, 0.35)' }}
               onClick={e => e.stopPropagation()}
             >
               {/* Modal Header */}
@@ -11860,6 +12489,24 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Google Credentials Configuration Modal */}
+      <RecruitmentGoogleConfigModal
+        isOpen={showGoogleConfigModal}
+        onClose={() => setShowGoogleConfigModal(false)}
+        onConfigSaved={(cfg) => {
+          setIsGoogleConfigured(Boolean(cfg && cfg.enabled && cfg.email && cfg.appPassword));
+        }}
+      />
+
+      {/* Microsoft Teams Configuration Modal */}
+      <RecruitmentTeamsConfigModal
+        isOpen={showTeamsConfigModal}
+        onClose={() => setShowTeamsConfigModal(false)}
+        onConfigSaved={() => {
+          setIsTeamsActive(isTeamsConfigured());
+        }}
+      />
     </div>
   );
 }

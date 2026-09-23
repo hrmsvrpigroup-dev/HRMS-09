@@ -34,7 +34,15 @@ function getNodemailerTransporter() {
 }
 
 export const notificationService = {
-  async sendEmail(to: string, subject: string, html: string, text?: string, attachments?: any[], fromNameOverride?: string) {
+  async sendEmail(
+    to: string,
+    subject: string,
+    html: string,
+    text?: string,
+    attachments?: any[],
+    fromNameOverride?: string,
+    customSmtp?: { email?: string; appPassword?: string; senderName?: string; user?: string; pass?: string; host?: string; port?: number }
+  ) {
     // If in test mode, just log it
     if (process.env.NODE_ENV === 'test') {
       console.log('-----------------------------------------------------')
@@ -45,6 +53,77 @@ export const notificationService = {
       }
       console.log('-----------------------------------------------------')
       return { queued: true, logged: true }
+    }
+
+    // If dynamic custom Google SMTP credentials provided from user configuration
+    const customUser = customSmtp?.email || customSmtp?.user
+    const customPass = (customSmtp?.appPassword || customSmtp?.pass || '').replace(/\s+/g, '')
+
+    if (customUser && customPass) {
+      console.log(`[Google SMTP] Dispatching email to ${to} via configured Gmail: ${customUser}`)
+      const senderFrom = (customSmtp?.senderName || fromNameOverride)
+        ? `"${customSmtp?.senderName || fromNameOverride}" <${customUser}>`
+        : customUser
+
+      const isGmailHost = !customSmtp?.host || customSmtp.host.includes('gmail.com');
+      const transporter = nodemailer.createTransport(
+        isGmailHost
+          ? {
+              service: 'gmail',
+              auth: {
+                user: customUser,
+                pass: customPass
+              }
+            }
+          : {
+              host: customSmtp?.host || 'smtp.gmail.com',
+              port: Number(customSmtp?.port) || 465,
+              secure: (Number(customSmtp?.port) || 465) === 465,
+              auth: {
+                user: customUser,
+                pass: customPass
+              }
+            }
+      )
+
+      // Generate clean plain-text alternative if text is not provided or too short
+      const cleanPlainText = (text && text.trim().length > 25)
+        ? text
+        : (html ? html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                      .replace(/<[^>]+>/g, ' ')
+                      .replace(/&nbsp;/g, ' ')
+                      .replace(/\s+/g, ' ')
+                      .trim()
+                : 'Please view this message using an HTML-compatible email client.');
+
+      // Clean subject: remove excessive exclamation marks which trigger spam filters
+      const cleanSubject = subject
+        .replace(/!+/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
+      const info = await transporter.sendMail({
+        from: senderFrom,
+        to,
+        replyTo: `"${customSmtp?.senderName || fromNameOverride || 'HR Recruitment'}" <${customUser}>`,
+        subject: cleanSubject,
+        text: cleanPlainText,
+        html,
+        attachments: attachments?.map(att => ({
+          filename: att.filename,
+          content: att.content,
+          contentType: att.contentType
+        })),
+        headers: {
+          'X-Priority': '3',
+          'X-MSMail-Priority': 'Normal',
+          'Importance': 'Normal'
+        }
+      })
+
+      console.log(`[Google SMTP] Email successfully sent to ${to}: ${info.messageId}`)
+      return { success: true, messageId: info.messageId }
     }
 
     let useNodemailer = false

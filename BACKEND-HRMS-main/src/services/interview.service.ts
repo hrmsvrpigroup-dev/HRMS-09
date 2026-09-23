@@ -14,17 +14,24 @@ export interface InterviewInviteParams {
   taggedEmails?: string[];
   tenantName?: string;
   notes?: string;
+  googleMailConfig?: any;
+  teamsConfig?: any;
 }
 
 /**
  * Create a real Microsoft Teams Online Meeting using Microsoft Graph API
- * If Azure credentials are configured in .env, this creates an official M365 Teams meeting on Microsoft Cloud.
+ * If Azure credentials are provided from frontend or configured in .env, creates an official M365 Teams meeting on Microsoft Cloud.
  */
-export async function createMicrosoftTeamsOnlineMeeting(topic: string, startTime: Date, endTime: Date): Promise<string | null> {
-  const tenantId = process.env.AZURE_TENANT_ID;
-  const clientId = process.env.AZURE_CLIENT_ID;
-  const clientSecret = process.env.AZURE_CLIENT_SECRET;
-  const userId = process.env.AZURE_USER_ID; // The Microsoft 365 organizer user email or object ID
+export async function createMicrosoftTeamsOnlineMeeting(
+  topic: string, 
+  startTime: Date, 
+  endTime: Date, 
+  customAzureConfig?: { tenantId?: string; clientId?: string; clientSecret?: string; userId?: string }
+): Promise<string | null> {
+  const tenantId = customAzureConfig?.tenantId?.trim() || process.env.AZURE_TENANT_ID;
+  const clientId = customAzureConfig?.clientId?.trim() || process.env.AZURE_CLIENT_ID;
+  const clientSecret = customAzureConfig?.clientSecret?.trim() || process.env.AZURE_CLIENT_SECRET;
+  const userId = customAzureConfig?.userId?.trim() || process.env.AZURE_USER_ID; // The Microsoft 365 organizer user email or object ID
 
   if (!tenantId || !clientId || !clientSecret || !userId) {
     return null;
@@ -94,16 +101,34 @@ export async function createMicrosoftTeamsOnlineMeeting(topic: string, startTime
 
 /**
  * Generate a meeting join link:
- * - Tries Microsoft Graph API if Azure credentials exist
+ * - Uses custom/fixed Teams link from frontend if provided
+ * - Tries Microsoft Graph API if Azure credentials exist (via frontend config or .env)
  * - Otherwise generates a dedicated live video interview room
  */
-export async function generateTeamsMeetingLink(topic: string = 'Interview Session', startTime?: Date, endTime?: Date): Promise<string> {
+export async function generateTeamsMeetingLink(
+  topic: string = 'Interview Session', 
+  startTime?: Date, 
+  endTime?: Date, 
+  customTeamsConfig?: any
+): Promise<string> {
   const start = startTime || new Date();
   const end = endTime || new Date(start.getTime() + 45 * 60 * 1000);
 
-  // Try Microsoft Graph API first if Azure is configured
+  // 1. If HR configured a custom/permanent Teams or virtual meeting link from frontend
+  if (customTeamsConfig?.enabled !== false && customTeamsConfig?.customMeetingLink && customTeamsConfig.customMeetingLink.trim()) {
+    return customTeamsConfig.customMeetingLink.trim();
+  }
+
+  // 2. Try Microsoft Graph API with frontend Azure config or .env config
   try {
-    const graphLink = await createMicrosoftTeamsOnlineMeeting(topic, start, end);
+    const customAzure = (customTeamsConfig?.azureClientId || customTeamsConfig?.clientId) ? {
+      tenantId: customTeamsConfig.azureTenantId || customTeamsConfig.tenantId,
+      clientId: customTeamsConfig.azureClientId || customTeamsConfig.clientId,
+      clientSecret: customTeamsConfig.azureClientSecret || customTeamsConfig.clientSecret,
+      userId: customTeamsConfig.azureUserId || customTeamsConfig.userId
+    } : undefined;
+
+    const graphLink = await createMicrosoftTeamsOnlineMeeting(topic, start, end, customAzure);
     if (graphLink) {
       return graphLink;
     }
@@ -111,7 +136,7 @@ export async function generateTeamsMeetingLink(topic: string = 'Interview Sessio
     console.warn('[Teams Graph Warning]:', err);
   }
 
-  // Fallback Microsoft Teams Meeting format with tenant context
+  // 3. Fallback Microsoft Teams Meeting format with tenant context
   const tenantId = (process.env.AZURE_TENANT_ID && process.env.AZURE_TENANT_ID.includes('-'))
     ? process.env.AZURE_TENANT_ID 
     : '25276fbe-5e50-46cc-b2b0-f5d73c1ae606';
@@ -281,15 +306,6 @@ export const interviewService = {
       return { success: false, reason: 'No valid recipient emails' };
     }
 
-    // Sanitize position/jobTitle to remove any (Google Form Recruitment) suffix
-    const cleanJobTitle = (jobTitle || '')
-      .replace(/\s*\([^)]*Google\s*Form[^)]*\)/gi, '')
-      .replace(/\s*\(Google Form Recruitment\)/gi, '')
-      .replace(/\s*\(Google Form\)/gi, '')
-      .replace(/Google Form Recruitment/gi, 'Full Stack Engineer')
-      .replace(/Google Form Applicant/gi, 'Full Stack Engineer')
-      .trim() || 'Full Stack Engineer';
-
     // Determine meeting platform name
     let platformName = 'Microsoft Teams';
     const linkLower = (interviewLink || '').toLowerCase();
@@ -297,15 +313,18 @@ export const interviewService = {
     else if (linkLower.includes('teams.microsoft.com') || linkLower.includes('teams.live.com')) platformName = 'Microsoft Teams';
     else if (linkLower.includes('zoom.us') || linkLower.includes('zoom.com')) platformName = 'Zoom';
 
+    const senderDisplayName = (params.googleMailConfig?.senderName || 'VR PI Tech Solutions HR').trim();
+    const contactEmail = (params.googleMailConfig?.email || 'vamshikrishna@vrpigroup.co.in').trim();
+
     // Generate ICS calendar attachment
     const icsContent = generateIcsCalendarInvite({
-      title: `VR PI Interview: ${candidateName || 'Candidate'}`,
-      description: `VR PI Interview for ${candidateName || 'Candidate'}.\n\nDate: ${interviewDate}\nTime: ${interviewTime} IST\nMode: Virtual Interview\nPlatform: ${platformName}\nMeeting Link: ${interviewLink}\n\nOrganizer: HR Team, VR PI (vamshikrishna@vrpigroup.co.in)`,
+      title: `Interview: ${candidateName || 'Candidate'}`,
+      description: `Interview for ${candidateName || 'Candidate'}.\n\nDate: ${interviewDate}\nTime: ${interviewTime} IST\nMode: Virtual Interview\nPlatform: ${platformName}\nMeeting Link: ${interviewLink}\n\nOrganizer: ${senderDisplayName} (${contactEmail})`,
       location: interviewLink,
       start,
       end,
-      organizerEmail: 'vamshikrishna@vrpigroup.co.in',
-      organizerName: 'HR Team - VR PI',
+      organizerEmail: contactEmail,
+      organizerName: senderDisplayName,
       attendees: [
         { name: candidateName, email: candidateEmail },
         ...(interviewerEmail ? [{ name: interviewerName, email: interviewerEmail }] : []),
@@ -313,9 +332,31 @@ export const interviewService = {
       ]
     });
 
-    const emailSubject = `VR PI Interview Shortlist Invitation | ${candidateName || 'Candidate'}`;
+    const emailSubject = `Interview Invitation: ${candidateName || 'Candidate'} (VR PI Tech Solutions)`;
 
-    const plainTextBody = `Dear ${candidateName || 'Candidate'},\n\nGreetings from VR PI!\n\nWe are pleased to inform you that you have been shortlisted for the VR PI Interview. The interview will be conducted virtually through an online meeting.\n\nInterview Details:\n\n* Date: ${interviewDate}\n* Time: ${interviewTime} IST\n* Mode: Virtual Interview\n* Meeting Platform: ${platformName}\n* Meeting Link: ${interviewLink}\n\nPlease join the meeting 5–10 minutes before the scheduled time and ensure that you have a stable internet connection, working camera, and microphone.\n\nKindly keep your updated resume and relevant documents ready for the interview.\n\nWe look forward to speaking with you.\n\nBest Regards,\nHR Team\nVR PI\nvamshikrishna@vrpigroup.co.in`;
+    const plainTextBody = `Dear ${candidateName || 'Candidate'},
+
+Greetings from VR PI Tech Solutions.
+
+We are pleased to inform you that you have been shortlisted for an interview with VR PI Tech Solutions. The interview will be conducted virtually through an online meeting.
+
+Interview Schedule:
+* Date: ${interviewDate}
+* Time: ${interviewTime} IST
+* Mode: Virtual Interview
+* Meeting Platform: ${platformName}
+* Meeting Link: ${interviewLink}
+
+Please join the meeting 5-10 minutes prior to the scheduled time with a stable internet connection, working webcam, and microphone. Kindly keep your updated resume and documents accessible.
+
+Best Regards,
+${senderDisplayName}
+VR PI Tech Solutions
+${contactEmail}
+
+---
+VR PI Tech Solutions Pvt. Ltd. | Registered Office | Bangalore, India
+Recruitment Communication`;
 
     const htmlBody = `
       <!DOCTYPE html>
@@ -331,25 +372,25 @@ export const interviewService = {
           <!-- Header Banner -->
           <div style="background:linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%); padding:28px 32px; color:#ffffff;">
             <div style="display:inline-block; background:rgba(255,255,255,0.18); padding:5px 12px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; margin-bottom:10px;">
-              🏢 VR PI Recruitment
+              VR PI Recruitment
             </div>
-            <h1 style="margin:0; font-size:22px; font-weight:800; color:#ffffff;">VR PI Interview Invitation</h1>
-            <p style="margin:6px 0 0 0; font-size:13px; color:#c7d2fe;">Talent Acquisition · VR PI</p>
+            <h1 style="margin:0; font-size:22px; font-weight:800; color:#ffffff;">Interview Invitation</h1>
+            <p style="margin:6px 0 0 0; font-size:13px; color:#c7d2fe;">Talent Acquisition &bull; VR PI Tech Solutions</p>
           </div>
 
           <!-- Body Content -->
           <div style="padding:32px;">
             <p style="font-size:15px; margin:0 0 16px 0; color:#0f172a;">Dear <strong>${candidateName || 'Candidate'}</strong>,</p>
             
-            <p style="font-size:15px; margin:0 0 16px 0; color:#0f172a;">Greetings from <strong>VR PI</strong>!</p>
+            <p style="font-size:15px; margin:0 0 16px 0; color:#0f172a;">Greetings from <strong>VR PI Tech Solutions</strong>.</p>
             
             <p style="font-size:15px; margin:0 0 20px 0; color:#334155; line-height:1.6;">
-              We are pleased to inform you that you have been shortlisted for the <strong>VR PI Interview</strong>. The interview will be conducted virtually through an online meeting.
+              We are pleased to inform you that you have been shortlisted for an interview with <strong>VR PI Tech Solutions</strong>. The interview will be conducted virtually through an online meeting.
             </p>
 
             <!-- Interview Details Card -->
             <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #4f46e5; border-radius:8px; padding:18px 20px; margin:22px 0;">
-              <p style="margin:0 0 12px 0; font-weight:800; color:#0f172a; font-size:15px;">Interview Details:</p>
+              <p style="margin:0 0 12px 0; font-weight:800; color:#0f172a; font-size:15px;">Interview Schedule:</p>
               <ul style="margin:0; padding-left:20px; font-size:14px; color:#334155; line-height:1.9;">
                 <li><strong>Date:</strong> ${interviewDate}</li>
                 <li><strong>Time:</strong> ${interviewTime} IST</li>
@@ -362,16 +403,16 @@ export const interviewService = {
             <!-- Join Button Call To Action -->
             <div style="text-align:center; margin:28px 0 24px 0;">
               <a href="${interviewLink}" target="_blank" style="display:inline-block; background:linear-gradient(135deg, #10b981 0%, #059669 100%); color:#ffffff; font-size:15px; font-weight:700; text-decoration:none; padding:12px 28px; border-radius:8px; box-shadow:0 4px 12px rgba(16, 185, 129, 0.3);">
-                📹 Join Virtual Meeting
+                Join Virtual Meeting
               </a>
             </div>
 
             <p style="font-size:14px; margin:0 0 14px 0; color:#334155; line-height:1.6;">
-              Please join the meeting <strong>5–10 minutes before the scheduled time</strong> and ensure that you have a stable internet connection, working camera, and microphone.
+              Please join the meeting <strong>5-10 minutes before the scheduled time</strong> and ensure that you have a stable internet connection, working camera, and microphone.
             </p>
 
             <p style="font-size:14px; margin:0 0 18px 0; color:#334155; line-height:1.6;">
-              Kindly keep your updated resume and relevant documents ready for the interview.
+              Kindly keep your updated resume and relevant documents handy for the discussion.
             </p>
 
             <p style="font-size:14px; margin:0 0 24px 0; color:#334155; line-height:1.6;">
@@ -380,15 +421,17 @@ export const interviewService = {
 
             <div style="margin-top:28px; padding-top:18px; border-top:1px solid #f1f5f9; font-size:14px; color:#334155; line-height:1.6;">
               Best Regards,<br>
-              <strong style="color:#0f172a;">HR Team</strong><br>
-              <strong style="color:#4f46e5;">VR PI</strong><br>
-              <a href="mailto:vamshikrishna@vrpigroup.co.in" style="color:#4f46e5; text-decoration:none; font-weight:600;">vamshikrishna@vrpigroup.co.in</a>
+              <strong style="color:#0f172a;">${senderDisplayName}</strong><br>
+              <strong style="color:#4f46e5;">VR PI Tech Solutions</strong><br>
+              <a href="mailto:${contactEmail}" style="color:#4f46e5; text-decoration:none; font-weight:600;">${contactEmail}</a>
             </div>
           </div>
 
           <!-- Footer -->
-          <div style="background:#f8fafc; border-top:1px solid #e2e8f0; padding:14px 32px; text-align:center; font-size:11px; color:#94a3b8;">
-            VR PI Group HRMS · Official Recruitment Notification · Please do not reply directly to this automated email.
+          <div style="background:#f8fafc; border-top:1px solid #e2e8f0; padding:18px 32px; text-align:center; font-size:11px; color:#94a3b8; line-height:1.5;">
+            This interview invitation was sent directly to you regarding your job application with VR PI Tech Solutions.<br>
+            VR PI Tech Solutions Pvt. Ltd. &bull; Registered Office &bull; Bangalore, India<br>
+            Questions? Reply directly to this email or reach us at <a href="mailto:${contactEmail}" style="color:#64748b;">${contactEmail}</a>.
           </div>
         </div>
       </body>
@@ -413,7 +456,8 @@ export const interviewService = {
           htmlBody,
           plainTextBody,
           attachments,
-          'VR PI'
+          senderDisplayName,
+          params.googleMailConfig
         );
         results.push({ email: recipient, success: true, res });
       } catch (err: any) {
@@ -438,17 +482,47 @@ export const interviewService = {
       candidateName,
       candidateEmail,
       formUrl = DOCUMENT_UPLOAD_FORM_URL,
-      tenantName = 'VR PI Tech Solutions'
+      tenantName = 'VR PI Tech Solutions',
+      googleMailConfig
     } = params;
 
-    if (!candidateEmail || !candidateEmail.includes('@') || candidateEmail.includes('@example.com')) {
-      console.log('[InterviewService] No valid recipient email for document upload invite.');
-      return { success: false, reason: 'No valid candidate email' };
+    const targetEmail = sanitizeEmail(candidateEmail);
+
+    if (!targetEmail || !targetEmail.includes('@') || targetEmail.includes('@example.com')) {
+      console.log(`[InterviewService] No valid recipient email for document upload invite: "${candidateEmail}"`);
+      return { success: false, reason: 'Invalid or missing candidate email' };
     }
 
-    const emailSubject = `VR PI | Congratulations! Interview Cleared – Upload Documents for Verification`;
+    const senderDisplayName = (googleMailConfig?.senderName || 'VR PI Tech Solutions HR').trim();
+    const contactEmail = (googleMailConfig?.email || 'vamshikrishna@vrpigroup.co.in').trim();
 
-    const plainTextBody = `Dear ${candidateName || 'Candidate'},\n\nGreetings from VR PI!\n\nCongratulations! We are delighted to inform you that you have successfully cleared the interview round with VR PI.\n\nAs the next step in our recruitment and onboarding process, please upload your mandatory verification documents using our official document upload form below:\n\nDocument Upload Link: ${formUrl}\n\nPlease keep the following documents ready before filling out the form:\n1. Government Photo ID Proof (Aadhaar Card / PAN Card / Passport)\n2. Educational Certificates / Degree & Marksheets\n3. Previous Experience / Relieving Letters (if applicable)\n4. Recent Passport Size Photograph\n5. Bank Details / Cancelled Cheque\n\nKindly submit your documents at your earliest convenience so that our verification team can proceed with issuing your official Call Letter.\n\nBest Regards,\nHR Team\nVR PI\nvamshikrishna@vrpigroup.co.in`;
+    const emailSubject = `Document Verification: ${candidateName || 'Candidate'} - VR PI Tech Solutions`;
+
+    const plainTextBody = `Dear ${candidateName || 'Candidate'},
+
+Greetings from VR PI Tech Solutions.
+
+You have cleared the interview round with VR PI Tech Solutions. As the next step in our recruitment and onboarding process, please upload your mandatory verification documents using our official document upload form:
+
+Document Upload Link: ${formUrl}
+
+Documents to keep ready:
+1. Government Photo ID Proof (Aadhaar Card / PAN Card / Passport)
+2. Educational Certificates / Degree & Marksheets
+3. Previous Experience / Relieving Letters (if applicable)
+4. Recent Passport Size Photograph
+5. Bank Details / Cancelled Cheque
+
+Kindly submit your documents at your earliest convenience so that our verification team can proceed with issuing your official Call Letter.
+
+Best Regards,
+${senderDisplayName}
+VR PI Tech Solutions
+${contactEmail}
+
+---
+VR PI Tech Solutions Pvt. Ltd. | Registered Office | Bangalore, India
+Recruitment Communication`;
 
     const htmlBody = `
       <!DOCTYPE html>
@@ -464,24 +538,24 @@ export const interviewService = {
           <!-- Header Banner -->
           <div style="background:linear-gradient(135deg, #065f46 0%, #047857 50%, #10b981 100%); padding:28px 32px; color:#ffffff;">
             <div style="display:inline-block; background:rgba(255,255,255,0.2); padding:5px 12px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; margin-bottom:10px;">
-              🎉 Stage Cleared · Document Verification
+              Document Verification
             </div>
-            <h1 style="margin:0; font-size:22px; font-weight:800; color:#ffffff;">Congratulations on Clearing the Interview!</h1>
-            <p style="margin:6px 0 0 0; font-size:13px; color:#d1fae5;">Talent Acquisition · VR PI</p>
+            <h1 style="margin:0; font-size:22px; font-weight:800; color:#ffffff;">Document Verification Request</h1>
+            <p style="margin:6px 0 0 0; font-size:13px; color:#d1fae5;">Talent Acquisition &bull; VR PI Tech Solutions</p>
           </div>
 
           <!-- Body Content -->
           <div style="padding:32px;">
             <p style="font-size:15px; margin:0 0 16px 0; color:#0f172a;">Dear <strong>${candidateName || 'Candidate'}</strong>,</p>
             
-            <p style="font-size:15px; margin:0 0 16px 0; color:#0f172a;">Greetings from <strong>VR PI</strong>!</p>
+            <p style="font-size:15px; margin:0 0 16px 0; color:#0f172a;">Greetings from <strong>VR PI Tech Solutions</strong>.</p>
             
             <p style="font-size:15px; margin:0 0 20px 0; color:#334155; line-height:1.6;">
-              We are pleased to inform you that you have <strong>successfully passed the interview round</strong>! We were very impressed with your performance and are excited to move your profile to the next stage.
+              We are pleased to inform you that you have successfully passed the interview round. We are excited to move your profile forward to the document verification stage.
             </p>
 
             <p style="font-size:15px; margin:0 0 20px 0; color:#334155; line-height:1.6;">
-              To proceed with your onboarding and the issuance of your official Call Letter, please submit your verification documents through our official submission form below:
+              To proceed with onboarding and the issuance of your official Call Letter, please submit your verification documents through our submission form below:
             </p>
 
             <!-- Document Form Action Card -->
@@ -489,7 +563,7 @@ export const interviewService = {
               <p style="margin:0 0 14px 0; font-weight:800; color:#166534; font-size:16px;">Mandatory Document Submission Form</p>
               <div style="margin-bottom:16px;">
                 <a href="${formUrl}" target="_blank" style="display:inline-block; background:linear-gradient(135deg, #10b981 0%, #059669 100%); color:#ffffff; font-size:15px; font-weight:700; text-decoration:none; padding:13px 32px; border-radius:8px; box-shadow:0 4px 14px rgba(16, 185, 129, 0.35);">
-                  📂 Upload Verification Documents
+                  Upload Verification Documents
                 </a>
               </div>
               <p style="margin:0; font-size:12px; color:#4b5563; word-break:break-all;">
@@ -510,20 +584,22 @@ export const interviewService = {
             </div>
 
             <p style="font-size:14px; margin:20px 0 0 0; color:#475569; line-height:1.6;">
-              Please complete the submission at your earliest convenience so that our verification team can promptly verify your proofs and generate your official Call Letter.
+              Please complete the submission at your earliest convenience so that our verification team can verify your proofs and generate your official Call Letter.
             </p>
 
             <div style="margin-top:28px; padding-top:20px; border-top:1px solid #f1f5f9;">
               <p style="margin:0; font-size:14px; font-weight:700; color:#0f172a;">Best Regards,</p>
-              <p style="margin:4px 0 0 0; font-size:14px; font-weight:800; color:#10b981;">HR Team</p>
+              <p style="margin:4px 0 0 0; font-size:14px; font-weight:800; color:#10b981;">${senderDisplayName}</p>
               <p style="margin:2px 0 0 0; font-size:13px; color:#64748b;">VR PI Tech Solutions</p>
-              <a href="mailto:vamshikrishna@vrpigroup.co.in" style="color:#059669; text-decoration:none; font-size:13px; font-weight:600;">vamshikrishna@vrpigroup.co.in</a>
+              <a href="mailto:${contactEmail}" style="color:#059669; text-decoration:none; font-size:13px; font-weight:600;">${contactEmail}</a>
             </div>
           </div>
 
           <!-- Footer -->
-          <div style="background:#f8fafc; border-top:1px solid #e2e8f0; padding:14px 32px; text-align:center; font-size:11px; color:#94a3b8;">
-            VR PI Group HRMS · Official Recruitment Notification · Please do not reply directly to this automated email.
+          <div style="background:#f8fafc; border-top:1px solid #e2e8f0; padding:18px 32px; text-align:center; font-size:11px; color:#94a3b8; line-height:1.5;">
+            This recruitment document request was sent directly to you regarding your job application with VR PI Tech Solutions.<br>
+            VR PI Tech Solutions Pvt. Ltd. &bull; Registered Office &bull; Bangalore, India<br>
+            Questions? Reply directly to this email or contact us at <a href="mailto:${contactEmail}" style="color:#64748b;">${contactEmail}</a>.
           </div>
         </div>
       </body>
@@ -531,22 +607,40 @@ export const interviewService = {
     `;
 
     try {
-      console.log(`[InterviewService] Sending Document Upload email invite to: ${candidateEmail}`);
-      const res = await notificationService.sendEmail(
-        candidateEmail,
+      console.log(`[InterviewService] Sending Document Upload email invite to: ${targetEmail} (original: ${candidateEmail})`);
+      const res: any = await notificationService.sendEmail(
+        targetEmail,
         emailSubject,
         htmlBody,
         plainTextBody,
         undefined,
-        'VR PI TECH SOLUTIONS HR'
+        senderDisplayName,
+        googleMailConfig
       );
-      return { success: true, email: candidateEmail, res };
+      if (res && res.success === false) {
+        return { success: false, email: targetEmail, error: res.error || 'SMTP delivery rejected' };
+      }
+      return { success: true, email: targetEmail, res };
     } catch (err: any) {
-      console.error(`[InterviewService ERROR] Failed to send document upload email to ${candidateEmail}:`, err.message || err);
-      return { success: false, email: candidateEmail, error: err.message || String(err) };
+      console.error(`[InterviewService ERROR] Failed to send document upload email to ${targetEmail}:`, err.message || err);
+      return { success: false, email: targetEmail, error: err.message || String(err) };
     }
   }
 };
+
+export function sanitizeEmail(email: string): string {
+  let clean = (email || '').trim();
+  clean = clean.replace(/@gmai\.com$/i, '@gmail.com');
+  clean = clean.replace(/@gamil\.com$/i, '@gmail.com');
+  clean = clean.replace(/@gamail\.com$/i, '@gmail.com');
+  clean = clean.replace(/@gmaill\.com$/i, '@gmail.com');
+  clean = clean.replace(/@gmaii\.com$/i, '@gmail.com');
+  clean = clean.replace(/@yaho\.com$/i, '@yahoo.com');
+  clean = clean.replace(/@yahooo\.com$/i, '@yahoo.com');
+  clean = clean.replace(/@hotmial\.com$/i, '@hotmail.com');
+  clean = clean.replace(/@outlok\.com$/i, '@outlook.com');
+  return clean;
+}
 
 export const DOCUMENT_UPLOAD_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSf9WXwNo7CbnrUWFYAr7_gA21anOlX5fjWTsh3oK-koTkjdoA/viewform?usp=header';
 
@@ -556,5 +650,6 @@ export interface DocumentUploadInviteParams {
   formUrl?: string;
   jobTitle?: string;
   tenantName?: string;
+  googleMailConfig?: any;
 }
 

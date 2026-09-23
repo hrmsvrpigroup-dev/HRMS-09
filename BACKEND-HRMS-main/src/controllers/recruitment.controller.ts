@@ -1,4 +1,5 @@
 import { Response } from 'express'
+import nodemailer from 'nodemailer'
 import PDFDocument from 'pdfkit'
 import { prisma } from '../config/database'
 import { AuthRequest } from '../middleware/auth.middleware'
@@ -611,6 +612,9 @@ export const recruitmentController = {
 
       const updateData: any = {}
       if (status) updateData.status = status
+      if (email && email.trim() && email.includes('@')) updateData.email = email.trim()
+      if (name && name.trim()) updateData.name = name.trim()
+      if (phone !== undefined) updateData.phone = phone
       if (offerSalary !== undefined && offerSalary !== null) updateData.offerSalary = Number(offerSalary)
       if (offerJoiningDate) updateData.offerJoiningDate = new Date(offerJoiningDate)
       if (offerStatus) updateData.offerStatus = offerStatus
@@ -707,7 +711,9 @@ export const recruitmentController = {
         interviewerEmail,
         taggedEmails,
         sendEmailInvite = true,
-        notes
+        notes,
+        googleMailConfig,
+        teamsConfig
       } = req.body
       let tenantId = req.tenantId ?? req.user?.tenantId
       if (!tenantId) {
@@ -796,7 +802,7 @@ export const recruitmentController = {
         ? interviewLink.trim()
         : (application.interviewLink && application.interviewLink.trim()
             ? application.interviewLink.trim()
-            : await generateTeamsMeetingLink(`Interview: ${application.name}`))
+            : await generateTeamsMeetingLink(`Interview: ${application.name}`, undefined, undefined, teamsConfig))
 
       const updateData: any = {}
       if (parsedInterviewDate) updateData.interviewDate = parsedInterviewDate
@@ -845,7 +851,9 @@ export const recruitmentController = {
             interviewTime: interviewTime || application.interviewTime || '11:30 AM',
             interviewLink: finalMeetingLink,
             taggedEmails: Array.isArray(taggedEmails) ? taggedEmails : (taggedEmails ? [taggedEmails] : []),
-            notes
+            notes,
+            googleMailConfig,
+            teamsConfig
           })
         } catch (emailErr: any) {
           console.error('[RecruitmentController] Failed to dispatch interview invite emails:', emailErr.message || emailErr)
@@ -865,7 +873,7 @@ export const recruitmentController = {
   // Direct Teams meeting link generator
   async generateTeamsLink(req: AuthRequest, res: Response) {
     try {
-      const { topic, candidateEmail, candidateId, forceRefresh } = req.body || {}
+      const { topic, candidateEmail, candidateId, forceRefresh, teamsConfig } = req.body || {}
       
       // If candidate already has an interview link in DB, reuse it unless forceRefresh is true
       if (!forceRefresh && (candidateEmail || candidateId)) {
@@ -882,7 +890,7 @@ export const recruitmentController = {
         }
       }
 
-      const link = await generateTeamsMeetingLink(topic || 'HRMS Interview Session')
+      const link = await generateTeamsMeetingLink(topic || 'HRMS Interview Session', undefined, undefined, teamsConfig)
       return sendSuccess(res, { link }, 'Teams meeting link generated successfully')
     } catch (error: any) {
       return sendError(res, error.message || 'Failed to generate Teams meeting link', 500)
@@ -903,7 +911,9 @@ export const recruitmentController = {
         interviewTime,
         interviewLink,
         taggedEmails,
-        notes
+        notes,
+        googleMailConfig,
+        teamsConfig
       } = req.body
 
       const tenantId = req.tenantId ?? req.user?.tenantId
@@ -920,7 +930,7 @@ export const recruitmentController = {
         ? interviewLink.trim()
         : (existingApp?.interviewLink && existingApp.interviewLink.trim()
             ? existingApp.interviewLink.trim()
-            : await generateTeamsMeetingLink(`Interview: ${candidateName || 'Candidate'}`))
+            : await generateTeamsMeetingLink(`Interview: ${candidateName || 'Candidate'}`, undefined, undefined, teamsConfig))
 
       const result = await interviewService.sendInterviewInvites({
         candidateName: candidateName || 'Candidate',
@@ -934,7 +944,9 @@ export const recruitmentController = {
         interviewLink: finalLink,
         taggedEmails: Array.isArray(taggedEmails) ? taggedEmails : (taggedEmails ? [taggedEmails] : []),
         tenantName: tenant?.name || 'VRPI Group HRMS',
-        notes: notes || undefined
+        notes: notes || undefined,
+        googleMailConfig,
+        teamsConfig
       })
 
       return sendSuccess(res, { ...result, link: finalLink }, 'Interview invites dispatched successfully')
@@ -946,7 +958,7 @@ export const recruitmentController = {
   // Direct dispatch of Document Upload invitation email with Google Form link
   async sendDocumentUploadInviteDirect(req: AuthRequest, res: Response) {
     try {
-      const { candidateName, candidateEmail, formUrl } = req.body
+      const { candidateName, candidateEmail, formUrl, googleMailConfig } = req.body
       if (!candidateEmail) {
         return sendError(res, 'Candidate email is required', 400)
       }
@@ -957,8 +969,12 @@ export const recruitmentController = {
         candidateName: candidateName || 'Candidate',
         candidateEmail,
         formUrl: formUrl || DOCUMENT_UPLOAD_FORM_URL,
-        tenantName: tenant?.name || 'VR PI Tech Solutions'
+        tenantName: tenant?.name || 'VR PI Tech Solutions',
+        googleMailConfig
       })
+      if (!result.success) {
+        return sendError(res, (result as any).error || (result as any).reason || 'Failed to dispatch document upload email', 400)
+      }
       return sendSuccess(res, result, 'Document upload invitation email dispatched successfully')
     } catch (error: any) {
       return sendError(res, error.message || 'Failed to send document upload email', 500)
@@ -976,7 +992,8 @@ export const recruitmentController = {
       }
 
       const application = await prisma.jobApplication.findFirst({
-        where: { id, job: { tenantId } }
+        where: { id, job: { tenantId } },
+        include: { job: true }
       })
       if (!application) {
         return sendError(res, 'Application not found or unauthorized access', 404)
@@ -996,6 +1013,71 @@ export const recruitmentController = {
         where: { id },
         data: updateData
       })
+
+      // If offerStatus is SENT and application has an email address, dispatch the formal offer email
+      if (offerStatus === 'SENT' && application.email) {
+        try {
+          const candidateName = application.name || req.body.name || 'Candidate'
+          const grossNum = offerSalary ? Number(offerSalary) : (application.offerSalary || 0)
+          const formattedGross = grossNum > 0 ? `₹${grossNum.toLocaleString('en-IN')}/month (Annual CTC: ₹${(grossNum * 12).toLocaleString('en-IN')})` : ''
+          const joiningDateVal = offerJoiningDate || application.offerJoiningDate
+          const joiningDateStr = joiningDateVal ? new Date(joiningDateVal).toLocaleDateString('en-GB') : 'To be confirmed'
+          const roleTitle = application.job?.title || 'Selected Position'
+
+          const customSmtp = req.body.googleMailConfig
+          const contactEmail = customSmtp?.email || 'vamshikrishna@vrpigroup.co.in'
+          const senderDisplayName = customSmtp?.senderName || 'VR PI Tech Solutions HR'
+
+          const offerSubject = `Offer of Employment: ${roleTitle} — ${candidateName} (VR PI Tech Solutions)`
+          const offerHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>${offerSubject}</title>
+            </head>
+            <body style="font-family:'Segoe UI', Arial, sans-serif; background-color:#f8fafc; margin:0; padding:24px; color:#0f172a; line-height:1.6;">
+              <div style="max-width:600px; margin:0 auto; background:#ffffff; border-radius:12px; border:1px solid #e2e8f0; padding:32px; box-shadow:0 4px 12px rgba(0,0,0,0.04);">
+                <div style="background:linear-gradient(135deg, #4338ca 0%, #6366f1 100%); padding:20px 24px; border-radius:8px; color:#ffffff; margin-bottom:24px;">
+                  <h2 style="margin:0; font-size:20px; font-weight:800;">Formal Offer of Employment</h2>
+                  <p style="margin:4px 0 0 0; font-size:13px; color:#e0e7ff;">VR PI TECH SOLUTIONS · Talent Acquisition</p>
+                </div>
+                <p>Dear <strong>${candidateName}</strong>,</p>
+                <p>We are pleased to extend an offer of employment for the role of <strong>${roleTitle}</strong> at <strong>VR PI TECH SOLUTIONS</strong>.</p>
+                <div style="background:#f1f5f9; padding:16px 20px; border-radius:8px; margin:20px 0; border-left:4px solid #4f46e5;">
+                  <p style="margin:0 0 8px 0;"><strong>Designation:</strong> ${roleTitle}</p>
+                  ${formattedGross ? `<p style="margin:0 0 8px 0;"><strong>Remuneration:</strong> ${formattedGross}</p>` : ''}
+                  <p style="margin:0;"><strong>Expected Date of Joining:</strong> ${joiningDateStr}</p>
+                </div>
+                <p>Please review your offer terms. To confirm your acceptance, kindly reply to this email with your acceptance confirmation.</p>
+                <p style="margin-top:24px;">We look forward to welcoming you to the VR PI team.</p>
+                <div style="margin-top:28px; padding-top:16px; border-top:1px solid #e2e8f0; font-size:13px; color:#64748b;">
+                  Warm regards,<br>
+                  <strong>${senderDisplayName}</strong><br>
+                  <a href="mailto:${contactEmail}" style="color:#4f46e5;">${contactEmail}</a>
+                </div>
+                <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid #f1f5f9; font-size: 11px; color: #94a3b8; line-height: 1.5;">
+                  Official employment communication regarding your application at VR PI Tech Solutions.<br>
+                  Plot No. 12, Cyber Gateway, HITEC City, Hyderabad, Telangana 500081.
+                </div>
+              </div>
+            </body>
+            </html>
+          `
+          await notificationService.sendEmail(
+            application.email,
+            offerSubject,
+            offerHtml,
+            `Dear ${candidateName},\n\nWe are pleased to extend an offer of employment for ${roleTitle}.\nSalary: ${formattedGross}\nJoining Date: ${joiningDateStr}\n\nWarm regards,\n${senderDisplayName}\nVR PI Tech Solutions\n${contactEmail}\n\n---\nPlot No. 12, Cyber Gateway, HITEC City, Hyderabad, Telangana 500081`,
+            undefined,
+            senderDisplayName,
+            customSmtp
+          )
+        } catch (mailErr: any) {
+          console.error('[manageOffer] Non-fatal error sending offer email:', mailErr.message || mailErr)
+        }
+      }
 
       return sendSuccess(res, updated, 'Offer updated successfully')
     } catch (error: any) {
@@ -1848,7 +1930,8 @@ export const recruitmentController = {
         salary,
         hrEmail,
         hrPhone,
-        notes
+        notes,
+        googleMailConfig
       } = req.body
 
       if (!candidateEmail || !candidateEmail.includes('@')) {
@@ -1884,15 +1967,20 @@ export const recruitmentController = {
 
       const formattedDate = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
 
-      const subject = `Letter of Intent / Offer Letter - ${candName} [Ref no.: ${refNumber}]`
+      const senderDisplayName = (googleMailConfig?.senderName || 'VR PI Tech Solutions HR').trim()
+      const contactEmail = (googleMailConfig?.email || hrEmail || 'vamshikrishna@vrpigroup.co.in').trim()
+
+      const subject = `Call Letter: ${candRole} - ${candName} (VR PI Tech Solutions)`
 
       const html = `
       <!DOCTYPE html>
       <html>
       <head>
         <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${subject}</title>
         <style>
-          body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; color: #0f172a; line-height: 1.65; }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; color: #0f172a; line-height: 1.65; }
           .container { max-width: 620px; margin: 25px auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 35px; box-shadow: 0 4px 16px rgba(0,0,0,0.04); }
           .greeting { font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 12px; }
           .p-text { font-size: 14px; color: #334155; margin-bottom: 14px; line-height: 1.6; }
@@ -1903,45 +1991,52 @@ export const recruitmentController = {
           .link-btn { display: inline-block; margin: 12px 0 6px 0; padding: 10px 20px; background: #4f46e5; color: #ffffff !important; font-weight: 700; font-size: 13.5px; text-decoration: none; border-radius: 6px; }
           .doc-note { font-size: 13px; font-weight: 600; color: #475569; margin-top: 10px; }
           .signoff { margin-top: 25px; padding-top: 20px; border-top: 1px solid #f1f5f9; font-size: 13.5px; line-height: 1.5; color: #1e293b; }
+          .footer-note { margin-top: 28px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center; line-height: 1.5; }
         </style>
       </head>
       <body>
         <div class="container">
           <div class="greeting">Dear ${candName},</div>
           
-          <p class="p-text">Greetings from <strong>VR PI TECH SOLUTIONS</strong> !</p>
+          <p class="p-text">Greetings from <strong>VR PI Tech Solutions</strong>.</p>
           
-          <p class="p-text">We are pleased to inform you that you have been selected for <strong>${candRole}</strong> at <strong>VR PI TECH SOLUTIONS</strong>. Please find the Offer/Call Letter attached to this email. We request you to carefully review the terms and conditions mentioned in the letter.</p>
+          <p class="p-text">We are pleased to inform you that you have been selected for <strong>${candRole}</strong> at <strong>VR PI Tech Solutions</strong>. Please find your official Offer and Call Letter attached to this email. We request you to carefully review the terms and conditions outlined in the document.</p>
           
           <div class="action-box">
             <div class="action-title">Required Action</div>
-            <p class="p-text" style="margin-bottom: 8px;">If you accept the offer, please:</p>
+            <p class="p-text" style="margin-bottom: 8px;">If you accept the offer, please follow these steps:</p>
             <ol class="action-list">
-              <li>Review the attached Offer/Call Letter.</li>
+              <li>Review the attached Offer/Call Letter PDF.</li>
               <li>Sign the document in the designated space.</li>
               <li>Save the signed document in PDF format.</li>
-              <li>Upload the signed Offer/Call Letter through the recruitment form using the link below:</li>
+              <li>Upload the signed document through the recruitment form link below:</li>
             </ol>
             <div style="margin: 14px 0 8px 0;">
-              <a href="https://docs.google.com/forms/d/e/1FAIpQLSdWlHM3eZBVCXy78iKx4ajxi2O7xlzEHe7B8wQowGxiG_PsmA/viewform?usp=header" class="link-btn" target="_blank">Open Google Recruitment Form</a>
+              <a href="https://docs.google.com/forms/d/e/1FAIpQLSdWlHM3eZBVCXy78iKx4ajxi2O7xlzEHe7B8wQowGxiG_PsmA/viewform?usp=header" class="link-btn" target="_blank">Open Recruitment Submission Form</a>
             </div>
-            <div class="doc-note">📄 <strong>Document to upload:</strong> Signed Offer/Call Letter – PDF preferred</div>
+            <div class="doc-note">📄 <strong>Document to upload:</strong> Signed Offer/Call Letter (PDF format preferred)</div>
           </div>
           
-          <p class="p-text"><strong>Please complete the above process within a week.</strong></p>
+          <p class="p-text">Please complete the above submission within 7 business days.</p>
           
-          <p class="p-text">Your signed document will be treated as confirmation of your acceptance of the offer, subject to the terms and conditions mentioned in the Offer/Call Letter.</p>
+          <p class="p-text">Your signed document will be treated as formal confirmation of your acceptance, subject to company policies and document verification.</p>
           
-          <p class="p-text">If you have any questions or require clarification regarding the offer, please contact the HR team at <a href="mailto:vamshikrishna@vrpigroup.co.in" style="color: #4f46e5; font-weight: 600;">vamshikrishna@vrpigroup.co.in</a> .</p>
+          <p class="p-text">If you have any questions or require clarification regarding the offer, please reply directly to this email or contact us at <a href="mailto:${contactEmail}" style="color: #4f46e5; font-weight: 600;">${contactEmail}</a>.</p>
           
-          <p class="p-text">We look forward to welcoming you to <strong>VR PI TECH SOLUTIONS</strong> and wish you a successful journey with us.</p>
+          <p class="p-text">We look forward to welcoming you to the VR PI Tech Solutions team.</p>
           
           <div class="signoff">
             Best Regards,<br>
-            <strong>Vamshi Krishna</strong><br>
+            <strong>${senderDisplayName}</strong><br>
             Human Resources<br>
-            <strong>VR PI TECH SOLUTIONS</strong><br>
-            <a href="mailto:vamshikrishna@vrpigroup.co.in" style="color: #4f46e5;">vamshikrishna@vrpigroup.co.in</a>
+            <strong>VR PI Tech Solutions</strong><br>
+            <a href="mailto:${contactEmail}" style="color: #4f46e5;">${contactEmail}</a>
+          </div>
+
+          <div class="footer-note">
+            This recruitment communication was sent directly to you regarding your job application with VR PI Tech Solutions.<br>
+            VR PI Tech Solutions Pvt. Ltd. &bull; Registered Office &bull; Bangalore, India<br>
+            If you received this message in error, please reply to ${contactEmail} to let us know.
           </div>
         </div>
       </body>
@@ -1950,33 +2045,30 @@ export const recruitmentController = {
 
       const text = `Dear ${candName},
 
-Greetings from VR PI TECH SOLUTIONS !
+Greetings from VR PI Tech Solutions.
 
-We are pleased to inform you that you have been selected for ${candRole} at VR PI TECH SOLUTIONS. Please find the Offer/Call Letter attached to this email. We request you to carefully review the terms and conditions mentioned in the letter.
+We are pleased to inform you that you have been selected for ${candRole} at VR PI Tech Solutions. Please find your official Offer/Call Letter attached to this email. We request you to carefully review the terms and conditions outlined in the document.
 
-Required Action
-If you accept the offer, please:
-1. Review the attached Offer/Call Letter.
+Required Action:
+1. Review the attached Offer/Call Letter PDF.
 2. Sign the document in the designated space.
 3. Save the signed document in PDF format.
-4. Upload the signed Offer/Call Letter through the recruitment form using the link below.
+4. Upload the signed document through the recruitment form:
+   https://docs.google.com/forms/d/e/1FAIpQLSdWlHM3eZBVCXy78iKx4ajxi2O7xlzEHe7B8wQowGxiG_PsmA/viewform?usp=header
 
-Google Form: https://docs.google.com/forms/d/e/1FAIpQLSdWlHM3eZBVCXy78iKx4ajxi2O7xlzEHe7B8wQowGxiG_PsmA/viewform?usp=header
-Document to upload: Signed Offer/Call Letter – PDF preferred
+Please complete this process within 7 business days.
 
-Please complete the above process within a week.
-
-Your signed document will be treated as confirmation of your acceptance of the offer, subject to the terms and conditions mentioned in the Offer/Call Letter.
-
-If you have any questions or require clarification regarding the offer, please contact the HR team at vamshikrishna@vrpigroup.co.in .
-
-We look forward to welcoming you to VR PI TECH SOLUTIONS and wish you a successful journey with us.
+If you have any questions or require clarification, please reply directly to this email or contact the HR team at ${contactEmail}.
 
 Best Regards,
-Vamshi Krishna
+${senderDisplayName}
 Human Resources
-VR PI TECH SOLUTIONS
-vamshikrishna@vrpigroup.co.in`
+VR PI Tech Solutions
+${contactEmail}
+
+---
+VR PI Tech Solutions Pvt. Ltd. | Registered Office | Bangalore, India
+Recruitment Communication`
 
       // Generate PDF attachment
       let attachments: any[] | undefined = undefined
@@ -2011,7 +2103,8 @@ vamshikrishna@vrpigroup.co.in`
         html,
         text,
         attachments,
-        `VR PI TECH SOLUTIONS HR`
+        googleMailConfig?.senderName || `VR PI TECH SOLUTIONS HR`,
+        googleMailConfig
       )
 
       // If this corresponds to an application in database, update its status
@@ -2058,7 +2151,8 @@ vamshikrishna@vrpigroup.co.in`
         formApplicantStatuses: details.formApplicantStatuses || {},
         deletedApplicants: details.deletedApplicants || [],
         candidateCallLetters: details.candidateCallLetters || {},
-        offerCandidates: details.offerCandidates || []
+        offerCandidates: details.offerCandidates || [],
+        googleMailConfig: details.googleMailConfig || null
       }, 'Shared recruitment state fetched')
     } catch (error: any) {
       console.error('[RecruitmentController] Error fetching shared state:', error)
@@ -2074,7 +2168,7 @@ vamshikrishna@vrpigroup.co.in`
         return sendError(res, 'Tenant context not found', 400)
       }
 
-      const { candidateOfferForms, formApplicantStatuses, deletedApplicants, candidateCallLetters, offerCandidates } = req.body
+      const { candidateOfferForms, formApplicantStatuses, deletedApplicants, candidateCallLetters, offerCandidates, googleMailConfig } = req.body
 
       const existing = await prisma.auditLog.findFirst({
         where: {
@@ -2091,7 +2185,8 @@ vamshikrishna@vrpigroup.co.in`
         formApplicantStatuses: { ...(currentDetails.formApplicantStatuses || {}), ...(formApplicantStatuses || {}) },
         deletedApplicants: Array.from(new Set([...(currentDetails.deletedApplicants || []), ...(deletedApplicants || [])])),
         candidateCallLetters: { ...(currentDetails.candidateCallLetters || {}), ...(candidateCallLetters || {}) },
-        offerCandidates: offerCandidates !== undefined ? offerCandidates : (currentDetails.offerCandidates || [])
+        offerCandidates: offerCandidates !== undefined ? offerCandidates : (currentDetails.offerCandidates || []),
+        googleMailConfig: googleMailConfig !== undefined ? googleMailConfig : (currentDetails.googleMailConfig || null)
       }
 
       if (existing) {
@@ -2119,6 +2214,89 @@ vamshikrishna@vrpigroup.co.in`
     } catch (error: any) {
       console.error('[RecruitmentController] Error saving shared state:', error)
       return sendError(res, error.message || 'Failed to update shared state', 500)
+    }
+  },
+
+  // POST /recruitment/test-gmail-connection: Test Google SMTP handshake with provided credentials
+  async testGmailConnection(req: AuthRequest, res: Response) {
+    try {
+      const { email, appPassword, senderName } = req.body
+      if (!email || !email.includes('@')) {
+        return sendError(res, 'Valid Gmail address is required.', 400)
+      }
+      const cleanPassword = (appPassword || '').replace(/\s+/g, '')
+      if (!cleanPassword || cleanPassword.length < 8) {
+        return sendError(res, 'Valid 16-character Google App Password is required.', 400)
+      }
+
+      const transporter = nodemailer.createTransport({
+        host: 'smtp.gmail.com',
+        port: 465,
+        secure: true,
+        auth: {
+          user: email.trim(),
+          pass: cleanPassword
+        }
+      })
+
+      await transporter.verify()
+
+      return sendSuccess(res, { verified: true }, `Google SMTP connected successfully for ${email}! Default recruitment templates are ready.`)
+    } catch (err: any) {
+      console.error('[RecruitmentController] Gmail test verification error:', err.message || err)
+      let msg = err.message || 'SMTP Authentication failed.'
+      if (msg.includes('535') || msg.includes('BadCredentials') || msg.includes('Username and Password not accepted')) {
+        msg = 'Google rejected the credentials. Please verify your 16-character Google App Password and ensure 2-Step Verification is active.'
+      }
+      return sendError(res, msg, 400)
+    }
+  },
+
+  // POST /recruitment/test-teams-connection: Test Microsoft Teams custom link or Azure credentials
+  async testTeamsConnection(req: AuthRequest, res: Response) {
+    try {
+      const { mode, customMeetingLink, azureTenantId, azureClientId, azureClientSecret, azureUserId } = req.body
+
+      if (mode === 'custom' || customMeetingLink) {
+        const link = (customMeetingLink || '').trim()
+        if (!link.startsWith('http://') && !link.startsWith('https://')) {
+          return sendError(res, 'Please enter a valid meeting URL starting with https:// (e.g., https://teams.microsoft.com/...)', 400)
+        }
+        return sendSuccess(res, { verified: true, mode: 'custom' }, 'Teams meeting link verified successfully! All interviews will use this meeting link.')
+      }
+
+      if (mode === 'azure') {
+        if (!azureTenantId || !azureClientId || !azureClientSecret || !azureUserId) {
+          return sendError(res, 'Tenant ID, Client ID, Client Secret, and Organizer Email are all required for Azure M365 integration.', 400)
+        }
+
+        const tokenUrl = `https://login.microsoftonline.com/${encodeURIComponent(azureTenantId.trim())}/oauth2/v2.0/token`
+        const params = new URLSearchParams({
+          client_id: azureClientId.trim(),
+          client_secret: azureClientSecret.trim(),
+          grant_type: 'client_credentials',
+          scope: 'https://graph.microsoft.com/.default'
+        })
+
+        const tokenRes = await fetch(tokenUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: params.toString()
+        })
+
+        if (!tokenRes.ok) {
+          const errData: any = await tokenRes.json().catch(() => ({}))
+          const errorDesc = errData.error_description || 'Azure AD authentication failed. Please check your Tenant ID, Client ID, and Secret.'
+          return sendError(res, errorDesc, 400)
+        }
+
+        return sendSuccess(res, { verified: true, mode: 'azure' }, 'Connected to Microsoft 365 Azure successfully! Official Teams meetings can now be generated automatically.')
+      }
+
+      return sendSuccess(res, { verified: true, mode: 'auto' }, 'Automated Microsoft Teams meeting room generator ready.')
+    } catch (err: any) {
+      console.error('[RecruitmentController] Teams test connection error:', err.message || err)
+      return sendError(res, err.message || 'Failed to verify Teams configuration', 500)
     }
   }
 }
