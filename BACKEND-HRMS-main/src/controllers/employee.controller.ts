@@ -810,19 +810,26 @@ export const employeeController = {
         console.error('[DELETE EMPLOYEE FOLDER ERROR]', dirErr)
       }
 
-      await prisma.$transaction(async (tx) => {
-        // Delete the employee
-        await tx.employee.delete({
-          where: { id },
-        })
+      await prisma.$transaction(
+        async (tx) => {
+          // Delete heavy relations first if present for faster cascade
+          await tx.screenshot.deleteMany({ where: { employeeId: id } }).catch(() => {})
+          await tx.attendance.deleteMany({ where: { employeeId: id } }).catch(() => {})
 
-        // Also delete the linked user account if it exists
-        if (employee.userId) {
-          await tx.user.delete({
-            where: { id: employee.userId },
+          // Delete the employee
+          await tx.employee.delete({
+            where: { id },
           })
-        }
-      })
+
+          // Also delete the linked user account if it exists
+          if (employee.userId) {
+            await tx.user.deleteMany({
+              where: { id: employee.userId },
+            })
+          }
+        },
+        { timeout: 60000, maxWait: 15000 }
+      )
 
       return sendSuccess(res, null, 'Employee deleted successfully')
     } catch (error: any) {

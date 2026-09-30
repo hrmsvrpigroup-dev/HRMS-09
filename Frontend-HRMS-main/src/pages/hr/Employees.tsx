@@ -31,6 +31,7 @@ export default function Employees() {
       return true
     }
   })
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [showAddEmployee, setShowAddEmployee] = useState(false)
 
@@ -58,11 +59,20 @@ export default function Employees() {
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this employee?')) return
+    setDeletingId(id)
     try {
       await employeeApi.delete(id)
-      await fetchEmployees()
+      const updated = employees.filter((emp) => emp.id !== id)
+      setEmployees(updated)
+      setFilteredEmployees((prev) => prev.filter((emp) => emp.id !== id))
+      try {
+        sessionStorage.setItem('hrms_cached_employees', JSON.stringify(updated))
+      } catch {}
+      await fetchEmployees(true)
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to delete employee')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -242,10 +252,16 @@ export default function Employees() {
                       </button>
                       <button
                         className="btn-danger"
-                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                        style={{
+                          padding: '0.25rem 0.5rem',
+                          fontSize: '0.8rem',
+                          opacity: deletingId === emp.id ? 0.6 : 1,
+                          cursor: deletingId === emp.id ? 'not-allowed' : 'pointer'
+                        }}
+                        disabled={deletingId === emp.id}
                         onClick={() => handleDelete(emp.id)}
                       >
-                        Delete
+                        {deletingId === emp.id ? 'Deleting...' : 'Delete'}
                       </button>
                     </div>
                   </td>

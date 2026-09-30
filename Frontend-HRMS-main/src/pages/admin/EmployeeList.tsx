@@ -37,13 +37,20 @@ export default function EmployeeList() {
     }
   }
 
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
   const handleDelete = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this employee?')) return
+    setDeletingId(id)
     try {
       await employeeApi.delete(id)
+      setEmployees((prev) => prev.filter((e) => e.id !== id))
+      setFilteredEmployees((prev) => prev.filter((e) => e.id !== id))
       await fetchEmployees()
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to delete employee')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -219,10 +226,16 @@ export default function EmployeeList() {
                       </button>
                       <button
                         className="btn-danger"
-                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                        style={{
+                          padding: '0.25rem 0.5rem',
+                          fontSize: '0.8rem',
+                          opacity: deletingId === emp.id ? 0.6 : 1,
+                          cursor: deletingId === emp.id ? 'not-allowed' : 'pointer'
+                        }}
+                        disabled={deletingId === emp.id}
                         onClick={() => handleDelete(emp.id)}
                       >
-                        Delete
+                        {deletingId === emp.id ? 'Deleting...' : 'Delete'}
                       </button>
                     </div>
                   </td>
