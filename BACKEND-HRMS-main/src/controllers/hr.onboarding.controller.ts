@@ -49,9 +49,18 @@ export const hrOnboardingController = {
       // Check if user workEmail already exists in system
       const existingUser = await prisma.user.findUnique({
         where: { email: data.workEmail.trim() },
+        include: { employeeProfile: true, tenant: true },
       })
       if (existingUser) {
-        return sendError(res, `An employee account with work email "${data.workEmail}" already exists in the system.`, 400)
+        if (existingUser.employeeProfile) {
+          return sendError(res, `An employee account with work email "${data.workEmail}" already exists in the system.`, 400)
+        }
+        if (existingUser.role === 'SUPER_ADMIN') {
+          return sendError(res, `Super Admin account with work email "${data.workEmail}" cannot be onboarded as an employee.`, 400)
+        }
+        if (existingUser.role === 'ADMIN' && existingUser.tenant && existingUser.tenant.status === 'ACTIVE' && existingUser.tenantId !== tenantId) {
+          return sendError(res, `An active administrator account with email "${data.workEmail}" exists in another organization.`, 400)
+        }
       }
 
       // Password logic: send activation email implies generating random or placeholder pass 
@@ -62,22 +71,48 @@ export const hrOnboardingController = {
 
       // Transaction to create everything
       const result = await prisma.$transaction(async (tx) => {
-        // Create User for Employee
-        const user = await tx.user.create({
-          data: {
-            tenantId,
-            email: data.workEmail,
-            username: data.workEmail.split('@')[0],
-            password: hashedPassword,
-            role: 'EMPLOYEE',
-            firstName: data.firstName,
-            lastName: data.lastName,
-            phone: data.mobileNumber,
-            isActive: true,
-            passwordResetToken: resetToken,
-            passwordResetExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+        // Create or adopt User for Employee
+        let user
+        if (existingUser) {
+          user = await tx.user.update({
+            where: { id: existingUser.id },
+            data: {
+              tenantId,
+              email: data.workEmail.trim(),
+              username: data.workEmail.trim().split('@')[0],
+              password: hashedPassword,
+              role: 'EMPLOYEE',
+              firstName: data.firstName,
+              lastName: data.lastName,
+              phone: data.mobileNumber,
+              isActive: true,
+              passwordResetToken: resetToken,
+              passwordResetExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+            }
+          })
+          if (existingUser.tenantId && existingUser.tenantId !== tenantId && existingUser.tenant?.status === 'PENDING') {
+            const pendingEmpCount = await tx.employee.count({ where: { tenantId: existingUser.tenantId } })
+            if (pendingEmpCount === 0) {
+              await tx.tenant.delete({ where: { id: existingUser.tenantId } }).catch(() => {})
+            }
           }
-        })
+        } else {
+          user = await tx.user.create({
+            data: {
+              tenantId,
+              email: data.workEmail.trim(),
+              username: data.workEmail.trim().split('@')[0],
+              password: hashedPassword,
+              role: 'EMPLOYEE',
+              firstName: data.firstName,
+              lastName: data.lastName,
+              phone: data.mobileNumber,
+              isActive: true,
+              passwordResetToken: resetToken,
+              passwordResetExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+            }
+          })
+        }
 
         // Create Employee
         const employee = await tx.employee.create({
@@ -269,17 +304,45 @@ export const hrOnboardingController = {
     if (!tenantId) return sendError(res, 'Tenant context not found', 400)
 
     try {
-      // Find all employees in tenant
+      // Find all employees in tenant (selecting essential metadata, excluding large base64 fields like photo, signature, faceBaseline)
       const employees = await prisma.employee.findMany({
         where: { tenantId },
-        include: {
+        select: {
+          id: true,
+          employeeCode: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          personalEmail: true,
+          phone: true,
+          dateOfBirth: true,
+          gender: true,
+          maritalStatus: true,
+          employmentType: true,
+          status: true,
+          salaryGross: true,
+          joiningDate: true,
+          branchId: true,
+          shift: true,
+          createdAt: true,
+          updatedAt: true,
+          department: {
+            select: {
+              id: true,
+              name: true,
+            }
+          },
+          designation: {
+            select: {
+              id: true,
+              title: true,
+            }
+          },
           verification: true,
-          department: true,
-          designation: true,
-          onboardingDocs: true,
           payrollDetails: true,
           addressInfo: true,
           emergencyContact: true,
+          onboardingDocs: true,
         },
         orderBy: { createdAt: 'desc' }
       })
@@ -290,8 +353,23 @@ export const hrOnboardingController = {
       let approvedCount = 0
       let rejectedCount = 0
 
-      const mapped = employees.filter(e => e.verification).map(e => {
-        const v = e.verification!
+      const mapped = employees.map(e => {
+        let v: any = e.verification
+        if (!v) {
+          v = {
+            id: `auto-${e.id}`,
+            employeeId: e.id,
+            verificationStatus: e.status === 'ACTIVE' ? 'APPROVED' : 'PENDING_REVIEW',
+            verificationNotes: null,
+            rejectionReason: null,
+            verifiedById: null,
+            verifiedAt: null,
+            createdAt: e.createdAt,
+            updatedAt: e.updatedAt,
+          }
+          ;(e as any).verification = v
+        }
+
         if (v.verificationStatus === 'PENDING_REVIEW') pendingCount++
         else if (v.verificationStatus === 'VERIFIED') verifiedCount++
         else if (v.verificationStatus === 'APPROVED') approvedCount++
@@ -321,12 +399,26 @@ export const hrOnboardingController = {
     const { notes, reason } = req.body // action: 'VERIFY', 'APPROVE', 'REJECT'
 
     try {
-      const verif = await prisma.employeeVerification.findUnique({
+      let verif = await prisma.employeeVerification.findUnique({
         where: { employeeId: id },
         include: { employee: true }
       })
 
-      if (!verif || verif.employee.tenantId !== tenantId) {
+      if (!verif) {
+        const emp = await prisma.employee.findUnique({ where: { id } })
+        if (!emp || emp.tenantId !== tenantId) {
+          return sendError(res, 'Employee verification record not found', 404)
+        }
+        verif = await prisma.employeeVerification.create({
+          data: {
+            employeeId: id,
+            verificationStatus: 'PENDING_REVIEW',
+          },
+          include: { employee: true }
+        })
+      }
+
+      if (verif.employee.tenantId !== tenantId) {
         return sendError(res, 'Verification record not found', 404)
       }
 

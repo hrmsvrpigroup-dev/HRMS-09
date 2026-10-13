@@ -269,6 +269,7 @@ export const employeeController = {
       firstName,
       lastName,
       email,
+      personalEmail,
       phone,
       gender,
       departmentName,
@@ -291,6 +292,7 @@ export const employeeController = {
         }),
         prisma.user.findUnique({
           where: { email },
+          include: { employeeProfile: true, tenant: true },
         }),
       ])
 
@@ -298,7 +300,15 @@ export const employeeController = {
         return sendError(res, `Employee Code "${employeeCode}" is already in use.`, 400)
       }
       if (existingUser) {
-        return sendError(res, `Email "${email}" is already registered.`, 400)
+        if (existingUser.employeeProfile) {
+          return sendError(res, `An employee account with work email "${email}" already exists.`, 400)
+        }
+        if (existingUser.role === UserRole.SUPER_ADMIN) {
+          return sendError(res, `Super Admin account with email "${email}" cannot be onboarded as an employee.`, 400)
+        }
+        if (existingUser.role === UserRole.ADMIN && existingUser.tenant && existingUser.tenant.status === 'ACTIVE' && existingUser.tenantId !== tenantId) {
+          return sendError(res, `An active administrator account with email "${email}" exists in another organization.`, 400)
+        }
       }
 
       // 2. Validate tenant balance
@@ -361,18 +371,41 @@ export const employeeController = {
           designationId = des.id
         }
 
-        // Create User (login account)
-        const user = await tx.user.create({
-          data: {
-            email,
-            password: hashedPassword,
-            role: UserRole.EMPLOYEE,
-            firstName,
-            lastName,
-            phone,
-            tenantId,
-          },
-        })
+        // Create or adopt User (login account)
+        let user
+        if (existingUser) {
+          user = await tx.user.update({
+            where: { id: existingUser.id },
+            data: {
+              email,
+              password: hashedPassword,
+              role: UserRole.EMPLOYEE,
+              firstName,
+              lastName,
+              phone,
+              tenantId,
+              isActive: true,
+            },
+          })
+          if (existingUser.tenantId && existingUser.tenantId !== tenantId && existingUser.tenant?.status === 'PENDING') {
+            const pendingEmpCount = await tx.employee.count({ where: { tenantId: existingUser.tenantId } })
+            if (pendingEmpCount === 0) {
+              await tx.tenant.delete({ where: { id: existingUser.tenantId } }).catch(() => {})
+            }
+          }
+        } else {
+          user = await tx.user.create({
+            data: {
+              email,
+              password: hashedPassword,
+              role: UserRole.EMPLOYEE,
+              firstName,
+              lastName,
+              phone,
+              tenantId,
+            },
+          })
+        }
 
         // Create Employee Profile
         const employee = await tx.employee.create({
@@ -416,7 +449,6 @@ export const employeeController = {
       })
 
       // Send credentials to personal email after successful creation
-      const personalEmail = req.body.personalEmail
       if (personalEmail) {
         try {
           const { notificationService } = await import('../services/notification.service')
@@ -638,7 +670,9 @@ export const employeeController = {
             firstName: data.firstName,
             lastName: data.lastName,
             email: data.workEmail,
-            personalEmail: data.personalEmail || null,
+            personalEmail: (data.personalEmail && String(data.personalEmail).trim())
+              ? String(data.personalEmail).trim()
+              : employee.personalEmail,
             phone: data.mobileNumber || null,
             dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
             gender: data.gender || null,

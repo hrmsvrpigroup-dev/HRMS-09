@@ -2,10 +2,13 @@ import React, { useEffect, useState } from 'react'
 import { hrApi } from '../../api/hr.api'
 import { CheckCircle, XCircle, Clock, AlertTriangle, Eye, Search, FileText, Check, X, ShieldAlert } from 'lucide-react'
 
+const API_BASE_URL = (import.meta.env.VITE_API_URL || 'https://hrms-09.onrender.com/api').replace(/\/api$/, '')
+
 export default function EmployeeVerifications() {
   const [stats, setStats] = useState({ pending: 0, verified: 0, approved: 0, rejected: 0 })
   const [queue, setQueue] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [filter, setFilter] = useState('ALL')
   const [selectedEmp, setSelectedEmp] = useState<any>(null)
@@ -16,12 +19,21 @@ export default function EmployeeVerifications() {
 
   const fetchVerifications = async () => {
     setLoading(true)
+    setError('')
     try {
       const res = await hrApi.getVerifications()
-      setStats(res.data.stats)
-      setQueue(res.data.queue)
-    } catch (err) {
-      console.error(err)
+      const payload = res?.data || res
+      if (payload?.stats) {
+        setStats(payload.stats)
+      }
+      if (Array.isArray(payload?.queue)) {
+        setQueue(payload.queue)
+      } else if (Array.isArray(payload)) {
+        setQueue(payload)
+      }
+    } catch (err: any) {
+      console.error('Failed to load verification queue:', err)
+      setError(err?.response?.data?.message || err?.message || 'Failed to connect to verification queue.')
     } finally {
       setLoading(false)
     }
@@ -48,10 +60,16 @@ export default function EmployeeVerifications() {
   }
 
   const filteredQueue = queue.filter(emp => {
-    if (filter !== 'ALL' && emp.verification?.verificationStatus !== filter) return false
+    if (!emp) return false
+    const currentStatus = emp.verification?.verificationStatus || 'PENDING_REVIEW'
+    if (filter !== 'ALL' && currentStatus !== filter) return false
     if (searchTerm) {
       const search = searchTerm.toLowerCase()
-      if (!emp.firstName.toLowerCase().includes(search) && !emp.lastName.toLowerCase().includes(search) && !emp.employeeCode.toLowerCase().includes(search)) {
+      const firstName = (emp.firstName || '').toLowerCase()
+      const lastName = (emp.lastName || '').toLowerCase()
+      const employeeCode = (emp.employeeCode || '').toLowerCase()
+      const email = (emp.email || '').toLowerCase()
+      if (!firstName.includes(search) && !lastName.includes(search) && !employeeCode.includes(search) && !email.includes(search)) {
         return false
       }
     }
@@ -119,6 +137,13 @@ export default function EmployeeVerifications() {
 
           {loading ? (
             <div className="empty-state">Loading verification queue...</div>
+          ) : error ? (
+            <div className="empty-state" style={{ color: '#ef4444' }}>
+              <p>{error}</p>
+              <button onClick={fetchVerifications} className="btn-outline" style={{ marginTop: '10px' }}>
+                Retry
+              </button>
+            </div>
           ) : filteredQueue.length === 0 ? (
             <div className="empty-state">No employees found in the queue.</div>
           ) : (
@@ -129,7 +154,7 @@ export default function EmployeeVerifications() {
                   <div key={emp.id} onClick={() => setSelectedEmp(emp)} className={`queue-item ${isSelected ? 'selected' : ''}`}>
                     <div className="queue-item-left">
                       <div className="queue-avatar">
-                        {emp.firstName[0]}{emp.lastName[0]}
+                        {(emp.firstName?.[0] || 'E')}{(emp.lastName?.[0] || '')}
                       </div>
                       <div className="queue-info">
                         <h4>{emp.firstName} {emp.lastName}</h4>
@@ -186,7 +211,7 @@ export default function EmployeeVerifications() {
                     {selectedEmp.onboardingDocs.map((doc: any) => (
                       <div key={doc.id} className="doc-item">
                         <div className="doc-name">{doc.documentType}</div>
-                        <a href={doc.fileUrl.startsWith('http') ? doc.fileUrl : `http://localhost:5000${doc.fileUrl.startsWith('/') ? '' : '/'}${doc.fileUrl}`} target="_blank" rel="noreferrer" className="btn-view-doc">
+                        <a href={doc.fileUrl.startsWith('http') ? doc.fileUrl : `${API_BASE_URL}${doc.fileUrl.startsWith('/') ? '' : '/'}${doc.fileUrl}`} target="_blank" rel="noreferrer" className="btn-view-doc">
                           <Eye size={16} /> View
                         </a>
                       </div>

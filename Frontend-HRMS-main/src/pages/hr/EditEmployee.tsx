@@ -68,7 +68,7 @@ export default function EditEmployee() {
           gender: emp.gender || 'Male',
           dateOfBirth: emp.dateOfBirth ? emp.dateOfBirth.slice(0, 10) : '',
           mobileNumber: emp.phone || '',
-          personalEmail: '', 
+          personalEmail: emp.personalEmail || '', 
           workEmail: emp.email || '',
           maritalStatus: emp.maritalStatus || 'Single',
           
@@ -307,6 +307,7 @@ export default function EditEmployee() {
                         {renderInput({ label: "First Name", name: "firstName", required: true })}
                         {renderInput({ label: "Last Name", name: "lastName", required: true })}
                         {renderInput({ label: "Work Email", name: "workEmail", type: "email", required: true })}
+                        {renderInput({ label: "Personal Email", name: "personalEmail", type: "email" })}
                         {renderInput({ label: "Mobile Number", name: "mobileNumber", required: true })}
                         {renderInput({ label: "Date of Birth", name: "dateOfBirth", type: "date" })}
                         {renderSelect({ label: "Gender", name: "gender", options: ['Male', 'Female', 'Other'] })}
