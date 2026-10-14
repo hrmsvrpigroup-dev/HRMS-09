@@ -15,6 +15,7 @@ export default function HRLayout() {
         { to: '/hr/leaves', label: 'Leave Approvals' },
         { to: '/hr/recruitment', label: 'Recruitment' },
         { to: '/hr/tasks', label: 'Task Assignment' },
+        { to: '/hr/training', label: 'Training' },
         { to: '/hr/salary', label: 'Salary' },
         { to: '/hr/documents', label: 'Documents' },
         { to: '/hr/wallet', label: 'Wallet' },

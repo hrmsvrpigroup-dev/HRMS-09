@@ -44,6 +44,7 @@ import EmployeeWelcomePage from './pages/onboarding/EmployeeWelcomePage'
 import LeaveApprovals from './pages/hr/LeaveApprovals'
 import Recruitment from './pages/hr/Recruitment'
 import TaskAssignment from './pages/hr/TaskAssignment'
+import Training from './pages/hr/Training'
 import Salary from './pages/hr/Salary'
 import Shifts from './pages/hr/Shifts'
 import HRDocuments from './pages/hr/Documents'
@@ -167,6 +168,7 @@ export default function App() {
             <Route path="/hr/recruitment" element={<Recruitment />} />
             <Route path="/hr/interview-schedule" element={<Recruitment defaultTab="stage-6" />} />
             <Route path="/hr/tasks" element={<TaskAssignment />} />
+            <Route path="/hr/training" element={<Training />} />
             <Route path="/hr/salary" element={<Salary />} />
             <Route path="/hr/shifts" element={<Shifts />} />
             <Route path="/hr/documents" element={<HRDocuments />} />

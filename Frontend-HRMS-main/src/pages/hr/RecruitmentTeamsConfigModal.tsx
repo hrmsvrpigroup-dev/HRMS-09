@@ -17,7 +17,10 @@ import {
   Copy,
   Check,
   Calendar,
-  Layers
+  Layers,
+  ChevronDown,
+  ChevronUp,
+  BookOpen
 } from 'lucide-react';
 import api from '../../api/axios';
 import {
@@ -45,9 +48,17 @@ export const RecruitmentTeamsConfigModal: React.FC<RecruitmentTeamsConfigModalPr
   const [azureUserId, setAzureUserId] = useState('');
   const [enabled, setEnabled] = useState(true);
   const [showSecret, setShowSecret] = useState(false);
+  const [showAzureGuide, setShowAzureGuide] = useState(false);
+  const [copiedPermission, setCopiedPermission] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+
+  const handleCopyPermission = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedPermission(true);
+    setTimeout(() => setCopiedPermission(false), 2000);
+  };
 
   // Load existing configuration on modal open
   useEffect(() => {
@@ -327,6 +338,190 @@ export const RecruitmentTeamsConfigModal: React.FC<RecruitmentTeamsConfigModalPr
             <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '3px 8px', borderRadius: '99px', background: '#dbeafe', color: '#1d4ed8' }}>
               Azure Cloud
             </span>
+          </div>
+
+          {/* Azure Setup Instructions Banner / Collapsible Guide */}
+          <div
+            style={{
+              background: '#f8fafc',
+              border: '1.5px solid #cbd5e1',
+              borderRadius: '0.85rem',
+              overflow: 'hidden'
+            }}
+          >
+            <div
+              style={{
+                padding: '0.75rem 1rem',
+                background: '#f1f5f9',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer'
+              }}
+              onClick={() => setShowAzureGuide(!showAzureGuide)}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <BookOpen size={16} color="#4f46e5" />
+                <div>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#1e293b' }}>
+                    How to Set Up Azure M365 (Step-by-Step Instructions)
+                  </span>
+                  <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748b' }}>
+                    {showAzureGuide ? 'Click to collapse guide' : 'Click to view required Azure AD app registration & permission steps'}
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <a
+                  href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade"
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    color: '#4f46e5',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    textDecoration: 'none',
+                    background: '#e0e7ff',
+                    padding: '3px 8px',
+                    borderRadius: '6px'
+                  }}
+                >
+                  Azure Portal <ExternalLink size={11} />
+                </a>
+                <button
+                  type="button"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#475569',
+                    cursor: 'pointer',
+                    padding: '2px'
+                  }}
+                >
+                  {showAzureGuide ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+              </div>
+            </div>
+
+            {showAzureGuide && (
+              <div style={{ padding: '0.85rem 1rem', backgroundColor: '#ffffff', borderTop: '1px solid #e2e8f0', fontSize: '0.76rem', color: '#334155', lineHeight: 1.55 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  
+                  {/* Step 1 */}
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: '20px', height: '20px', borderRadius: '50%', background: '#4f46e5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700 }}>
+                      1
+                    </div>
+                    <div>
+                      <strong style={{ color: '#0f172a' }}>Register App in Microsoft Entra ID (Azure AD):</strong>
+                      <div>
+                        Go to <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noreferrer" style={{ color: '#4f46e5', fontWeight: 600, textDecoration: 'underline' }}>Azure Portal &gt; App Registrations <ExternalLink size={10} style={{ display: 'inline' }} /></a>.
+                        Click <strong>+ New registration</strong>, name it <code>HRMS-Interview-Teams</code>, select <em>Single tenant</em>, and click <strong>Register</strong>.
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: '20px', height: '20px', borderRadius: '50%', background: '#4f46e5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700 }}>
+                      2
+                    </div>
+                    <div>
+                      <strong style={{ color: '#0f172a' }}>Copy Tenant ID and Client ID:</strong>
+                      <div>
+                        On the App <strong>Overview</strong> screen, copy <strong>Directory (tenant) ID</strong> and <strong>Application (client) ID</strong> and paste below.
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 3 */}
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: '20px', height: '20px', borderRadius: '50%', background: '#4f46e5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700 }}>
+                      3
+                    </div>
+                    <div>
+                      <strong style={{ color: '#0f172a' }}>Create Client Secret:</strong>
+                      <div>
+                        Go to <strong>Certificates & secrets</strong> &rarr; <strong>+ New client secret</strong>. Click <strong>Add</strong>.
+                        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '5px 8px', marginTop: '3px', color: '#991b1b', fontSize: '0.72rem' }}>
+                          ⚠️ Immediately copy the <strong>Value</strong> column (not Secret ID) and paste into <em>Azure Client Secret</em>.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 4 */}
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: '20px', height: '20px', borderRadius: '50%', background: '#4f46e5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700 }}>
+                      4
+                    </div>
+                    <div>
+                      <strong style={{ color: '#0f172a' }}>Add Microsoft Graph API Permission:</strong>
+                      <div>
+                        Go to <strong>API permissions</strong> &rarr; <strong>+ Add a permission</strong> &rarr; <strong>Microsoft Graph</strong> &rarr; <span style={{ background: '#e0e7ff', padding: '1px 5px', borderRadius: '4px', fontWeight: 600, color: '#312e81' }}>Application permissions</span> (NOT Delegated).
+                        Search for and select:
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', margin: '3px 0', background: '#f1f5f9', padding: '2px 7px', borderRadius: '5px', border: '1px solid #cbd5e1' }}>
+                          <code style={{ fontWeight: 700, color: '#0f172a' }}>OnlineMeetings.ReadWrite.All</code>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyPermission('OnlineMeetings.ReadWrite.All')}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#4f46e5', padding: 0 }}
+                            title="Copy permission name"
+                          >
+                            {copiedPermission ? <Check size={13} color="#16a34a" /> : <Copy size={13} />}
+                          </button>
+                        </div>
+                        Click <strong>Add permissions</strong>.
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 5 */}
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: '20px', height: '20px', borderRadius: '50%', background: '#4f46e5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700 }}>
+                      5
+                    </div>
+                    <div>
+                      <strong style={{ color: '#0f172a' }}>Grant Admin Consent (Crucial):</strong>
+                      <div>
+                        Click <strong>"Grant admin consent for [Your Organization]"</strong> above the permissions table and confirm <strong>Yes</strong> (green checkmark required).
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 6 */}
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: '20px', height: '20px', borderRadius: '50%', background: '#4f46e5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700 }}>
+                      6
+                    </div>
+                    <div>
+                      <strong style={{ color: '#0f172a' }}>Organizer User Email:</strong>
+                      <div>
+                        Enter the M365 email of an active licensed user (e.g. <code>hr@yourcompany.com</code>).
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 7 */}
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: '20px', height: '20px', borderRadius: '50%', background: '#16a34a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700 }}>
+                      7
+                    </div>
+                    <div>
+                      <strong style={{ color: '#0f172a' }}>Test & Save:</strong>
+                      <div>
+                        Click <strong>Test Connection</strong> to verify, then <strong>Save Configuration</strong>.
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Azure Microsoft 365 Graph API Form */}
