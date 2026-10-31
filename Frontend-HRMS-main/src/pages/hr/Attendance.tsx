@@ -18,6 +18,13 @@ function calcActiveHours(totalHours: number | undefined, idleMinutes: number) {
   return Math.max(0, totalHours - idleMinutes / 60).toFixed(2)
 }
 
+const getPhotoUrl = (url?: string) => {
+  if (!url) return undefined
+  if (url.startsWith('http') || url.startsWith('data:')) return url
+  const base = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/api$/, '')
+  return `${base}${url}`
+}
+
 // ── Face Photo Thumbnail ──────────────────────────────────────────────────
 function FaceThumb({ photo, name, onExpand }: { photo?: string; name: string; onExpand: () => void }) {
   if (!photo) {
@@ -43,7 +50,7 @@ function FaceThumb({ photo, name, onExpand }: { photo?: string; name: string; on
       }}
     >
       <img
-        src={photo}
+        src={getPhotoUrl(photo)}
         alt={`Face capture – ${name}`}
         style={{
           width: '44px', height: '44px', borderRadius: '50%',
@@ -135,7 +142,7 @@ function FaceModal({ log, onClose }: { log: AttendanceItem; onClose: () => void 
             boxShadow: '0 0 30px rgba(16,185,129,0.35)',
           }}>
             <img
-              src={log.clockInPhoto}
+              src={getPhotoUrl(log.clockInPhoto)}
               alt={`Face capture – ${name}`}
               style={{
                 width: '260px',
@@ -228,13 +235,19 @@ export default function Attendance() {
     }
   }
 
-  // Initial page load (shows full-page spinner only once)
-  const fetchLogs = async () => {
+  // Fetch attendance records from backend (accepts optional targetDate filter)
+  const fetchLogs = async (targetDate?: string, silent = false) => {
     try {
-      setLoading(true)
-      const res = await attendanceApi.list()
-      setLogs(res.data.data)
-      setFilteredLogs(res.data.data)
+      if (!silent) setLoading(true)
+      const params: any = {}
+      if (targetDate) {
+        params.date = targetDate
+      }
+      const res = await attendanceApi.list(params)
+      const data = res.data.data || []
+      setLogs(data)
+      setFilteredLogs(data)
+      setError('')
     } catch {
       setError('Could not retrieve company attendance log sheets.')
     } finally {
@@ -242,15 +255,19 @@ export default function Attendance() {
     }
   }
 
-  // Silent background refresh — NEVER touches the page-level loading spinner
-  // so the table stays visible while re-fetching after an action.
+  // Silent background refresh — keeps table visible while syncing
   const silentRefresh = async () => {
     try {
-      const res = await attendanceApi.list()
-      setLogs(res.data.data)
-      setFilteredLogs(res.data.data)
+      const params: any = {}
+      if (dateFilter) {
+        params.date = dateFilter
+      }
+      const res = await attendanceApi.list(params)
+      const data = res.data.data || []
+      setLogs(data)
+      setFilteredLogs(data)
     } catch {
-      // silently ignore — table already has latest optimistic data
+      // silently ignore
     }
   }
 
@@ -296,20 +313,24 @@ export default function Attendance() {
     }
   }
 
-  useEffect(() => { fetchLogs() }, [])
+  // Re-query backend whenever dateFilter changes (e.g. user selects any past date or resets)
+  useEffect(() => {
+    fetchLogs(dateFilter, logs.length > 0)
+  }, [dateFilter])
 
+  // Handle local text search and status filter
   useEffect(() => {
     let result = [...logs]
     if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase()
+      const term = searchTerm.toLowerCase().trim()
       result = result.filter(item =>
-        item.employee?.firstName.toLowerCase().includes(term) ||
-        item.employee?.lastName.toLowerCase().includes(term) ||
-        item.employee?.employeeCode.toLowerCase().includes(term)
+        item.employee?.firstName?.toLowerCase().includes(term) ||
+        item.employee?.lastName?.toLowerCase().includes(term) ||
+        item.employee?.employeeCode?.toLowerCase().includes(term)
       )
     }
     if (statusFilter !== 'ALL') result = result.filter(item => item.status === statusFilter)
-    if (dateFilter) result = result.filter(item => item.date.startsWith(dateFilter))
+    if (dateFilter) result = result.filter(item => String(item.date).startsWith(dateFilter))
     setFilteredLogs(result)
   }, [searchTerm, statusFilter, dateFilter, logs])
 

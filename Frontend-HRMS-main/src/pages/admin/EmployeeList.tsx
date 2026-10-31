@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Download } from 'lucide-react'
+import { Download, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from 'lucide-react'
 import { employeeApi, Employee } from '../../api/employee.api'
 import { AddEmployeeModal } from '../../components/onboarding/AddEmployeeModal'
 import { LoadingSpinner } from '../../components/shared/LoadingSpinner'
@@ -14,10 +14,11 @@ export default function EmployeeList() {
   const [error, setError] = useState('')
   const [showAddEmployee, setShowAddEmployee] = useState(false)
 
-  // Search & Filter State
+  // Search & Filter & Sort State
   const [searchTerm, setSearchTerm] = useState('')
   const [deptFilter, setDeptFilter] = useState('ALL')
   const [statusFilter, setStatusFilter] = useState('ALL')
+  const [sortOption, setSortOption] = useState('CODE_ASC')
 
   const fetchEmployees = async () => {
     try {
@@ -58,7 +59,7 @@ export default function EmployeeList() {
     fetchEmployees()
   }, [])
 
-  // Handle Search and Filtering locally
+  // Handle Search, Filtering, and Sorting locally (Zero latency & Zero data loss)
   useEffect(() => {
     let result = [...employees]
 
@@ -81,13 +82,103 @@ export default function EmployeeList() {
       result = result.filter((emp) => emp.status === statusFilter)
     }
 
+    // Apply sorting
+    result.sort((a, b) => {
+      switch (sortOption) {
+        case 'CODE_ASC':
+          return (a.employeeCode || '').localeCompare(b.employeeCode || '', undefined, {
+            numeric: true,
+            sensitivity: 'base'
+          })
+        case 'CODE_DESC':
+          return (b.employeeCode || '').localeCompare(a.employeeCode || '', undefined, {
+            numeric: true,
+            sensitivity: 'base'
+          })
+        case 'NAME_ASC': {
+          const nameA = `${a.firstName || ''} ${a.lastName || ''}`.trim()
+          const nameB = `${b.firstName || ''} ${b.lastName || ''}`.trim()
+          return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' })
+        }
+        case 'NAME_DESC': {
+          const nameA = `${a.firstName || ''} ${a.lastName || ''}`.trim()
+          const nameB = `${b.firstName || ''} ${b.lastName || ''}`.trim()
+          return nameB.localeCompare(nameA, undefined, { sensitivity: 'base' })
+        }
+        case 'SALARY_DESC':
+          return (Number(b.salaryGross) || 0) - (Number(a.salaryGross) || 0)
+        case 'SALARY_ASC':
+          return (Number(a.salaryGross) || 0) - (Number(b.salaryGross) || 0)
+        case 'JOIN_DESC':
+          return new Date(b.joiningDate || 0).getTime() - new Date(a.joiningDate || 0).getTime()
+        case 'JOIN_ASC':
+          return new Date(a.joiningDate || 0).getTime() - new Date(b.joiningDate || 0).getTime()
+        case 'DEPT_ASC':
+          return (a.department?.name || '').localeCompare(b.department?.name || '', undefined, {
+            sensitivity: 'base'
+          })
+        case 'DEPT_DESC':
+          return (b.department?.name || '').localeCompare(a.department?.name || '', undefined, {
+            sensitivity: 'base'
+          })
+        default:
+          return 0
+      }
+    })
+
     setFilteredEmployees(result)
-  }, [searchTerm, deptFilter, statusFilter, employees])
+  }, [searchTerm, deptFilter, statusFilter, sortOption, employees])
 
   // Extract unique departments for filters
   const uniqueDepts = Array.from(
     new Set(employees.map((emp) => emp.department?.name).filter(Boolean))
   ) as string[]
+
+  const handleHeaderSort = (field: 'code' | 'name' | 'salary' | 'joiningDate' | 'department') => {
+    switch (field) {
+      case 'code':
+        setSortOption((prev) => (prev === 'CODE_ASC' ? 'CODE_DESC' : 'CODE_ASC'))
+        break
+      case 'name':
+        setSortOption((prev) => (prev === 'NAME_ASC' ? 'NAME_DESC' : 'NAME_ASC'))
+        break
+      case 'salary':
+        setSortOption((prev) => (prev === 'SALARY_DESC' ? 'SALARY_ASC' : 'SALARY_DESC'))
+        break
+      case 'joiningDate':
+        setSortOption((prev) => (prev === 'JOIN_DESC' ? 'JOIN_ASC' : 'JOIN_DESC'))
+        break
+      case 'department':
+        setSortOption((prev) => (prev === 'DEPT_ASC' ? 'DEPT_DESC' : 'DEPT_ASC'))
+        break
+    }
+  }
+
+  const renderSortIndicator = (field: 'code' | 'name' | 'salary' | 'joiningDate' | 'department') => {
+    const isField =
+      (field === 'code' && (sortOption === 'CODE_ASC' || sortOption === 'CODE_DESC')) ||
+      (field === 'name' && (sortOption === 'NAME_ASC' || sortOption === 'NAME_DESC')) ||
+      (field === 'salary' && (sortOption === 'SALARY_ASC' || sortOption === 'SALARY_DESC')) ||
+      (field === 'joiningDate' && (sortOption === 'JOIN_ASC' || sortOption === 'JOIN_DESC')) ||
+      (field === 'department' && (sortOption === 'DEPT_ASC' || sortOption === 'DEPT_DESC'))
+
+    if (!isField) {
+      return <ArrowUpDown size={13} style={{ opacity: 0.35, marginLeft: '4px', verticalAlign: 'middle' }} />
+    }
+
+    const isDesc =
+      sortOption === 'CODE_DESC' ||
+      sortOption === 'NAME_DESC' ||
+      sortOption === 'SALARY_DESC' ||
+      sortOption === 'JOIN_DESC' ||
+      sortOption === 'DEPT_DESC'
+
+    return isDesc ? (
+      <ArrowDown size={13} style={{ color: 'var(--primary)', marginLeft: '4px', verticalAlign: 'middle' }} />
+    ) : (
+      <ArrowUp size={13} style={{ color: 'var(--primary)', marginLeft: '4px', verticalAlign: 'middle' }} />
+    )
+  }
 
   if (loading) return <LoadingSpinner />
 
@@ -119,7 +210,7 @@ export default function EmployeeList() {
 
       {/* Filter and Search Toolbar */}
       <div className="card" style={{ marginBottom: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
-        <div style={{ flex: 2, minWidth: '250px' }}>
+        <div style={{ flex: 2, minWidth: '220px' }}>
           <input
             type="text"
             placeholder="Search by name, email, or employee code..."
@@ -140,7 +231,7 @@ export default function EmployeeList() {
           </select>
         </div>
 
-        <div style={{ flex: 1, minWidth: '150px' }}>
+        <div style={{ flex: 1, minWidth: '140px' }}>
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} style={{ width: '100%' }}>
             <option value="ALL">All Statuses</option>
             <option value="ACTIVE">Active</option>
@@ -149,6 +240,49 @@ export default function EmployeeList() {
             <option value="TERMINATED">Terminated</option>
           </select>
         </div>
+
+        {/* Sort Filter Dropdown */}
+        <div style={{ flex: 1.2, minWidth: '180px' }}>
+          <select
+            value={sortOption}
+            onChange={(event) => setSortOption(event.target.value)}
+            style={{ width: '100%', fontWeight: 500 }}
+            title="Sort employee records"
+          >
+            <option value="CODE_ASC">Sort: Code (01 → 99)</option>
+            <option value="CODE_DESC">Sort: Code (99 → 01)</option>
+            <option value="NAME_ASC">Sort: Name (A → Z)</option>
+            <option value="NAME_DESC">Sort: Name (Z → A)</option>
+            <option value="SALARY_DESC">Sort: Salary (High → Low)</option>
+            <option value="SALARY_ASC">Sort: Salary (Low → High)</option>
+            <option value="JOIN_DESC">Sort: Join Date (Newest)</option>
+            <option value="JOIN_ASC">Sort: Join Date (Oldest)</option>
+            <option value="DEPT_ASC">Sort: Department (A → Z)</option>
+            <option value="DEPT_DESC">Sort: Department (Z → A)</option>
+          </select>
+        </div>
+
+        {/* Reset Filter Button */}
+        {(searchTerm || deptFilter !== 'ALL' || statusFilter !== 'ALL' || sortOption !== 'CODE_ASC') && (
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              setSearchTerm('')
+              setDeptFilter('ALL')
+              setStatusFilter('ALL')
+              setSortOption('CODE_ASC')
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 0.85rem' }}
+            title="Reset filters and sorting to default"
+          >
+            <RotateCcw size={14} />
+            <span>Reset</span>
+          </button>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '-0.75rem 0.25rem 0.75rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+        <span>Showing <strong>{filteredEmployees.length}</strong> of <strong>{employees.length}</strong> employees</span>
       </div>
 
       {error ? (
@@ -160,14 +294,44 @@ export default function EmployeeList() {
           <table>
             <thead>
               <tr>
-                <th>Code</th>
-                <th>Employee Name</th>
+                <th
+                  onClick={() => handleHeaderSort('code')}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  title="Click to sort by Employee Code"
+                >
+                  Code {renderSortIndicator('code')}
+                </th>
+                <th
+                  onClick={() => handleHeaderSort('name')}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  title="Click to sort by Name"
+                >
+                  Employee Name {renderSortIndicator('name')}
+                </th>
                 <th>Work Email</th>
                 <th>Personal Email</th>
-                <th>Department & Title</th>
+                <th
+                  onClick={() => handleHeaderSort('department')}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  title="Click to sort by Department"
+                >
+                  Department & Title {renderSortIndicator('department')}
+                </th>
                 <th>Status</th>
-                <th>Base Gross Salary</th>
-                <th>Join Date</th>
+                <th
+                  onClick={() => handleHeaderSort('salary')}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  title="Click to sort by Salary"
+                >
+                  Base Gross Salary {renderSortIndicator('salary')}
+                </th>
+                <th
+                  onClick={() => handleHeaderSort('joiningDate')}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  title="Click to sort by Joining Date"
+                >
+                  Join Date {renderSortIndicator('joiningDate')}
+                </th>
                 <th>HR Representative</th>
                 <th>Actions</th>
               </tr>
@@ -243,8 +407,8 @@ export default function EmployeeList() {
               ))}
               {filteredEmployees.length === 0 && (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem' }}>
-                    No matching employee records found.
+                  <td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem' }}>
+                    No matching employee records found in directory.
                   </td>
                 </tr>
               )}

@@ -15,6 +15,9 @@ router.get('/manual-clock-in', (_req: any, res: any) => {
   })
 })
 
+// Public photo stream route for <img> tags
+router.get('/:id/photo', attendanceController.getPhoto)
+
 router.use(authenticate, authorize('SUPER_ADMIN', 'ADMIN', 'HR', 'EMPLOYEE'), tenantIsolation)
 
 router.get('/', attendanceController.list)

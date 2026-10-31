@@ -2,54 +2,132 @@ import { Response } from 'express'
 import { prisma } from '../config/database'
 import { AuthRequest } from '../middleware/auth.middleware'
 import { sendError, sendSuccess } from '../utils/response.utils'
-import { AttendanceStatus, UserRole } from '@prisma/client'
+import { AttendanceStatus, UserRole, Prisma } from '@prisma/client'
 import { syncAttendanceToGoogleSheet, syncAllAttendanceToGoogleSheet } from '../services/googleSheets.service'
 
 export const attendanceController = {
+  async getPhoto(req: any, res: Response) {
+    const { id } = req.params
+    try {
+      const record = await prisma.attendance.findUnique({
+        where: { id },
+        select: { clockInPhoto: true }
+      })
+      if (!record || !record.clockInPhoto) {
+        return res.status(404).send('Photo not found')
+      }
+      if (record.clockInPhoto.startsWith('data:')) {
+        const matches = record.clockInPhoto.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/)
+        if (matches && matches.length === 3) {
+          const contentType = matches[1]
+          const buffer = Buffer.from(matches[2], 'base64')
+          res.setHeader('Content-Type', contentType)
+          res.setHeader('Cache-Control', 'public, max-age=86400')
+          return res.send(buffer)
+        }
+      }
+      if (record.clockInPhoto.startsWith('http') || record.clockInPhoto.startsWith('/')) {
+        return res.redirect(record.clockInPhoto)
+      }
+      return res.status(404).send('Invalid photo format')
+    } catch {
+      return res.status(500).send('Failed to retrieve photo')
+    }
+  },
+
   async list(req: AuthRequest, res: Response) {
     const tenantId = req.tenantId ?? req.user?.tenantId
     if (!tenantId) {
       return sendError(res, 'Tenant context not found', 400)
     }
 
-    const { employeeId, month, year } = req.query as { employeeId?: string; month?: string; year?: string }
-    const whereClause: any = { tenantId }
-    if (req.user?.role === UserRole.EMPLOYEE) {
-      whereClause.employee = { userId: req.user.id }
-    } else if (employeeId) {
-      whereClause.employeeId = String(employeeId)
-    }
-
-    const hasMonthFilter = Boolean(month && year)
-    if (hasMonthFilter) {
-      const m = Number(month)
-      const y = Number(year)
-      if (!isNaN(m) && !isNaN(y) && m >= 1 && m <= 12) {
-        const startDate = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0))
-        const daysInMonth = new Date(y, m, 0).getDate()
-        const endDate = new Date(Date.UTC(y, m - 1, daysInMonth, 23, 59, 59, 999))
-        whereClause.date = {
-          gte: startDate,
-          lte: endDate,
-        }
-      }
-    }
+    const { employeeId, month, year, date, startDate, endDate, search, limit, take, skip } = req.query as Record<string, string | undefined>
+    const isEmployee = req.user?.role === UserRole.EMPLOYEE
 
     try {
-      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : (req.query.take ? parseInt(req.query.take as string, 10) : undefined)
-      const skip = req.query.skip ? parseInt(req.query.skip as string, 10) : undefined
+      const conditions: any[] = [Prisma.sql`a."tenantId" = ${tenantId}`]
 
-      const items = await prisma.attendance.findMany({
-        where: whereClause,
-        include: {
-          employee: {
-            select: { firstName: true, lastName: true, employeeCode: true, email: true },
-          },
-        },
-        orderBy: { date: hasMonthFilter ? 'asc' : 'desc' },
-        ...(limit ? { take: limit } : {}),
-        ...(skip ? { skip: skip } : {}),
-      })
+      if (isEmployee) {
+        conditions.push(Prisma.sql`e."userId" = ${req.user!.id}`)
+      } else if (employeeId) {
+        conditions.push(Prisma.sql`a."employeeId" = ${employeeId}`)
+      }
+
+      if (search && search.trim()) {
+        const term = `%${search.trim().toLowerCase()}%`
+        conditions.push(Prisma.sql`(
+          LOWER(e."firstName") LIKE ${term} OR
+          LOWER(e."lastName") LIKE ${term} OR
+          LOWER(e."employeeCode") LIKE ${term}
+        )`)
+      }
+
+      const hasMonthFilter = Boolean(month && year)
+      if (date) {
+        const dayStr = String(date).split('T')[0]
+        conditions.push(Prisma.sql`a.date = ${dayStr}::date`)
+      } else if (startDate && endDate) {
+        const sStr = String(startDate).split('T')[0]
+        const eStr = String(endDate).split('T')[0]
+        conditions.push(Prisma.sql`a.date >= ${sStr}::date AND a.date <= ${eStr}::date`)
+      } else if (hasMonthFilter) {
+        const m = Number(month)
+        const y = Number(year)
+        if (!isNaN(m) && !isNaN(y) && m >= 1 && m <= 12) {
+          const sDate = `${y}-${String(m).padStart(2, '0')}-01`
+          const nextY = m === 12 ? y + 1 : y
+          const nextM = m === 12 ? 1 : m + 1
+          const eDate = `${nextY}-${String(nextM).padStart(2, '0')}-01`
+          conditions.push(Prisma.sql`a.date >= ${sDate}::date AND a.date < ${eDate}::date`)
+        }
+      }
+
+      const whereSql = Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
+      const orderSql = hasMonthFilter
+        ? Prisma.sql`ORDER BY a.date ASC, a."clockIn" ASC`
+        : Prisma.sql`ORDER BY a.date DESC, a."clockIn" DESC`
+
+      const limitNum = limit ? parseInt(limit, 10) : (take ? parseInt(take, 10) : undefined)
+      const skipNum = skip ? parseInt(skip, 10) : undefined
+
+      // When no date or month filter is specified and user is HR/Admin, take recent 150 records
+      // so the query is super fast and never times out.
+      // When date, month, or pagination limit is provided, all matching records are returned.
+      const shouldLimit = !date && !hasMonthFilter && !startDate && !isEmployee && !limitNum
+      const takeCount = limitNum || (shouldLimit ? 150 : undefined)
+
+      const limitSql = takeCount ? Prisma.sql`LIMIT ${takeCount}` : Prisma.empty
+      const offsetSql = skipNum ? Prisma.sql`OFFSET ${skipNum}` : Prisma.empty
+
+      const items: any[] = await prisma.$queryRaw`
+        SELECT 
+          a.id,
+          a."employeeId",
+          a.date,
+          a."clockIn",
+          a."clockOut",
+          a."totalHours",
+          a."idleMinutes",
+          a.status,
+          a.notes,
+          a."loginMethod",
+          CASE WHEN a."clockInPhoto" IS NOT NULL AND LENGTH(a."clockInPhoto") > 0 
+               THEN CONCAT('/api/attendance/', a.id, '/photo') 
+               ELSE NULL 
+          END AS "clockInPhoto",
+          json_build_object(
+            'firstName', e."firstName",
+            'lastName', e."lastName",
+            'employeeCode', e."employeeCode",
+            'email', e.email
+          ) AS employee
+        FROM "Attendance" a
+        JOIN "Employee" e ON a."employeeId" = e.id
+        ${whereSql}
+        ${orderSql}
+        ${limitSql}
+        ${offsetSql}
+      `
 
       return sendSuccess(res, items)
     } catch (error: any) {
