@@ -63,13 +63,13 @@ export default function EmployeeList() {
     let result = [...employees]
 
     if (searchTerm.trim() !== '') {
-      const term = searchTerm.toLowerCase()
+      const term = searchTerm.toLowerCase().trim()
       result = result.filter(
         (emp) =>
-          emp.firstName.toLowerCase().includes(term) ||
-          emp.lastName.toLowerCase().includes(term) ||
-          emp.email.toLowerCase().includes(term) ||
-          emp.employeeCode.toLowerCase().includes(term)
+          emp.firstName?.toLowerCase().includes(term) ||
+          emp.lastName?.toLowerCase().includes(term) ||
+          emp.email?.toLowerCase().includes(term) ||
+          emp.employeeCode?.toLowerCase().includes(term)
       )
     }
 

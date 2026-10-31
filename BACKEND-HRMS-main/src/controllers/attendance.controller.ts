@@ -36,6 +36,9 @@ export const attendanceController = {
     }
 
     try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : (req.query.take ? parseInt(req.query.take as string, 10) : undefined)
+      const skip = req.query.skip ? parseInt(req.query.skip as string, 10) : undefined
+
       const items = await prisma.attendance.findMany({
         where: whereClause,
         include: {
@@ -44,7 +47,8 @@ export const attendanceController = {
           },
         },
         orderBy: { date: hasMonthFilter ? 'asc' : 'desc' },
-        ...(hasMonthFilter ? {} : { take: 150 }),
+        ...(limit ? { take: limit } : {}),
+        ...(skip ? { skip: skip } : {}),
       })
 
       return sendSuccess(res, items)

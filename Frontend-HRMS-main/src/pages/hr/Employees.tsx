@@ -10,7 +10,7 @@ export default function Employees() {
   const navigate = useNavigate()
   const [employees, setEmployees] = useState<Employee[]>(() => {
     try {
-      const cached = sessionStorage.getItem('hrms_cached_employees')
+      const cached = sessionStorage.getItem('hrms_cached_employees_v2')
       return cached ? JSON.parse(cached) : []
     } catch {
       return []
@@ -18,7 +18,7 @@ export default function Employees() {
   })
   const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>(() => {
     try {
-      const cached = sessionStorage.getItem('hrms_cached_employees')
+      const cached = sessionStorage.getItem('hrms_cached_employees_v2')
       return cached ? JSON.parse(cached) : []
     } catch {
       return []
@@ -26,7 +26,7 @@ export default function Employees() {
   })
   const [loading, setLoading] = useState(() => {
     try {
-      return !sessionStorage.getItem('hrms_cached_employees')
+      return !sessionStorage.getItem('hrms_cached_employees_v2')
     } catch {
       return true
     }
@@ -48,7 +48,7 @@ export default function Employees() {
       setEmployees(data)
       setFilteredEmployees(data)
       try {
-        sessionStorage.setItem('hrms_cached_employees', JSON.stringify(data))
+        sessionStorage.setItem('hrms_cached_employees_v2', JSON.stringify(data))
       } catch {}
     } catch {
       setError('Could not retrieve workspace employee rosters.')
@@ -66,7 +66,7 @@ export default function Employees() {
       setEmployees(updated)
       setFilteredEmployees((prev) => prev.filter((emp) => emp.id !== id))
       try {
-        sessionStorage.setItem('hrms_cached_employees', JSON.stringify(updated))
+        sessionStorage.setItem('hrms_cached_employees_v2', JSON.stringify(updated))
       } catch {}
       await fetchEmployees(true)
     } catch (err: any) {
@@ -85,13 +85,13 @@ export default function Employees() {
     let result = [...employees]
 
     if (searchTerm.trim() !== '') {
-      const term = searchTerm.toLowerCase()
+      const term = searchTerm.toLowerCase().trim()
       result = result.filter(
         (emp) =>
-          emp.firstName.toLowerCase().includes(term) ||
-          emp.lastName.toLowerCase().includes(term) ||
-          emp.email.toLowerCase().includes(term) ||
-          emp.employeeCode.toLowerCase().includes(term)
+          emp.firstName?.toLowerCase().includes(term) ||
+          emp.lastName?.toLowerCase().includes(term) ||
+          emp.email?.toLowerCase().includes(term) ||
+          emp.employeeCode?.toLowerCase().includes(term)
       )
     }
 

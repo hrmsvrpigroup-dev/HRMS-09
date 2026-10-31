@@ -220,6 +220,32 @@ export const employeeController = {
     try {
       const whereClause: any = { tenantId }
 
+      // Support optional query filters and pagination if specified
+      const { search, status, departmentId, limit, take, skip, page } = req.query as Record<string, string | undefined>
+
+      if (status && status !== 'ALL') {
+        whereClause.status = status
+      }
+
+      if (departmentId && departmentId !== 'ALL') {
+        whereClause.departmentId = departmentId
+      }
+
+      if (search && search.trim()) {
+        const query = search.trim()
+        whereClause.OR = [
+          { employeeCode: { contains: query, mode: 'insensitive' } },
+          { firstName: { contains: query, mode: 'insensitive' } },
+          { lastName: { contains: query, mode: 'insensitive' } },
+          { email: { contains: query, mode: 'insensitive' } },
+          { personalEmail: { contains: query, mode: 'insensitive' } },
+          { phone: { contains: query, mode: 'insensitive' } },
+        ]
+      }
+
+      const takeNum = limit ? parseInt(limit, 10) : (take ? parseInt(take, 10) : undefined)
+      const skipNum = skip ? parseInt(skip, 10) : (page && takeNum ? (parseInt(page, 10) - 1) * takeNum : undefined)
+
       const employees = await prisma.employee.findMany({
         where: whereClause,
         select: {
@@ -249,7 +275,8 @@ export const employeeController = {
           },
         },
         orderBy: { createdAt: 'desc' },
-        take: 150,
+        ...(takeNum ? { take: takeNum } : {}),
+        ...(skipNum ? { skip: skipNum } : {}),
       })
 
       return sendSuccess(res, employees)
@@ -264,13 +291,13 @@ export const employeeController = {
       return sendError(res, 'Tenant context not found', 400)
     }
 
+    const employeeCode = req.body.employeeCode?.trim()
+    const firstName = req.body.firstName?.trim()
+    const lastName = req.body.lastName?.trim()
+    const email = req.body.email?.trim().toLowerCase()
+    const personalEmail = req.body.personalEmail ? req.body.personalEmail.trim().toLowerCase() : null
+    const phone = req.body.phone ? req.body.phone.trim() : null
     const {
-      employeeCode,
-      firstName,
-      lastName,
-      email,
-      personalEmail,
-      phone,
       gender,
       departmentName,
       designationTitle,
