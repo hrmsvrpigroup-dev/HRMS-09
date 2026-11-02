@@ -242,7 +242,7 @@ def clean_page(p_num, html):
             </div>
             <div class="office-col">
               <strong>INDIA (Hyderabad):</strong><br />
-              Dwaraka Central, Plot no.: 57, 4th Floor, Hitech City Rd, VIP Hills, Jaihind Enclave, Madhapur, Hyderabad - 500081.<br />
+              8th Floor (B-Block), Meenakshi Tech Park, Phase-2, Gachibowli, Hyderabad, Telangana 500032, India.<br />
               Phone no.: (+91) 8790946714
             </div>
             <div class="office-col">

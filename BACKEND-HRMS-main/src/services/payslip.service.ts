@@ -249,7 +249,7 @@ export class PayslipService {
         
         doc.fontSize(7.5).fillColor('#475569').font('Helvetica')
         doc.text(
-          'Dwaraka Central, Plot no.: 57, 4th Floor, Hitech City Rd, Madhapur, Hyderabad, Telangana - 500081.',
+          '8th Floor (B-Block), Meenakshi Tech Park, Phase-2, Gachibowli, Hyderabad, Telangana 500032, India.',
           earnColLeft,
           footerY + 26,
           { align: 'center', width: tableWidth }

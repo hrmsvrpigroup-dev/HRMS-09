@@ -449,7 +449,7 @@ function PayslipPreviewModal({
                       VR PI TECH SOLUTIONS LLP
                     </h1>
                     <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: '#475569', lineHeight: 1.4 }}>
-                      Dwaraka Central, Plot no.: 57, 4th Floor, Hitech City Rd, Madhapur, Hyderabad, Telangana - 500081
+                      8th Floor (B-Block), Meenakshi Tech Park, Phase-2, Gachibowli, Hyderabad, Telangana 500032, India
                     </p>
                     <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#64748b' }}>
                       Corporate HRMS Payroll Division • Registered LLP
