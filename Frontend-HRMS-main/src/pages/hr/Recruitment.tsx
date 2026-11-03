@@ -1981,30 +1981,39 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     const basicYearly = Math.round(annualCtc * 0.50);
     const basicMonthly = Math.round(monthlyGross * 0.50);
 
-    // House Rent Allowance (HRA) (25%)
-    const hraYearly = Math.round(annualCtc * 0.25);
-    const hraMonthly = Math.round(monthlyGross * 0.25);
+    // House Rent Allowance (HRA) (18%)
+    const hraYearly = Math.round(annualCtc * 0.18);
+    const hraMonthly = Math.round(monthlyGross * 0.18);
 
     // Leave Travel Allowance (LTA) (10%)
     const ltaYearly = Math.round(annualCtc * 0.10);
     const ltaMonthly = Math.round(monthlyGross * 0.10);
 
-    // Insurance & Other Allowances (15%)
-    const otherAllowYearly = Math.round(annualCtc * 0.15);
-    const otherAllowMonthly = Math.round(monthlyGross * 0.15);
+    // Employee PF (12%)
+    const employeePfYearly = Math.round(annualCtc * 0.12);
+    const employeePfMonthly = Math.round(monthlyGross * 0.12);
+
+    // Insurance (10%)
+    const insuranceYearly = Math.round(annualCtc * 0.10);
+    const insuranceMonthly = Math.round(monthlyGross * 0.10);
 
     // Deductions:
     const ptMonthly = 200;
     const ptYearly = 2400;
 
-    const pfMonthly = 1800; // EPF Provident Fund
-    const pfYearly = 21600;
+    // Employer PF - 12%
+    const employerPfYearly = Math.round(annualCtc * 0.12);
+    const employerPfMonthly = Math.round(monthlyGross * 0.12);
+
+    // Employee PF - 12%
+    const deductEmployeePfYearly = Math.round(annualCtc * 0.12);
+    const deductEmployeePfMonthly = Math.round(monthlyGross * 0.12);
 
     const otherDeductMonthly = 200;
     const otherDeductYearly = 2400;
 
-    const totalDeductMonthly = 2200; // 200 + 1800 + 200 = 2200
-    const totalDeductYearly = 26400; // 2400 + 21600 + 2400 = 26400
+    const totalDeductMonthly = ptMonthly + employerPfMonthly + deductEmployeePfMonthly + otherDeductMonthly;
+    const totalDeductYearly = ptYearly + employerPfYearly + deductEmployeePfYearly + otherDeductYearly;
 
     const netMonthly = Math.max(0, monthlyGross - totalDeductMonthly);
     const netYearly = Math.max(0, annualCtc - totalDeductYearly);
@@ -2018,12 +2027,20 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       hraMonthly,
       ltaYearly,
       ltaMonthly,
-      otherAllowYearly,
-      otherAllowMonthly,
+      employeePfYearly,
+      employeePfMonthly,
+      insuranceYearly,
+      insuranceMonthly,
+      otherAllowYearly: insuranceYearly,
+      otherAllowMonthly: insuranceMonthly,
       ptMonthly,
       ptYearly,
-      pfMonthly,
-      pfYearly,
+      employerPfMonthly,
+      employerPfYearly,
+      deductEmployeePfMonthly,
+      deductEmployeePfYearly,
+      pfMonthly: deductEmployeePfMonthly,
+      pfYearly: deductEmployeePfYearly,
       otherDeductMonthly,
       otherDeductYearly,
       totalDeductMonthly,
@@ -9324,6 +9341,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   </>
                                 )}
                               </div>
+                 
+... [truncated for diff preview]
                             </td>
                           </tr>
                         ) : (
@@ -9815,57 +9834,67 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                    <td style={{ padding: '4px 10px' }}>Basic (50%)</td>
-                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.basicMonthly.toLocaleString('en-IN')}</td>
-                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.basicYearly.toLocaleString('en-IN')}</td>
-                                  </tr>
-                                  <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                    <td style={{ padding: '4px 10px' }}>HRA (House Rent Allowance) (25%)</td>
-                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.hraMonthly.toLocaleString('en-IN')}</td>
-                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.hraYearly.toLocaleString('en-IN')}</td>
-                                  </tr>
-                                  <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                    <td style={{ padding: '4px 10px' }}>LTA (Leave Travel Allowance) (10%)</td>
-                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.ltaMonthly.toLocaleString('en-IN')}</td>
-                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.ltaYearly.toLocaleString('en-IN')}</td>
-                                  </tr>
-                                  <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                    <td style={{ padding: '4px 10px' }}>Insurance &amp; Other Allowances (15%)</td>
-                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.otherAllowMonthly.toLocaleString('en-IN')}</td>
-                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.otherAllowYearly.toLocaleString('en-IN')}</td>
-                                  </tr>
-                                  <tr style={{ background: '#f1f5f9', fontWeight: 800, color: '#0f172a', borderTop: '1px solid #cbd5e1' }}>
-                                    <td style={{ padding: '5px 10px' }}>Total Amount (CTC)</td>
-                                    <td style={{ padding: '5px 10px', textAlign: 'right' }}>₹{breakdown.monthlyGross.toLocaleString('en-IN')}</td>
-                                    <td style={{ padding: '5px 10px', textAlign: 'right' }}>₹{breakdown.annualCtc.toLocaleString('en-IN')}</td>
-                                  </tr>
+                                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                      <td style={{ padding: '4px 10px' }}>Basic (50%)</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.basicMonthly.toLocaleString('en-IN')}</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.basicYearly.toLocaleString('en-IN')}</td>
+                                    </tr>
+                                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                      <td style={{ padding: '4px 10px' }}>HRA (House Rent Allowance) (18%)</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.hraMonthly.toLocaleString('en-IN')}</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.hraYearly.toLocaleString('en-IN')}</td>
+                                    </tr>
+                                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                      <td style={{ padding: '4px 10px' }}>LTA (Leave Travel Allowance) (10%)</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.ltaMonthly.toLocaleString('en-IN')}</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.ltaYearly.toLocaleString('en-IN')}</td>
+                                    </tr>
+                                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                      <td style={{ padding: '4px 10px' }}>Employer PF (12%)</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.employeePfMonthly.toLocaleString('en-IN')}</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.employeePfYearly.toLocaleString('en-IN')}</td>
+                                    </tr>
+                                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                      <td style={{ padding: '4px 10px' }}>Insurance (10%)</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.insuranceMonthly.toLocaleString('en-IN')}</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.insuranceYearly.toLocaleString('en-IN')}</td>
+                                    </tr>
+                                    <tr style={{ background: '#f1f5f9', fontWeight: 800, color: '#0f172a', borderTop: '1px solid #cbd5e1' }}>
+                                      <td style={{ padding: '5px 10px' }}>Total Amount (CTC)</td>
+                                      <td style={{ padding: '5px 10px', textAlign: 'right' }}>₹{breakdown.monthlyGross.toLocaleString('en-IN')}</td>
+                                      <td style={{ padding: '5px 10px', textAlign: 'right' }}>₹{breakdown.annualCtc.toLocaleString('en-IN')}</td>
+                                    </tr>
 
-                                  {/* DEDUCTIONS SECTION */}
-                                  <tr style={{ background: '#fef2f2', borderTop: '1px solid #fecaca', color: '#991b1b', fontWeight: 800 }}>
-                                    <td colSpan={3} style={{ padding: '4px 10px', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>DEDUCTIONS</td>
-                                  </tr>
-                                  <tr style={{ borderBottom: '1px solid #fef2f2' }}>
-                                    <td style={{ padding: '4px 10px' }}>PT (Professional Tax)</td>
-                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.ptMonthly.toLocaleString('en-IN')}</td>
-                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.ptYearly.toLocaleString('en-IN')}</td>
-                                  </tr>
-                                  <tr style={{ borderBottom: '1px solid #fef2f2' }}>
-                                    <td style={{ padding: '4px 10px' }}>EPF (Provident Fund)</td>
-                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.pfMonthly.toLocaleString('en-IN')}</td>
-                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.pfYearly.toLocaleString('en-IN')}</td>
-                                  </tr>
-                                  <tr style={{ borderBottom: '1px solid #fef2f2' }}>
-                                    <td style={{ padding: '4px 10px' }}>Other Deductions</td>
-                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.otherDeductMonthly.toLocaleString('en-IN')}</td>
-                                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.otherDeductYearly.toLocaleString('en-IN')}</td>
-                                  </tr>
-                                  <tr style={{ background: '#fee2e2', fontWeight: 800, color: '#991b1b' }}>
-                                    <td style={{ padding: '5px 10px' }}>Total Deductions</td>
-                                    <td style={{ padding: '5px 10px', textAlign: 'right' }}>₹{breakdown.totalDeductMonthly.toLocaleString('en-IN')}</td>
-                                    <td style={{ padding: '5px 10px', textAlign: 'right' }}>₹{breakdown.totalDeductYearly.toLocaleString('en-IN')}</td>
-                                  </tr>
-                                </tbody>
+                                    {/* DEDUCTIONS SECTION */}
+                                    <tr style={{ background: '#fef2f2', borderTop: '1px solid #fecaca', color: '#991b1b', fontWeight: 800 }}>
+                                      <td colSpan={3} style={{ padding: '4px 10px', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>DEDUCTIONS</td>
+                                    </tr>
+                                    <tr style={{ borderBottom: '1px solid #fef2f2' }}>
+                                      <td style={{ padding: '4px 10px' }}>PT (Professional Tax)</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.ptMonthly.toLocaleString('en-IN')}</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.ptYearly.toLocaleString('en-IN')}</td>
+                                    </tr>
+                                    <tr style={{ borderBottom: '1px solid #fef2f2' }}>
+                                      <td style={{ padding: '4px 10px' }}>Employer PF (12%)</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.employerPfMonthly.toLocaleString('en-IN')}</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.employerPfYearly.toLocaleString('en-IN')}</td>
+                                    </tr>
+                                    <tr style={{ borderBottom: '1px solid #fef2f2' }}>
+                                      <td style={{ padding: '4px 10px' }}>Employee PF (12%)</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.deductEmployeePfMonthly.toLocaleString('en-IN')}</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.deductEmployeePfYearly.toLocaleString('en-IN')}</td>
+                                    </tr>
+                                    <tr style={{ borderBottom: '1px solid #fef2f2' }}>
+                                      <td style={{ padding: '4px 10px' }}>Other Deductions</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.otherDeductMonthly.toLocaleString('en-IN')}</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.otherDeductYearly.toLocaleString('en-IN')}</td>
+                                    </tr>
+                                    <tr style={{ background: '#fee2e2', fontWeight: 800, color: '#991b1b' }}>
+                                      <td style={{ padding: '5px 10px' }}>Total Deductions</td>
+                                      <td style={{ padding: '5px 10px', textAlign: 'right' }}>₹{breakdown.totalDeductMonthly.toLocaleString('en-IN')}</td>
+                                      <td style={{ padding: '5px 10px', textAlign: 'right' }}>₹{breakdown.totalDeductYearly.toLocaleString('en-IN')}</td>
+                                    </tr>
+                                  </tbody>
                               </table>
                               
                               <div style={{ background: '#ecfdf5', padding: '6px 10px', borderTop: '1px solid #a7f3d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

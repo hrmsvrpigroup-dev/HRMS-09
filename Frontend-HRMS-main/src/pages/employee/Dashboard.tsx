@@ -5,6 +5,7 @@ import { attendanceApi, AttendanceItem } from '../../api/attendance.api'
 import { LoadingSpinner } from '../../components/shared/LoadingSpinner'
 import { useAuthStore } from '../../store/auth.store'
 import { triggerHrNotification } from '../../utils/notif'
+import { detectFaceInVideo, drawFaceDetectorOverlay, FaceDetectionResult } from '../../utils/faceDetector'
 import {
   CalendarDays, Clock, PlayCircle, StopCircle, Coffee, Utensils,
   Briefcase, Timer, Sparkles, CheckCircle2, AlertCircle, CheckSquare,
@@ -140,6 +141,8 @@ export default function Dashboard() {
   const [capturedImage, setCapturedImage] = useState<string | null>(null)
   const [qrScanningMode, setQrScanningMode] = useState(false)
   const [capturedFaceData, setCapturedFaceData] = useState<{ faceImage: string; clockInPhoto?: string } | null>(null)
+  const [faceResult, setFaceResult] = useState<FaceDetectionResult | null>(null)
+  const faceDetectionLoopRef = useRef<number | null>(null)
 
   // Mobile QR session state
   const [qrSessionId, setQrSessionId] = useState<string | null>(null)
@@ -323,34 +326,74 @@ export default function Dashboard() {
   // ─────────────────────────────────────────────────────────────────────────
 
 
+  const startFaceDetectionLoop = () => {
+    if (faceDetectionLoopRef.current) {
+      cancelAnimationFrame(faceDetectionLoopRef.current);
+    }
+
+    let isBusy = false;
+    const detectLoop = async () => {
+      const video = document.getElementById('webcam-video') as HTMLVideoElement;
+      const canvas = document.getElementById('face-detector-canvas') as HTMLCanvasElement;
+
+      if (video && canvas && video.readyState >= 2 && !video.paused && !video.ended) {
+        if (canvas.width !== (video.videoWidth || 640) || canvas.height !== (video.videoHeight || 480)) {
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 480;
+        }
+
+        if (!isBusy) {
+          isBusy = true;
+          try {
+            const res = await detectFaceInVideo(video);
+            setFaceResult(res);
+            drawFaceDetectorOverlay(canvas, video, res);
+          } catch (e) {
+            console.error('Face detector frame error:', e);
+          } finally {
+            isBusy = false;
+          }
+        }
+      }
+      faceDetectionLoopRef.current = requestAnimationFrame(detectLoop);
+    };
+
+    faceDetectionLoopRef.current = requestAnimationFrame(detectLoop);
+  };
+
   const startWebcam = async () => {
     try {
-      setFaceError('')
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
-      setWebcamStream(stream)
-      const video = document.getElementById('webcam-video') as HTMLVideoElement
+      setFaceError('');
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+      setWebcamStream(stream);
+      const video = document.getElementById('webcam-video') as HTMLVideoElement;
       if (video) {
-        video.srcObject = stream
-        // Wait for metadata so videoWidth/videoHeight are populated
+        video.srcObject = stream;
         await new Promise<void>((resolve) => {
-          video.onloadedmetadata = () => resolve()
-        })
-        await video.play()
+          video.onloadedmetadata = () => resolve();
+        });
+        await video.play();
+        startFaceDetectionLoop();
       }
     } catch (err) {
-      setFaceError('Could not access camera. Please allow camera permissions and try again.')
+      setFaceError('Could not access camera. Please allow camera permissions and try again.');
     }
-  }
+  };
 
   const stopWebcam = () => {
-    if (webcamStream) {
-      webcamStream.getTracks().forEach(track => track.stop())
-      setWebcamStream(null)
+    if (faceDetectionLoopRef.current) {
+      cancelAnimationFrame(faceDetectionLoopRef.current);
+      faceDetectionLoopRef.current = null;
     }
-    setCapturedImage(null)
-    setFaceProgress(0)
-    setFaceScanning(false)
-    setFaceError('')
+    if (webcamStream) {
+      webcamStream.getTracks().forEach((track) => track.stop());
+      setWebcamStream(null);
+    }
+    setCapturedImage(null);
+    setFaceProgress(0);
+    setFaceScanning(false);
+    setFaceError('');
+    setFaceResult(null);
   }
 
   const captureFrame = () => {
@@ -400,7 +443,13 @@ export default function Dashboard() {
   }
 
   const handleFaceClockIn = async () => {
-    requestIdlePermission()
+    requestIdlePermission();
+
+    // Enforce clear human face visibility while clocking in
+    if (!faceResult?.detected) {
+      setFaceError('⚠️ Human face must be clearly visible inside the outline to clock in. Please face the camera directly in good lighting.');
+      return;
+    }
     // Check if this is first-time registration or verification
     const isFirstTime = !todayStatus?.hasFaceBaseline
 
@@ -1280,27 +1329,64 @@ export default function Dashboard() {
               </p>
               
               <div className="face-scan-viewport-wrapper">
-                <div className="face-scan-viewport">
+                <div className="face-scan-viewport" style={{ width: '100%', height: '280px', position: 'relative' }}>
                   {/* Live Video */}
                   {!capturedImage && (
-                    <video id="webcam-video" width="100%" height="auto" playsInline muted className="webcam-feed" />
+                    <video id="webcam-video" width="100%" height="100%" playsInline muted className="webcam-feed" />
                   )}
                   {/* Snapped Image during scan */}
                   {capturedImage && (
                     <img src={capturedImage} alt="Captured frame" className="webcam-feed" />
                   )}
 
-                  {/* Silhouette and Scanning lines */}
+                  {/* High-Tech Face Detector Overlay Canvas */}
                   {!capturedImage && (
-                    <div className="face-silhouette">
-                      <div className="face-outline" />
-                    </div>
+                    <canvas
+                      id="face-detector-canvas"
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        pointerEvents: 'none',
+                        zIndex: 10
+                      }}
+                    />
                   )}
 
                   {faceScanning && (
-                    <div className="laser-line-anim" />
+                    <div className="laser-line-anim" style={{ zIndex: 15 }} />
                   )}
                 </div>
+
+                {/* Real-Time Live Status Feedback Pill */}
+                {!capturedImage && (
+                  <div
+                    style={{
+                      marginTop: '12px',
+                      padding: '8px 14px',
+                      borderRadius: '8px',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      transition: 'all 0.2s ease',
+                      background: faceResult?.detected ? '#ecfdf5' : '#fef2f2',
+                      color: faceResult?.detected ? '#065f46' : '#991b1b',
+                      border: faceResult?.detected ? '1px solid #a7f3d0' : '1px solid #fecaca'
+                    }}
+                  >
+                    <span style={{ fontSize: '1rem' }}>{faceResult?.detected ? '🟢' : '🔴'}</span>
+                    <span>
+                      {faceResult?.detected
+                        ? `Face Visible & Detected (Green Box) — Ready to Clock In`
+                        : `Face Not Visible (Red Box) — Green Box only allowed to Clock In`}
+                    </span>
+                  </div>
+                )}
 
                 {faceScanning && (
                   <div className="scan-progress-bar">
@@ -1344,10 +1430,24 @@ export default function Dashboard() {
                   type="button" 
                   className="btn-primary" 
                   onClick={handleFaceClockIn}
-                  disabled={faceScanning || !!faceError}
-                  style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}
+                  disabled={faceScanning || !faceResult?.detected}
+                  style={{
+                    background: faceResult?.detected 
+                      ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' 
+                      : '#ef4444',
+                    cursor: faceResult?.detected ? 'pointer' : 'not-allowed',
+                    opacity: faceResult?.detected ? 1 : 0.65,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                  title={faceResult?.detected ? 'Green box verified: Click to clock in' : 'Red box active: Human face must be visible to clock in'}
                 >
-                  {faceScanning ? 'SCANNING...' : todayStatus?.hasFaceBaseline ? 'Verify & Clock In' : 'Register Face'}
+                  {faceScanning 
+                    ? 'SCANNING...' 
+                    : faceResult?.detected 
+                      ? (todayStatus?.hasFaceBaseline ? '✓ Clock In (Face Detected)' : '✓ Register & Clock In')
+                      : 'Awaiting Face (Red Box)...'}
                 </button>
               </div>
             </div>

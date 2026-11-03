@@ -32,40 +32,65 @@ export interface SalaryBreakdown {
   hraYearly: number;
   ltaMonthly: number;
   ltaYearly: number;
-  otherAllowMonthly: number;
-  otherAllowYearly: number;
+  employeePfMonthly: number;
+  employeePfYearly: number;
+  insuranceMonthly: number;
+  insuranceYearly: number;
   ptMonthly: number;
   ptYearly: number;
-  pfMonthly: number;
-  pfYearly: number;
+  employerPfMonthly: number;
+  employerPfYearly: number;
+  deductEmployeePfMonthly: number;
+  deductEmployeePfYearly: number;
   otherDeductMonthly: number;
   otherDeductYearly: number;
   totalDeductMonthly: number;
   totalDeductYearly: number;
   netMonthly: number;
   netYearly: number;
+  otherAllowMonthly: number;
+  otherAllowYearly: number;
+  pfMonthly: number;
+  pfYearly: number;
 }
 
 export function calculateSalaryBreakdown(annualCtc: number): SalaryBreakdown {
   const ctc = Math.round(Number(annualCtc) || 0);
   const monthlyGross = Math.round(ctc / 12);
+
+  // Upper Box (Gross Salary Calculations)
+  // Basic - 50%
   const basicMonthly = Math.round(monthlyGross * 0.50);
   const basicYearly = basicMonthly * 12;
-  const hraMonthly = Math.round(monthlyGross * 0.25);
+  // HRA - 18%
+  const hraMonthly = Math.round(monthlyGross * 0.18);
   const hraYearly = hraMonthly * 12;
+  // LTA - 10%
   const ltaMonthly = Math.round(monthlyGross * 0.10);
   const ltaYearly = ltaMonthly * 12;
-  const otherAllowMonthly = Math.max(0, monthlyGross - (basicMonthly + hraMonthly + ltaMonthly));
-  const otherAllowYearly = ctc - (basicYearly + hraYearly + ltaYearly);
+  // Employee PF - 12%
+  const employeePfMonthly = Math.round(monthlyGross * 0.12);
+  const employeePfYearly = employeePfMonthly * 12;
+  // Insurance - 10%
+  const insuranceMonthly = Math.round(monthlyGross * 0.10);
+  const insuranceYearly = insuranceMonthly * 12;
 
+  // Deductions:
+  // PT - ₹200
   const ptMonthly = 200;
   const ptYearly = 2400;
-  const pfMonthly = 1800;
-  const pfYearly = 21600;
+  // Employer PF - 12%
+  const employerPfMonthly = Math.round(monthlyGross * 0.12);
+  const employerPfYearly = employerPfMonthly * 12;
+  // Employee PF - 12%
+  const deductEmployeePfMonthly = Math.round(monthlyGross * 0.12);
+  const deductEmployeePfYearly = deductEmployeePfMonthly * 12;
+  // Other deductions - ₹200
   const otherDeductMonthly = 200;
   const otherDeductYearly = 2400;
-  const totalDeductMonthly = ptMonthly + pfMonthly + otherDeductMonthly;
-  const totalDeductYearly = ptYearly + pfYearly + otherDeductYearly;
+
+  const totalDeductMonthly = ptMonthly + employerPfMonthly + deductEmployeePfMonthly + otherDeductMonthly;
+  const totalDeductYearly = ptYearly + employerPfYearly + deductEmployeePfYearly + otherDeductYearly;
 
   const netMonthly = Math.max(0, monthlyGross - totalDeductMonthly);
   const netYearly = Math.max(0, ctc - totalDeductYearly);
@@ -79,18 +104,26 @@ export function calculateSalaryBreakdown(annualCtc: number): SalaryBreakdown {
     hraYearly,
     ltaMonthly,
     ltaYearly,
-    otherAllowMonthly,
-    otherAllowYearly,
+    employeePfMonthly,
+    employeePfYearly,
+    insuranceMonthly,
+    insuranceYearly,
     ptMonthly,
     ptYearly,
-    pfMonthly,
-    pfYearly,
+    employerPfMonthly,
+    employerPfYearly,
+    deductEmployeePfMonthly,
+    deductEmployeePfYearly,
     otherDeductMonthly,
     otherDeductYearly,
     totalDeductMonthly,
     totalDeductYearly,
     netMonthly,
-    netYearly
+    netYearly,
+    otherAllowMonthly: insuranceMonthly,
+    otherAllowYearly: insuranceYearly,
+    pfMonthly: deductEmployeePfMonthly,
+    pfYearly: deductEmployeePfYearly
   };
 }
 
@@ -469,67 +502,77 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
                 </tr>
 
                 <tr class="table-row-lightgreen-gross">
-                  <td><strong>Gross</strong></td>
-                  <td style="text-align: right;"><strong>${b.monthlyGross.toLocaleString('en-IN')}</strong></td>
-                  <td style="text-align: right;"><strong>${b.annualCtc.toLocaleString('en-IN')}</strong></td>
-                </tr>
+                    <td><strong>Gross</strong></td>
+                    <td style="text-align: right;"><strong>${b.monthlyGross.toLocaleString('en-IN')}</strong></td>
+                    <td style="text-align: right;"><strong>${b.annualCtc.toLocaleString('en-IN')}</strong></td>
+                  </tr>
 
-                <tr class="table-row-white">
-                  <td>Basic</td>
-                  <td style="text-align: right;">${b.basicMonthly.toLocaleString('en-IN')}</td>
-                  <td style="text-align: right;">${b.basicYearly.toLocaleString('en-IN')}</td>
-                </tr>
-                <tr class="table-row-white">
-                  <td>House Rent Allowance (HRA)</td>
-                  <td style="text-align: right;">${b.hraMonthly.toLocaleString('en-IN')}</td>
-                  <td style="text-align: right;">${b.hraYearly.toLocaleString('en-IN')}</td>
-                </tr>
-                <tr class="table-row-white">
-                  <td>LTA</td>
-                  <td style="text-align: right;">${b.ltaMonthly.toLocaleString('en-IN')}</td>
-                  <td style="text-align: right;">${b.ltaYearly.toLocaleString('en-IN')}</td>
-                </tr>
-                <tr class="table-row-white">
-                  <td>Insurance &amp; Other Allowance</td>
-                  <td style="text-align: right;">${b.otherAllowMonthly.toLocaleString('en-IN')}</td>
-                  <td style="text-align: right;">${b.otherAllowYearly.toLocaleString('en-IN')}</td>
-                </tr>
-                <tr class="table-row-white" style="font-weight: 700;">
-                  <td>Total Amount (CTC)</td>
-                  <td style="text-align: right;">${b.monthlyGross.toLocaleString('en-IN')}</td>
-                  <td style="text-align: right;">${b.annualCtc.toLocaleString('en-IN')}</td>
-                </tr>
+                  <tr class="table-row-white">
+                    <td>Basic</td>
+                    <td style="text-align: right;">${b.basicMonthly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${b.basicYearly.toLocaleString('en-IN')}</td>
+                  </tr>
+                  <tr class="table-row-white">
+                    <td>House Rent Allowance (HRA)</td>
+                    <td style="text-align: right;">${b.hraMonthly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${b.hraYearly.toLocaleString('en-IN')}</td>
+                  </tr>
+                  <tr class="table-row-white">
+                    <td>LTA</td>
+                    <td style="text-align: right;">${b.ltaMonthly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${b.ltaYearly.toLocaleString('en-IN')}</td>
+                  </tr>
+                  <tr class="table-row-white">
+                    <td>Employer PF</td>
+                    <td style="text-align: right;">${b.employeePfMonthly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${b.employeePfYearly.toLocaleString('en-IN')}</td>
+                  </tr>
+                  <tr class="table-row-white">
+                    <td>Insurance</td>
+                    <td style="text-align: right;">${b.insuranceMonthly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${b.insuranceYearly.toLocaleString('en-IN')}</td>
+                  </tr>
+                  <tr class="table-row-white" style="font-weight: 700;">
+                    <td>Total Amount (CTC)</td>
+                    <td style="text-align: right;">${b.monthlyGross.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${b.annualCtc.toLocaleString('en-IN')}</td>
+                  </tr>
 
-                <tr class="table-row-green-header">
-                  <td colspan="3">DEDUCTIONS</td>
-                </tr>
+                  <tr class="table-row-green-header">
+                    <td colspan="3">DEDUCTIONS</td>
+                  </tr>
 
-                <tr class="table-row-white">
-                  <td>Professional Tax</td>
-                  <td style="text-align: right;">${b.ptMonthly.toLocaleString('en-IN')}</td>
-                  <td style="text-align: right;">${b.ptYearly.toLocaleString('en-IN')}</td>
-                </tr>
-                <tr class="table-row-white">
-                  <td>Provident Fund</td>
-                  <td style="text-align: right;">${b.pfMonthly.toLocaleString('en-IN')}</td>
-                  <td style="text-align: right;">${b.pfYearly.toLocaleString('en-IN')}</td>
-                </tr>
-                <tr class="table-row-white">
-                  <td>Other Deductions</td>
-                  <td style="text-align: right;">${b.otherDeductMonthly.toLocaleString('en-IN')}</td>
-                  <td style="text-align: right;">${b.otherDeductYearly.toLocaleString('en-IN')}</td>
-                </tr>
-                <tr class="table-row-white" style="font-weight: 700;">
-                  <td>Total Deductions</td>
-                  <td style="text-align: right;">${b.totalDeductMonthly.toLocaleString('en-IN')}</td>
-                  <td style="text-align: right;">${b.totalDeductYearly.toLocaleString('en-IN')}</td>
-                </tr>
+                  <tr class="table-row-white">
+                    <td>Professional Tax</td>
+                    <td style="text-align: right;">${b.ptMonthly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${b.ptYearly.toLocaleString('en-IN')}</td>
+                  </tr>
+                  <tr class="table-row-white">
+                    <td>Employer PF</td>
+                    <td style="text-align: right;">${b.employerPfMonthly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${b.employerPfYearly.toLocaleString('en-IN')}</td>
+                  </tr>
+                  <tr class="table-row-white">
+                    <td>Employee PF</td>
+                    <td style="text-align: right;">${b.deductEmployeePfMonthly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${b.deductEmployeePfYearly.toLocaleString('en-IN')}</td>
+                  </tr>
+                  <tr class="table-row-white">
+                    <td>Other Deductions</td>
+                    <td style="text-align: right;">${b.otherDeductMonthly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${b.otherDeductYearly.toLocaleString('en-IN')}</td>
+                  </tr>
+                  <tr class="table-row-white" style="font-weight: 700;">
+                    <td>Total Deductions</td>
+                    <td style="text-align: right;">${b.totalDeductMonthly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${b.totalDeductYearly.toLocaleString('en-IN')}</td>
+                  </tr>
 
-                <tr class="table-row-net-takehome">
-                  <td><strong>Net Take-Home Salary (In-Hand)</strong></td>
-                  <td style="text-align: right;"><strong>₹${b.netMonthly.toLocaleString('en-IN')}</strong></td>
-                  <td style="text-align: right;"><strong>₹${b.netYearly.toLocaleString('en-IN')}</strong></td>
-                </tr>
+                  <tr class="table-row-net-takehome">
+                    <td><strong>Net Take-Home Salary (In-Hand)</strong></td>
+                    <td style="text-align: right;"><strong>₹${b.netMonthly.toLocaleString('en-IN')}</strong></td>
+                    <td style="text-align: right;"><strong>₹${b.netYearly.toLocaleString('en-IN')}</strong></td>
+                  </tr>
               </tbody>
             </table>
           </div>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { attendanceApi } from '../../api/attendance.api'
+import { detectFaceInVideo, drawFaceDetectorOverlay, FaceDetectionResult } from '../../utils/faceDetector'
 
 type Stage = 'loading' | 'camera' | 'preview' | 'uploading' | 'success' | 'error' | 'expired' | 'already'
 
@@ -18,6 +19,9 @@ export default function MobileSelfie() {
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const faceOverlayCanvasRef = useRef<HTMLCanvasElement>(null)
+  const [faceResult, setFaceResult] = useState<FaceDetectionResult | null>(null)
+  const animLoopRef = useRef<number | null>(null)
 
   // ── Verify session on mount ───────────────────────────────────────────────
   useEffect(() => {
@@ -45,27 +49,62 @@ export default function MobileSelfie() {
   }
 
   // ── Camera ────────────────────────────────────────────────────────────────
+  const startFaceDetectionLoop = () => {
+    if (animLoopRef.current) cancelAnimationFrame(animLoopRef.current);
+    let isBusy = false;
+    const loop = async () => {
+      const video = videoRef.current;
+      const canvas = faceOverlayCanvasRef.current;
+      if (video && canvas && video.readyState >= 2 && !video.paused && !video.ended) {
+        if (canvas.width !== (video.videoWidth || 640) || canvas.height !== (video.videoHeight || 480)) {
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 480;
+        }
+        if (!isBusy) {
+          isBusy = true;
+          try {
+            const res = await detectFaceInVideo(video);
+            setFaceResult(res);
+            drawFaceDetectorOverlay(canvas, video, res);
+          } catch (e) {
+            console.error(e);
+          } finally {
+            isBusy = false;
+          }
+        }
+      }
+      animLoopRef.current = requestAnimationFrame(loop);
+    };
+    animLoopRef.current = requestAnimationFrame(loop);
+  };
+
   const startCamera = async () => {
-    setStage('camera')
+    setStage('camera');
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-      })
-      setStream(mediaStream)
+      });
+      setStream(mediaStream);
       if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream
-        await videoRef.current.play()
+        videoRef.current.srcObject = mediaStream;
+        await videoRef.current.play();
+        startFaceDetectionLoop();
       }
     } catch {
-      setErrorMsg('Camera permission denied. Please allow camera access and refresh.')
-      setStage('error')
+      setErrorMsg('Camera permission denied. Please allow camera access and refresh.');
+      setStage('error');
     }
-  }
+  };
 
   const stopCamera = () => {
-    stream?.getTracks().forEach(t => t.stop())
-    setStream(null)
-  }
+    if (animLoopRef.current) {
+      cancelAnimationFrame(animLoopRef.current);
+      animLoopRef.current = null;
+    }
+    stream?.getTracks().forEach(t => t.stop());
+    setStream(null);
+    setFaceResult(null);
+  };
 
   // ── Countdown ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -77,6 +116,10 @@ export default function MobileSelfie() {
 
   // ── Capture selfie ────────────────────────────────────────────────────────
   const capture = () => {
+    if (!faceResult?.detected) {
+      alert('⚠️ Human face must be clearly visible inside the outline before capturing. Please look directly at the camera.');
+      return;
+    }
     const video = videoRef.current
     const canvas = canvasRef.current
     if (!video || !canvas) return
@@ -158,26 +201,64 @@ export default function MobileSelfie() {
             </div>
             <p style={styles.hint}>Position your face inside the oval and tap Capture</p>
 
-            <div style={styles.videoWrapper}>
+            <div style={{ ...styles.videoWrapper, position: 'relative' }}>
               <video
                 ref={videoRef}
                 playsInline
                 muted
                 style={styles.video}
               />
-              {/* Face oval guide */}
-              <div style={styles.ovalGuide} />
+              <canvas
+                ref={faceOverlayCanvasRef}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  pointerEvents: 'none',
+                  zIndex: 10
+                }}
+              />
               {/* Scan line animation */}
               <div style={styles.scanLine} />
             </div>
 
+            {/* Live Face Detection Status */}
+            <div
+              style={{
+                marginTop: '10px',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                textAlign: 'center',
+                background: faceResult?.detected ? '#ecfdf5' : '#fef2f2',
+                color: faceResult?.detected ? '#065f46' : '#991b1b',
+                border: faceResult?.detected ? '1px solid #a7f3d0' : '1px solid #fecaca'
+              }}
+            >
+              {faceResult?.detected
+                ? `🟢 Face Detected (Green Box Active) — Ready to Capture`
+                : `🔴 Face Not Visible (Red Box) — Green Box only allowed to Clock In`}
+            </div>
+
             <canvas ref={canvasRef} style={{ display: 'none' }} />
 
-            <button onClick={capture} style={styles.captureBtn}>
+            <button 
+              onClick={capture} 
+              disabled={!faceResult?.detected}
+              style={{
+                ...styles.captureBtn,
+                opacity: faceResult?.detected ? 1 : 0.6,
+                cursor: faceResult?.detected ? 'pointer' : 'not-allowed',
+                filter: faceResult?.detected ? 'none' : 'grayscale(1)'
+              }}
+            >
               <span style={styles.captureRing}>
                 <span style={styles.captureInner} />
               </span>
-              Capture Selfie
+              {faceResult?.detected ? 'Capture Selfie (Face Detected)' : 'Awaiting Face (Red Box)...'}
             </button>
           </div>
         )}
