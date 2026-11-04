@@ -42,6 +42,8 @@ export interface SalaryBreakdown {
   employerPfYearly: number;
   deductEmployeePfMonthly: number;
   deductEmployeePfYearly: number;
+  deductInsuranceMonthly: number;
+  deductInsuranceYearly: number;
   otherDeductMonthly: number;
   otherDeductYearly: number;
   totalDeductMonthly: number;
@@ -85,12 +87,14 @@ export function calculateSalaryBreakdown(annualCtc: number): SalaryBreakdown {
   // Employee PF - 12%
   const deductEmployeePfMonthly = Math.round(monthlyGross * 0.12);
   const deductEmployeePfYearly = deductEmployeePfMonthly * 12;
+  // Insurance - 10%
+  const deductInsuranceMonthly = Math.round(monthlyGross * 0.10);
+  const deductInsuranceYearly = deductInsuranceMonthly * 12;
   // Other deductions - ₹200
   const otherDeductMonthly = 200;
   const otherDeductYearly = 2400;
-
-  const totalDeductMonthly = ptMonthly + employerPfMonthly + deductEmployeePfMonthly + otherDeductMonthly;
-  const totalDeductYearly = ptYearly + employerPfYearly + deductEmployeePfYearly + otherDeductYearly;
+  const totalDeductMonthly = ptMonthly + employerPfMonthly + deductEmployeePfMonthly + deductInsuranceMonthly + otherDeductMonthly;
+  const totalDeductYearly = ptYearly + employerPfYearly + deductEmployeePfYearly + deductInsuranceYearly + otherDeductYearly;
 
   const netMonthly = Math.max(0, monthlyGross - totalDeductMonthly);
   const netYearly = Math.max(0, ctc - totalDeductYearly);
@@ -114,6 +118,8 @@ export function calculateSalaryBreakdown(annualCtc: number): SalaryBreakdown {
     employerPfYearly,
     deductEmployeePfMonthly,
     deductEmployeePfYearly,
+    deductInsuranceMonthly,
+    deductInsuranceYearly,
     otherDeductMonthly,
     otherDeductYearly,
     totalDeductMonthly,
@@ -556,6 +562,11 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
                     <td>Employee PF</td>
                     <td style="text-align: right;">${b.deductEmployeePfMonthly.toLocaleString('en-IN')}</td>
                     <td style="text-align: right;">${b.deductEmployeePfYearly.toLocaleString('en-IN')}</td>
+                  </tr>
+                  <tr class="table-row-white">
+                    <td>Insurance</td>
+                    <td style="text-align: right;">${b.deductInsuranceMonthly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${b.deductInsuranceYearly.toLocaleString('en-IN')}</td>
                   </tr>
                   <tr class="table-row-white">
                     <td>Other Deductions</td>

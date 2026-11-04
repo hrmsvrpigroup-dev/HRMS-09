@@ -90,7 +90,7 @@ export async function loadFaceDetectionModels(): Promise<boolean> {
   return modelsLoadingPromise;
 }
 
-// Start loading models eagerly
+// Start loading models eagerly in browser
 if (typeof window !== 'undefined') {
   loadFaceDetectionModels();
 }
@@ -157,7 +157,7 @@ export function generateFaceLandmarks(box: FaceDetectionBox): FaceLandmarks {
 /**
  * Detect face from a live HTMLVideoElement
  * Uses strict neural network detection with facial landmark validation.
- * No skin-color fallback that confuses hands/fingers with faces.
+ * Rejects hands, fingers, and background objects.
  */
 export async function detectFaceInVideo(video: HTMLVideoElement): Promise<FaceDetectionResult> {
   const vw = video.videoWidth || 640;
