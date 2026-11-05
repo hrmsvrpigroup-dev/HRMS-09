@@ -302,6 +302,7 @@ function PayslipPreviewModal({
   calcData,
   onClose,
   uploadedFile,
+  autoPrint = false,
 }: {
   employee: EmployeeSalary
   month: number
@@ -323,9 +324,137 @@ function PayslipPreviewModal({
   }
   onClose: () => void
   uploadedFile: File | null
+  autoPrint?: boolean
 }) {
   const [viewMode, setViewMode] = useState<'statement' | 'pdf'>(uploadedFile ? 'pdf' : 'statement')
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null)
+
+  // Editable Bank & UAN / PF State
+  const [isEditingBankPf, setIsEditingBankPf] = useState(false)
+  const [bankName, setBankName] = useState(employee.payrollDetails?.bankName || '')
+  const [accountNumber, setAccountNumber] = useState(employee.payrollDetails?.accountNumber || '')
+  const [uanNumber, setUanNumber] = useState(employee.payrollDetails?.uanNumber || '')
+  const [savingBankPf, setSavingBankPf] = useState(false)
+  const [bankPfSuccess, setBankPfSuccess] = useState('')
+  const [bankPfError, setBankPfError] = useState('')
+
+  useEffect(() => {
+    setBankName(employee.payrollDetails?.bankName || '')
+    setAccountNumber(employee.payrollDetails?.accountNumber || '')
+    setUanNumber(employee.payrollDetails?.uanNumber || '')
+  }, [employee.id, employee.payrollDetails?.bankName, employee.payrollDetails?.accountNumber, employee.payrollDetails?.uanNumber])
+
+  const handleSaveBankPf = async () => {
+    setSavingBankPf(true)
+    setBankPfError('')
+    try {
+      await payrollApi.updateEmployeeSalary(employee.id, {
+        bankName,
+        accountNumber,
+        uanNumber,
+      })
+      const details = (employee.payrollDetails || {}) as any
+      details.bankName = bankName
+      details.accountNumber = accountNumber
+      details.uanNumber = uanNumber
+      employee.payrollDetails = details
+      setIsEditingBankPf(false)
+      setBankPfSuccess('Updated & saved successfully!')
+      setTimeout(() => setBankPfSuccess(''), 3500)
+    } catch (err: any) {
+      setBankPfError(err.response?.data?.message || 'Failed to update banking details')
+    } finally {
+      setSavingBankPf(false)
+    }
+  }
+
+  // Editable Gross Salary & Deductions Breakdown (Matching Reference Image)
+  const [isEditingBreakdown, setIsEditingBreakdown] = useState(false)
+  const initialGross = calcData.grossSalary || (employee.salaryGross ? Math.round(employee.salaryGross / 12) : 50000)
+
+  // Gross Particulars
+  const [breakdownGross, setBreakdownGross] = useState<number>(initialGross)
+  const [itemBasic, setItemBasic] = useState<number>(Math.round(initialGross * 0.50))
+  const [itemHra, setItemHra] = useState<number>(Math.round(initialGross * 0.18))
+  const [itemLta, setItemLta] = useState<number>(Math.round(initialGross * 0.10))
+  const [itemEmployerPf, setItemEmployerPf] = useState<number>(Math.round(initialGross * 0.12))
+  const [itemInsurance, setItemInsurance] = useState<number>(Math.round(initialGross * 0.10))
+
+  // Deductions Particulars
+  const [itemPt, setItemPt] = useState<number>(200)
+  const [itemDedEmployerPf, setItemDedEmployerPf] = useState<number>(Math.round(initialGross * 0.12))
+  const [itemDedEmployeePf, setItemDedEmployeePf] = useState<number>(Math.round(initialGross * 0.12))
+  const [itemDedInsurance, setItemDedInsurance] = useState<number>(Math.round(initialGross * 0.10))
+  const [itemOtherDed, setItemOtherDed] = useState<number>(200)
+
+  // Auto calculate all factors from a given Gross
+  const autoCalculateBreakdown = (baseGross: number) => {
+    setBreakdownGross(baseGross)
+    setItemBasic(Math.round(baseGross * 0.50))
+    setItemHra(Math.round(baseGross * 0.18))
+    setItemLta(Math.round(baseGross * 0.10))
+    setItemEmployerPf(Math.round(baseGross * 0.12))
+    setItemInsurance(Math.round(baseGross * 0.10))
+
+    setItemPt(200)
+    setItemDedEmployerPf(Math.round(baseGross * 0.12))
+    setItemDedEmployeePf(Math.round(baseGross * 0.12))
+    setItemDedInsurance(Math.round(baseGross * 0.10))
+    setItemOtherDed(200)
+  }
+
+  // Update when calcData.grossSalary or employee changes
+  useEffect(() => {
+    const g = calcData.grossSalary || (employee.salaryGross ? Math.round(employee.salaryGross / 12) : 50000)
+    autoCalculateBreakdown(g)
+  }, [calcData.grossSalary, employee.id])
+
+  // Editable Attendance & Loss of Pay State
+  const [isEditingAttendance, setIsEditingAttendance] = useState(false)
+  const [attDaysInMonth, setAttDaysInMonth] = useState<number>(calcData.daysInMonth || 30)
+  const [attPayableDays, setAttPayableDays] = useState<number>(calcData.payableDays ?? ((calcData.daysInMonth || 30) - (calcData.lossOfPayDays || 0)))
+  const [attLopDays, setAttLopDays] = useState<number>(calcData.lossOfPayDays || 0)
+  const [attPerDayIncome, setAttPerDayIncome] = useState<number>(() => {
+    const days = calcData.daysInMonth || 30
+    const g = calcData.grossSalary || (employee.salaryGross ? Math.round(employee.salaryGross / 12) : 50000)
+    return days > 0 ? Math.round((g / days) * 100) / 100 : (calcData.perDayIncome || 0)
+  })
+
+  useEffect(() => {
+    const days = calcData.daysInMonth || 30
+    const lop = calcData.lossOfPayDays || 0
+    const payable = calcData.payableDays ?? (days - lop)
+    const g = calcData.grossSalary || (employee.salaryGross ? Math.round(employee.salaryGross / 12) : 50000)
+    setAttDaysInMonth(days)
+    setAttPayableDays(payable)
+    setAttLopDays(lop)
+    if (days > 0 && g > 0) {
+      setAttPerDayIncome(Math.round((g / days) * 100) / 100)
+    } else {
+      setAttPerDayIncome(calcData.perDayIncome || 0)
+    }
+  }, [calcData.daysInMonth, calcData.payableDays, calcData.lossOfPayDays, calcData.grossSalary, calcData.perDayIncome, employee.salaryGross])
+
+  // Gross Totals
+  const totalParticularsMonthly = itemBasic + itemHra + itemLta + itemEmployerPf + itemInsurance
+  const displayGrossMonthly = isEditingBreakdown ? totalParticularsMonthly : breakdownGross
+  const displayGrossYearly = displayGrossMonthly * 12
+
+  // Auto-sync Per-Day Income whenever Gross Salary changes
+  useEffect(() => {
+    if (attDaysInMonth > 0 && displayGrossMonthly > 0) {
+      setAttPerDayIncome(Math.round((displayGrossMonthly / attDaysInMonth) * 100) / 100)
+    }
+  }, [displayGrossMonthly])
+
+  // Deductions Totals (Using interactive attLopDays)
+  const lopDeductionAmount = attLopDays > 0 ? Math.round(attLopDays * attPerDayIncome) : 0
+  const totalDeductionsMonthly = itemPt + itemDedEmployerPf + itemDedEmployeePf + itemDedInsurance + itemOtherDed + lopDeductionAmount
+  const totalDeductionsYearly = totalDeductionsMonthly * 12
+
+  // Net Take-Home (In-Hand)
+  const netTakeHomeMonthly = Math.max(0, displayGrossMonthly - totalDeductionsMonthly)
+  const netTakeHomeYearly = Math.max(0, displayGrossYearly - totalDeductionsYearly)
 
   useEffect(() => {
     if (uploadedFile) {
@@ -338,15 +467,29 @@ function PayslipPreviewModal({
   const monthName = MONTHS[month - 1]
 
   const handlePrint = () => {
-    window.print()
+    setIsEditingBankPf(false)
+    setIsEditingAttendance(false)
+    setIsEditingBreakdown(false)
+    setTimeout(() => {
+      window.print()
+    }, 60)
   }
 
+  useEffect(() => {
+    if (autoPrint) {
+      const timer = setTimeout(() => {
+        handlePrint()
+      }, 350)
+      return () => clearTimeout(timer)
+    }
+  }, [autoPrint])
+
   return (
-    <div className="sal-overlay" style={{ zIndex: 1100 }}>
-      <div className="sal-modal" style={{ maxWidth: '820px', width: '95%', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="sal-overlay payslip-preview-overlay" style={{ zIndex: 1100 }}>
+      <div className="sal-modal payslip-preview-modal" style={{ maxWidth: '820px', width: '95%', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
         
         {/* Preview Header */}
-        <div className="sal-modal-header" style={{ padding: '16px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+        <div className="sal-modal-header no-print" style={{ padding: '16px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'linear-gradient(135deg, #3b82f6, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
               <Eye size={18} />
@@ -467,93 +610,667 @@ function PayslipPreviewModal({
               </div>
 
               {/* Employee & Attendance Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px 20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '14px 18px', marginBottom: '20px', fontSize: '0.8rem' }}>
-                <div><strong style={{ color: '#475569' }}>Employee Name:</strong> <span style={{ fontWeight: 700, color: '#0f172a' }}>{employee.firstName} {employee.lastName}</span></div>
-                <div><strong style={{ color: '#475569' }}>Employee ID:</strong> <span style={{ fontWeight: 700, color: '#0f172a' }}>{employee.employeeCode}</span></div>
-                <div><strong style={{ color: '#475569' }}>Department:</strong> <span>{employee.department?.name || 'General'}</span></div>
-                <div><strong style={{ color: '#475569' }}>Designation:</strong> <span>{employee.designation?.title || 'Employee'}</span></div>
-                <div><strong style={{ color: '#475569' }}>Date of Joining:</strong> <span>{employee.joiningDate ? new Date(employee.joiningDate).toLocaleDateString('en-IN') : '—'}</span></div>
-                <div><strong style={{ color: '#475569' }}>PAN Number:</strong> <span style={{ fontFamily: 'monospace' }}>{employee.payrollDetails?.panNumber || '—'}</span></div>
-                <div><strong style={{ color: '#475569' }}>Bank Name &amp; A/C:</strong> <span>{employee.payrollDetails?.bankName ? `${employee.payrollDetails.bankName} (•••${(employee.payrollDetails.accountNumber || '').slice(-4)})` : 'Direct Transfer'}</span></div>
-                <div><strong style={{ color: '#475569' }}>UAN / PF Number:</strong> <span style={{ fontFamily: 'monospace' }}>{employee.payrollDetails?.uanNumber || '—'}</span></div>
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '14px 18px', marginBottom: '20px', fontSize: '0.8rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' }}>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Employee Particulars &amp; Banking
+                  </span>
+                  <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {bankPfSuccess && (
+                      <span style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 700 }}>
+                        ✓ {bankPfSuccess}
+                      </span>
+                    )}
+                    {bankPfError && (
+                      <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 700 }}>
+                        ⚠️ {bankPfError}
+                      </span>
+                    )}
+                    {!isEditingBankPf ? (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingBankPf(true)}
+                        style={{
+                          background: '#eff6ff',
+                          border: '1px solid #bfdbfe',
+                          color: '#2563eb',
+                          borderRadius: '4px',
+                          padding: '2px 8px',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        ✏️ Edit Bank / PF
+                      </button>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          type="button"
+                          onClick={handleSaveBankPf}
+                          disabled={savingBankPf}
+                          style={{
+                            background: '#16a34a',
+                            border: 'none',
+                            color: '#ffffff',
+                            borderRadius: '4px',
+                            padding: '3px 10px',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {savingBankPf ? 'Saving...' : '✓ Save'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBankName(employee.payrollDetails?.bankName || '')
+                            setAccountNumber(employee.payrollDetails?.accountNumber || '')
+                            setUanNumber(employee.payrollDetails?.uanNumber || '')
+                            setIsEditingBankPf(false)
+                          }}
+                          style={{
+                            background: '#f1f5f9',
+                            border: '1px solid #cbd5e1',
+                            color: '#475569',
+                            borderRadius: '4px',
+                            padding: '3px 8px',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px 20px' }}>
+                  <div><strong style={{ color: '#475569' }}>Employee Name:</strong> <span style={{ fontWeight: 700, color: '#0f172a' }}>{employee.firstName} {employee.lastName}</span></div>
+                  <div><strong style={{ color: '#475569' }}>Employee ID:</strong> <span style={{ fontWeight: 700, color: '#0f172a' }}>{employee.employeeCode}</span></div>
+                  <div><strong style={{ color: '#475569' }}>Department:</strong> <span>{employee.department?.name || 'General'}</span></div>
+                  <div><strong style={{ color: '#475569' }}>Designation:</strong> <span>{employee.designation?.title || 'Employee'}</span></div>
+                  <div><strong style={{ color: '#475569' }}>Date of Joining:</strong> <span>{employee.joiningDate ? new Date(employee.joiningDate).toLocaleDateString('en-IN') : '—'}</span></div>
+                  <div><strong style={{ color: '#475569' }}>PAN Number:</strong> <span style={{ fontFamily: 'monospace' }}>{employee.payrollDetails?.panNumber || '—'}</span></div>
+
+                  {/* Bank Name & A/C */}
+                  <div>
+                    <strong style={{ color: '#475569' }}>Bank Name &amp; A/C:</strong>{' '}
+                    {isEditingBankPf ? (
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                        <input
+                          type="text"
+                          value={bankName}
+                          onChange={(e) => setBankName(e.target.value)}
+                          placeholder="Bank Name"
+                          style={{
+                            padding: '4px 6px',
+                            fontSize: '0.75rem',
+                            border: '1px solid #93c5fd',
+                            borderRadius: '4px',
+                            flex: 1,
+                            background: '#ffffff'
+                          }}
+                        />
+                        <input
+                          type="text"
+                          value={accountNumber}
+                          onChange={(e) => setAccountNumber(e.target.value)}
+                          placeholder="Account No"
+                          style={{
+                            padding: '4px 6px',
+                            fontSize: '0.75rem',
+                            border: '1px solid #93c5fd',
+                            borderRadius: '4px',
+                            flex: 1,
+                            background: '#ffffff'
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <span>{bankName ? `${bankName} (•••${(accountNumber || '').slice(-4)})` : 'Direct Transfer'}</span>
+                    )}
+                  </div>
+
+                  {/* UAN / PF Number */}
+                  <div>
+                    <strong style={{ color: '#475569' }}>UAN / PF Number:</strong>{' '}
+                    {isEditingBankPf ? (
+                      <div style={{ marginTop: '4px' }}>
+                        <input
+                          type="text"
+                          value={uanNumber}
+                          onChange={(e) => setUanNumber(e.target.value)}
+                          placeholder="UAN / PF Number"
+                          style={{
+                            padding: '4px 6px',
+                            fontSize: '0.75rem',
+                            border: '1px solid #93c5fd',
+                            borderRadius: '4px',
+                            width: '100%',
+                            background: '#ffffff',
+                            fontFamily: 'monospace'
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <span style={{ fontFamily: 'monospace' }}>{uanNumber || '—'}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Attendance Bar Header with In-Place Edit */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Attendance &amp; Daily Rate Factors
+                </span>
+                <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {isEditingAttendance && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (attDaysInMonth > 0 && displayGrossMonthly > 0) {
+                          setAttPerDayIncome(Math.round((displayGrossMonthly / attDaysInMonth) * 100) / 100)
+                        }
+                      }}
+                      style={{
+                        background: '#eff6ff',
+                        border: '1px solid #93c5fd',
+                        color: '#1e40af',
+                        borderRadius: '4px',
+                        padding: '2px 8px',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                      title="Auto calculate: Gross Salary ÷ Total Days in Month"
+                    >
+                      ↺ Salary ÷ {attDaysInMonth} days
+                    </button>
+                  )}
+                  {!isEditingAttendance ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingAttendance(true)}
+                      style={{
+                        background: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        color: '#2563eb',
+                        borderRadius: '4px',
+                        padding: '2px 8px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      ✏️ Edit Attendance
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingAttendance(false)}
+                      style={{
+                        background: '#16a34a',
+                        border: 'none',
+                        color: '#ffffff',
+                        borderRadius: '4px',
+                        padding: '3px 10px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      ✓ Done Editing
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Attendance Bar */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '10px 16px', marginBottom: '20px', textAlign: 'center' }}>
                 <div>
                   <div style={{ fontSize: '0.7rem', color: '#1e40af', textTransform: 'uppercase', fontWeight: 700 }}>Total Days in Month</div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e3a8a' }}>{calcData.daysInMonth}</div>
+                  {isEditingAttendance ? (
+                    <input
+                      type="number"
+                      value={attDaysInMonth}
+                      onChange={(e) => {
+                        const val = Math.max(1, Number(e.target.value) || 0)
+                        setAttDaysInMonth(val)
+                        setAttPayableDays(Math.max(0, val - attLopDays))
+                        if (val > 0 && displayGrossMonthly > 0) {
+                          setAttPerDayIncome(Math.round((displayGrossMonthly / val) * 100) / 100)
+                        }
+                      }}
+                      style={{ width: '80%', padding: '2px 6px', fontSize: '1rem', fontWeight: 800, textAlign: 'center', border: '1px solid #93c5fd', borderRadius: '4px', color: '#1e3a8a', marginTop: '2px', background: '#ffffff' }}
+                    />
+                  ) : (
+                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e3a8a' }}>{attDaysInMonth}</div>
+                  )}
                 </div>
                 <div>
                   <div style={{ fontSize: '0.7rem', color: '#1e40af', textTransform: 'uppercase', fontWeight: 700 }}>Payable Days</div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#16a34a' }}>{calcData.payableDays}</div>
+                  {isEditingAttendance ? (
+                    <input
+                      type="number"
+                      value={attPayableDays}
+                      onChange={(e) => {
+                        const val = Math.max(0, Number(e.target.value) || 0)
+                        setAttPayableDays(val)
+                        setAttLopDays(Math.max(0, attDaysInMonth - val))
+                      }}
+                      style={{ width: '80%', padding: '2px 6px', fontSize: '1rem', fontWeight: 800, textAlign: 'center', border: '1px solid #93c5fd', borderRadius: '4px', color: '#16a34a', marginTop: '2px', background: '#ffffff' }}
+                    />
+                  ) : (
+                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#16a34a' }}>{attPayableDays}</div>
+                  )}
                 </div>
                 <div>
                   <div style={{ fontSize: '0.7rem', color: '#1e40af', textTransform: 'uppercase', fontWeight: 700 }}>Loss of Pay Days</div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: calcData.lossOfPayDays > 0 ? '#dc2626' : '#64748b' }}>{calcData.lossOfPayDays}</div>
+                  {isEditingAttendance ? (
+                    <input
+                      type="number"
+                      min="0"
+                      value={attLopDays}
+                      onChange={(e) => {
+                        const val = Math.max(0, Number(e.target.value) || 0)
+                        setAttLopDays(val)
+                        setAttPayableDays(Math.max(0, attDaysInMonth - val))
+                      }}
+                      style={{ width: '80%', padding: '2px 6px', fontSize: '1rem', fontWeight: 800, textAlign: 'center', border: '1.5px solid #ef4444', borderRadius: '4px', color: attLopDays > 0 ? '#dc2626' : '#64748b', marginTop: '2px', background: '#ffffff' }}
+                    />
+                  ) : (
+                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: attLopDays > 0 ? '#dc2626' : '#64748b' }}>{attLopDays}</div>
+                  )}
                 </div>
                 <div>
                   <div style={{ fontSize: '0.7rem', color: '#1e40af', textTransform: 'uppercase', fontWeight: 700 }}>Per-Day Income</div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>₹{calcData.perDayIncome.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-                </div>
-              </div>
-
-              {/* Earnings & Deductions Table */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', border: '1px solid #0f172a', borderRadius: '6px', overflow: 'hidden', marginBottom: '20px' }}>
-                {/* Earnings */}
-                <div style={{ borderRight: '1px solid #0f172a' }}>
-                  <div style={{ background: '#0f172a', color: '#ffffff', padding: '8px 14px', fontSize: '0.82rem', fontWeight: 800, display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Earnings</span>
-                    <span>Amount (₹)</span>
-                  </div>
-                  <div style={{ padding: '10px 14px', fontSize: '0.8rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed #e2e8f0' }}>
-                      <span style={{ color: '#475569' }}>Basic Salary (50%)</span>
-                      <strong style={{ color: '#0f172a' }}>₹{calcData.basicSalary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed #e2e8f0' }}>
-                      <span style={{ color: '#475569' }}>House Rent Allowance (HRA 25%)</span>
-                      <strong style={{ color: '#0f172a' }}>₹{calcData.hra.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed #e2e8f0' }}>
-                      <span style={{ color: '#475569' }}>Special / Other Allowances</span>
-                      <strong style={{ color: '#0f172a' }}>₹{calcData.allowances.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 4px', fontSize: '0.85rem', fontWeight: 800, color: '#16a34a' }}>
-                      <span>Gross Salary</span>
-                      <span>₹{calcData.grossSalary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Deductions */}
-                <div>
-                  <div style={{ background: '#0f172a', color: '#ffffff', padding: '8px 14px', fontSize: '0.82rem', fontWeight: 800, display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Deductions</span>
-                    <span>Amount (₹)</span>
-                  </div>
-                  <div style={{ padding: '10px 14px', fontSize: '0.8rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed #e2e8f0' }}>
-                      <span style={{ color: '#475569' }}>Provident Fund (PF)</span>
-                      <strong style={{ color: '#dc2626' }}>₹{calcData.pf.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed #e2e8f0' }}>
-                      <span style={{ color: '#475569' }}>Professional Tax (PT)</span>
-                      <strong style={{ color: '#dc2626' }}>₹{calcData.tax.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
-                    </div>
-                    {calcData.lossOfPayDays > 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed #e2e8f0' }}>
-                        <span style={{ color: '#475569' }}>Loss of Pay ({calcData.lossOfPayDays} days)</span>
-                        <strong style={{ color: '#dc2626' }}>₹{Math.round(calcData.lossOfPayDays * calcData.perDayIncome).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
-                      </div>
-                    )}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 4px', fontSize: '0.85rem', fontWeight: 800, color: '#dc2626' }}>
-                      <span>Total Deductions</span>
-                      <span>-₹{calcData.deductions.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                    </div>
+                  {isEditingAttendance ? (
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={attPerDayIncome}
+                      onChange={(e) => setAttPerDayIncome(Math.max(0, Number(e.target.value) || 0))}
+                      style={{ width: '85%', padding: '2px 6px', fontSize: '0.95rem', fontWeight: 800, textAlign: 'center', border: '1px solid #93c5fd', borderRadius: '4px', color: '#0f172a', marginTop: '2px', background: '#ffffff' }}
+                    />
+                  ) : (
+                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>₹{attPerDayIncome.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  )}
+                  <div style={{ fontSize: '0.62rem', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>
+                    Salary ÷ {attDaysInMonth} days
                   </div>
                 </div>
               </div>
+
+              {/* Table Action Bar (Edit / Auto-Calculate / Done) */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Salary Particulars &amp; Statutory Deductions
+                </span>
+                <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {!isEditingBreakdown ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingBreakdown(true)}
+                      style={{
+                        background: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        color: '#2563eb',
+                        borderRadius: '4px',
+                        padding: '4px 10px',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      ✏️ Edit Breakdown
+                    </button>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        type="button"
+                        onClick={() => autoCalculateBreakdown(breakdownGross)}
+                        style={{
+                          background: '#f8fafc',
+                          border: '1px solid #cbd5e1',
+                          color: '#0f172a',
+                          borderRadius: '4px',
+                          padding: '4px 8px',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ↺ Auto-Calculate (50/18/10/12/10)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingBreakdown(false)}
+                        style={{
+                          background: '#16a34a',
+                          border: 'none',
+                          color: '#ffffff',
+                          borderRadius: '4px',
+                          padding: '4px 12px',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ✓ Done Editing
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Exact Reference Table (Gross Salary Calculations & Deductions) */}
+              <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', border: '1.5px solid #000000', marginBottom: '20px', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' }}>
+                <thead>
+                  <tr style={{ background: '#009a49', color: '#ffffff', textAlign: 'center', fontWeight: 'bold' }}>
+                    <th colSpan={3} style={{ padding: '8px 12px', fontSize: '0.88rem', letterSpacing: '0.5px', textTransform: 'uppercase', border: '1.5px solid #000000', boxSizing: 'border-box' }}>
+                      GROSS SALARY CALCULATIONS
+                    </th>
+                  </tr>
+                  <tr style={{ background: '#ffff00', color: '#000000', fontWeight: 'bold', fontSize: '0.82rem' }}>
+                    <th style={{ padding: '6px 12px', textAlign: 'left', border: '1px solid #000000', width: '50%', boxSizing: 'border-box' }}>Particulars</th>
+                    <th style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000', width: '25%', boxSizing: 'border-box' }}>Monthly</th>
+                    <th style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000', width: '25%', boxSizing: 'border-box' }}>Yearly</th>
+                  </tr>
+                </thead>
+                <tbody style={{ fontSize: '0.82rem' }}>
+                  {/* Gross Row (Highlighted Light Green) */}
+                  <tr style={{ background: '#9bd770', fontWeight: 'bold' }}>
+                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Gross</td>
+                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {isEditingBreakdown ? (
+                        <input
+                          type="number"
+                          value={breakdownGross}
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0
+                            autoCalculateBreakdown(val)
+                          }}
+                          style={{ width: '110px', textAlign: 'right', padding: '2px 4px', fontWeight: 'bold', border: '1px solid #16a34a', borderRadius: '3px' }}
+                        />
+                      ) : (
+                        displayGrossMonthly.toLocaleString('en-IN')
+                      )}
+                    </td>
+                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {displayGrossYearly.toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+
+                  {/* Basic */}
+                  <tr>
+                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Basic</td>
+                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {isEditingBreakdown ? (
+                        <input
+                          type="number"
+                          value={itemBasic}
+                          onChange={(e) => setItemBasic(Number(e.target.value) || 0)}
+                          style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px' }}
+                        />
+                      ) : (
+                        itemBasic.toLocaleString('en-IN')
+                      )}
+                    </td>
+                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {(itemBasic * 12).toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+
+                  {/* House Rent Allowance (HRA) */}
+                  <tr>
+                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>House Rent Allowance (HRA)</td>
+                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {isEditingBreakdown ? (
+                        <input
+                          type="number"
+                          value={itemHra}
+                          onChange={(e) => setItemHra(Number(e.target.value) || 0)}
+                          style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px' }}
+                        />
+                      ) : (
+                        itemHra.toLocaleString('en-IN')
+                      )}
+                    </td>
+                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {(itemHra * 12).toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+
+                  {/* LTA */}
+                  <tr>
+                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>LTA</td>
+                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {isEditingBreakdown ? (
+                        <input
+                          type="number"
+                          value={itemLta}
+                          onChange={(e) => setItemLta(Number(e.target.value) || 0)}
+                          style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px' }}
+                        />
+                      ) : (
+                        itemLta.toLocaleString('en-IN')
+                      )}
+                    </td>
+                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {(itemLta * 12).toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+
+                  {/* Employer PF */}
+                  <tr>
+                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Employer PF</td>
+                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {isEditingBreakdown ? (
+                        <input
+                          type="number"
+                          value={itemEmployerPf}
+                          onChange={(e) => setItemEmployerPf(Number(e.target.value) || 0)}
+                          style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px' }}
+                        />
+                      ) : (
+                        itemEmployerPf.toLocaleString('en-IN')
+                      )}
+                    </td>
+                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {(itemEmployerPf * 12).toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+
+                  {/* Insurance */}
+                  <tr>
+                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Insurance</td>
+                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {isEditingBreakdown ? (
+                        <input
+                          type="number"
+                          value={itemInsurance}
+                          onChange={(e) => setItemInsurance(Number(e.target.value) || 0)}
+                          style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px' }}
+                        />
+                      ) : (
+                        itemInsurance.toLocaleString('en-IN')
+                      )}
+                    </td>
+                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {(itemInsurance * 12).toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+
+                  {/* Total Amount (CTC) */}
+                  <tr style={{ fontWeight: 'bold' }}>
+                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Total Amount (CTC)</td>
+                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {displayGrossMonthly.toLocaleString('en-IN')}
+                    </td>
+                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {displayGrossYearly.toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+
+                  {/* Section 2: DEDUCTIONS */}
+                  <tr style={{ background: '#009a49', color: '#ffffff', textAlign: 'center', fontWeight: 'bold' }}>
+                    <td colSpan={3} style={{ padding: '8px 12px', fontSize: '0.88rem', letterSpacing: '0.5px', textTransform: 'uppercase', border: '1.5px solid #000000' }}>
+                      DEDUCTIONS
+                    </td>
+                  </tr>
+
+                  {/* Professional Tax */}
+                  <tr>
+                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Professional Tax</td>
+                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {isEditingBreakdown ? (
+                        <input
+                          type="number"
+                          value={itemPt}
+                          onChange={(e) => setItemPt(Number(e.target.value) || 0)}
+                          style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px' }}
+                        />
+                      ) : (
+                        itemPt.toLocaleString('en-IN')
+                      )}
+                    </td>
+                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {(itemPt * 12).toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+
+                  {/* Employer PF (Deductions) */}
+                  <tr>
+                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Employer PF</td>
+                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {isEditingBreakdown ? (
+                        <input
+                          type="number"
+                          value={itemDedEmployerPf}
+                          onChange={(e) => setItemDedEmployerPf(Number(e.target.value) || 0)}
+                          style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px' }}
+                        />
+                      ) : (
+                        itemDedEmployerPf.toLocaleString('en-IN')
+                      )}
+                    </td>
+                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {(itemDedEmployerPf * 12).toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+
+                  {/* Employee PF (Deductions) */}
+                  <tr>
+                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Employee PF</td>
+                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {isEditingBreakdown ? (
+                        <input
+                          type="number"
+                          value={itemDedEmployeePf}
+                          onChange={(e) => setItemDedEmployeePf(Number(e.target.value) || 0)}
+                          style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px' }}
+                        />
+                      ) : (
+                        itemDedEmployeePf.toLocaleString('en-IN')
+                      )}
+                    </td>
+                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {(itemDedEmployeePf * 12).toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+
+                  {/* Insurance (Deductions) */}
+                  <tr>
+                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Insurance</td>
+                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {isEditingBreakdown ? (
+                        <input
+                          type="number"
+                          value={itemDedInsurance}
+                          onChange={(e) => setItemDedInsurance(Number(e.target.value) || 0)}
+                          style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px' }}
+                        />
+                      ) : (
+                        itemDedInsurance.toLocaleString('en-IN')
+                      )}
+                    </td>
+                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {(itemDedInsurance * 12).toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+
+                  {/* Other Deductions */}
+                  <tr>
+                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Other Deductions</td>
+                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {isEditingBreakdown ? (
+                        <input
+                          type="number"
+                          value={itemOtherDed}
+                          onChange={(e) => setItemOtherDed(Number(e.target.value) || 0)}
+                          style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px' }}
+                        />
+                      ) : (
+                        itemOtherDed.toLocaleString('en-IN')
+                      )}
+                    </td>
+                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {(itemOtherDed * 12).toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+
+                  {/* Loss of Pay Row (if applicable) */}
+                  {lopDeductionAmount > 0 && (
+                    <tr>
+                      <td style={{ padding: '6px 12px', border: '1px solid #000000', color: '#dc2626' }}>
+                        Loss of Pay ({attLopDays} days)
+                      </td>
+                      <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000', color: '#dc2626' }}>
+                        {lopDeductionAmount.toLocaleString('en-IN')}
+                      </td>
+                      <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000', color: '#dc2626' }}>
+                        {(lopDeductionAmount * 12).toLocaleString('en-IN')}
+                      </td>
+                    </tr>
+                  )}
+
+                  {/* Total Deductions */}
+                  <tr style={{ fontWeight: 'bold' }}>
+                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Total Deductions</td>
+                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {totalDeductionsMonthly.toLocaleString('en-IN')}
+                    </td>
+                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {totalDeductionsYearly.toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+
+                  {/* Net Take-Home Salary (In-Hand) */}
+                  <tr style={{ background: '#e0f2fe', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                    <td style={{ padding: '8px 12px', border: '1.5px solid #000000', color: '#0f172a' }}>Net Take-Home Salary (In-Hand)</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', border: '1.5px solid #000000', color: '#0f172a' }}>
+                      ₹{netTakeHomeMonthly.toLocaleString('en-IN')}
+                    </td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', border: '1.5px solid #000000', color: '#0f172a' }}>
+                      ₹{netTakeHomeYearly.toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
 
               {/* Net Payable Banner */}
               <div style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', border: '1.5px solid #86efac', borderRadius: '8px', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -562,23 +1279,23 @@ function PayslipPreviewModal({
                     Net Disbursed Salary for the Month
                   </div>
                   <div style={{ fontSize: '0.82rem', color: '#15803d', fontStyle: 'italic', marginTop: '4px' }}>
-                    ({formatINRWords(calcData.netSalary)})
+                    ({formatINRWords(netTakeHomeMonthly)})
                   </div>
                 </div>
                 <div style={{ fontSize: '1.7rem', fontWeight: 900, color: '#14532d' }}>
-                  ₹{calcData.netSalary.toLocaleString('en-IN')}
+                  ₹{netTakeHomeMonthly.toLocaleString('en-IN')}
                 </div>
               </div>
 
-              {/* Footer Note & Signatures */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '16px', borderTop: '1px solid #e2e8f0', fontSize: '0.75rem', color: '#64748b' }}>
-                <div>
-                  <p style={{ margin: 0 }}>• Policy Note: Case 1 (Friday leave) &amp; Case 2 (Monday leave) weekend pay protection applied.</p>
-                  <p style={{ margin: '2px 0 0' }}>• This is a computer-generated document from VR PI HRMS and does not require a physical signature.</p>
+              {/* Professional Computer-Generated Payslip Note */}
+              <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '14px', fontSize: '0.74rem', color: '#475569', lineHeight: 1.6 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '4px' }}>
+                  <span style={{ color: '#2563eb', fontWeight: 800 }}>•</span>
+                  <span><strong>Note:</strong> This is a computer-generated payslip from VR PI TECH SOLUTIONS HRMS and does not require any physical signature or company seal.</span>
                 </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ borderBottom: '1px solid #94a3b8', width: '130px', margin: '0 auto 4px' }}></div>
-                  <span style={{ fontWeight: 600, color: '#334155' }}>Authorized Signatory</span>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                  <span style={{ color: '#2563eb', fontWeight: 800 }}>•</span>
+                  <span><strong>Confidentiality:</strong> The information contained in this document is strictly confidential between the employee and the organization. Any discrepancies should be notified to the HR &amp; Payroll Department within 7 business days.</span>
                 </div>
               </div>
 
@@ -588,7 +1305,7 @@ function PayslipPreviewModal({
         </div>
 
         {/* Modal Footer */}
-        <div className="sal-modal-footer" style={{ padding: '12px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+        <div className="sal-modal-footer no-print" style={{ padding: '12px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
           <button className="sal-btn-cancel" onClick={onClose} style={{ padding: '8px 20px', fontSize: '0.82rem' }}>
             Close Preview
           </button>
@@ -620,9 +1337,26 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
   const [attendanceLoading, setAttendanceLoading] = useState(false)
   const [serverAnalysis, setServerAnalysis] = useState<any>(null)
   const [dayOverrides, setDayOverrides] = useState<Record<number, string>>({})
-  const [calcMethod, setCalcMethod] = useState<'working_days' | 'calendar_days'>('working_days')
+  const [calcMethod, setCalcMethod] = useState<'calendar_days' | 'working_days' | 'custom'>('calendar_days')
+  const [customDaysInMonth, setCustomDaysInMonth] = useState<string>('')
+  const [customPaidDays, setCustomPaidDays] = useState<string>('')
+  const [customGross, setCustomGross] = useState<string>('')
+  const [customPerDayIncome, setCustomPerDayIncome] = useState<string>('')
+  const [customDeductions, setCustomDeductions] = useState<string>('')
+  const [customNetManual, setCustomNetManual] = useState<string>('')
   const [showDayBreakdown, setShowDayBreakdown] = useState(true)
   const [showPreviewModal, setShowPreviewModal] = useState(false)
+  const [autoPrintRequested, setAutoPrintRequested] = useState(false)
+
+  const handleOpenPrintPayslip = () => {
+    if (!selectedEmployee) {
+      setError('Please select a target employee to preview and print the salary slip.')
+      return
+    }
+    setAutoPrintRequested(true)
+    setShowPreviewModal(true)
+  }
+
 
   // Custom Add Dates Feature State (Paid / Unpaid Leave)
   const [customLeaveMode, setCustomLeaveMode] = useState<'single' | 'range'>('single')
@@ -631,6 +1365,14 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
   const [customLeaveType, setCustomLeaveType] = useState<'PAID_LEAVE' | 'UNPAID_ABSENT' | 'PRESENT'>('PAID_LEAVE')
   const [customActionMsg, setCustomActionMsg] = useState<string>('')
   const [showCustomDatePanel, setShowCustomDatePanel] = useState<boolean>(true)
+
+  // Editable Banking & UAN / PF for Selected Employee
+  const [empBankName, setEmpBankName] = useState('')
+  const [empAccountNo, setEmpAccountNo] = useState('')
+  const [empUanNo, setEmpUanNo] = useState('')
+  const [editingEmpBank, setEditingEmpBank] = useState(false)
+  const [savingEmpBank, setSavingEmpBank] = useState(false)
+  const [empBankSavedMsg, setEmpBankSavedMsg] = useState('')
 
   const activeEmployees = employees.filter(e => e.status === 'ACTIVE')
   const filteredEmployees = activeEmployees.filter(e => {
@@ -643,6 +1385,41 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
   })
 
   const selectedEmployee = activeEmployees.find(e => e.id === employeeId)
+
+  // Sync selected employee banking details
+  useEffect(() => {
+    if (selectedEmployee) {
+      setEmpBankName(selectedEmployee.payrollDetails?.bankName || '')
+      setEmpAccountNo(selectedEmployee.payrollDetails?.accountNumber || '')
+      setEmpUanNo(selectedEmployee.payrollDetails?.uanNumber || '')
+      setEditingEmpBank(false)
+      setEmpBankSavedMsg('')
+    }
+  }, [selectedEmployee?.id, selectedEmployee?.payrollDetails?.bankName, selectedEmployee?.payrollDetails?.accountNumber, selectedEmployee?.payrollDetails?.uanNumber])
+
+  const handleSaveEmpBank = async () => {
+    if (!selectedEmployee) return
+    setSavingEmpBank(true)
+    try {
+      await payrollApi.updateEmployeeSalary(selectedEmployee.id, {
+        bankName: empBankName,
+        accountNumber: empAccountNo,
+        uanNumber: empUanNo,
+      })
+      const details = (selectedEmployee.payrollDetails || {}) as any
+      details.bankName = empBankName
+      details.accountNumber = empAccountNo
+      details.uanNumber = empUanNo
+      selectedEmployee.payrollDetails = details
+      setEditingEmpBank(false)
+      setEmpBankSavedMsg('Banking & PF details saved!')
+      setTimeout(() => setEmpBankSavedMsg(''), 3000)
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to update banking details')
+    } finally {
+      setSavingEmpBank(false)
+    }
+  }
 
   // Fetch Real-time Attendance & Leave Analysis whenever employee, month, or year changes
   useEffect(() => {
@@ -797,27 +1574,41 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
   const paidWorkingDays = presentWorkingDays + onLeaveWorkingDays
   const payableDays = Math.max(0, daysInMonth - unpaidAbsenceDays)
 
-  // Per-day rate calculation based on chosen method
+  // Standard calculation values
   const perDayIncomeWorking = totalWorkingDays > 0 ? Math.round((monthlyGross / totalWorkingDays) * 100) / 100 : 0
   const perDayIncomeCalendar = daysInMonth > 0 ? Math.round((monthlyGross / daysInMonth) * 100) / 100 : 0
-  const perDayIncome = calcMethod === 'working_days' ? perDayIncomeWorking : perDayIncomeCalendar
-
-  // Standard deduction -₹2,200 (PF ₹2,000 + PT ₹200) + any Loss of Pay
   const standardDeductions = 2200
-  const lopDeduction = Math.round(unpaidAbsenceDays * perDayIncome)
-  const totalDeductions = standardDeductions + lopDeduction
+  const lopDeduction = Math.round(unpaidAbsenceDays * (calcMethod === 'calendar_days' ? perDayIncomeCalendar : perDayIncomeWorking))
+  const totalStandardDeductions = standardDeductions + lopDeduction
 
-  // Net salary calculation in real time
-  const calculatedNet = calcMethod === 'working_days'
-    ? Math.max(0, Math.round((paidWorkingDays * perDayIncomeWorking) - standardDeductions))
-    : Math.max(0, Math.round((payableDays * perDayIncomeCalendar) - standardDeductions))
+  const calculatedStandardNet = calcMethod === 'calendar_days'
+    ? Math.max(0, Math.round((payableDays * perDayIncomeCalendar) - standardDeductions))
+    : Math.max(0, Math.round((paidWorkingDays * perDayIncomeWorking) - standardDeductions))
+
+  // Custom / Active calculations
+  const isCustom = calcMethod === 'custom'
+  const activeDaysInMonth = isCustom && customDaysInMonth !== '' ? Math.max(1, Number(customDaysInMonth) || daysInMonth) : daysInMonth
+  const activeGross = isCustom && customGross !== '' ? Math.max(0, Number(customGross) || 0) : monthlyGross
+  const activePaidDays = isCustom && customPaidDays !== '' ? Math.max(0, Number(customPaidDays) || 0) : (calcMethod === 'calendar_days' ? payableDays : paidWorkingDays)
+  const activeDeductions = isCustom && customDeductions !== '' ? Math.max(0, Number(customDeductions) || 0) : totalStandardDeductions
+
+  const activeDaysDivisor = calcMethod === 'working_days'
+    ? (totalWorkingDays > 0 ? totalWorkingDays : 1)
+    : activeDaysInMonth
+
+  const autoComputedPerDayIncome = activeDaysDivisor > 0 ? Math.round((activeGross / activeDaysDivisor) * 100) / 100 : 0
+  const activePerDayIncome = isCustom && customPerDayIncome !== '' ? Math.max(0, Number(customPerDayIncome) || 0) : autoComputedPerDayIncome
+
+  const activeCalculatedNet = isCustom
+    ? (customNetManual !== '' ? Math.max(0, Number(customNetManual) || 0) : Math.max(0, Math.round((activePaidDays * activePerDayIncome) - activeDeductions)))
+    : calculatedStandardNet
 
   // Auto-sync netSalary input whenever calculation changes
   useEffect(() => {
-    if (selectedEmployee && calculatedNet > 0) {
-      setNetSalary(String(calculatedNet))
+    if (selectedEmployee && activeCalculatedNet > 0) {
+      setNetSalary(String(activeCalculatedNet))
     }
-  }, [selectedEmployee?.id, month, year, calculatedNet, calcMethod])
+  }, [selectedEmployee?.id, month, year, activeCalculatedNet, calcMethod])
 
   const handleSelectEmployee = (id: string) => {
     setEmployeeId(id)
@@ -922,10 +1713,11 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
           employeeId,
           month: Number(month),
           year: Number(year),
-          netSalary: netSalary ? Number(netSalary) : calculatedNet,
-          daysPaid: paidWorkingDays,
-          lossOfPay: unpaidAbsenceDays,
-          deductions: totalDeductions,
+          netSalary: netSalary ? Number(netSalary) : activeCalculatedNet,
+          daysPaid: activePaidDays,
+          lossOfPay: isCustom ? Math.max(0, totalWorkingDays - activePaidDays) : unpaidAbsenceDays,
+          deductions: activeDeductions,
+          grossSalary: activeGross,
         })
         setSuccessMsg('Official payslip generated and synced to employee portal successfully!')
       }
@@ -943,24 +1735,24 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
 
   // Preview Data
   const previewCalcData = {
-    daysInMonth,
-    workingDays: totalWorkingDays,
-    grossSalary: monthlyGross,
-    perDayIncome,
-    deductions: totalDeductions,
-    netSalary: netSalary ? Number(netSalary) : calculatedNet,
-    payableDays: paidWorkingDays,
-    lossOfPayDays: unpaidAbsenceDays,
-    basicSalary: Math.round(monthlyGross * 0.5),
-    hra: Math.round(monthlyGross * 0.25),
-    allowances: Math.round(monthlyGross * 0.25),
+    daysInMonth: activeDaysInMonth,
+    workingDays: isCustom ? activePaidDays : (calcMethod === 'working_days' ? totalWorkingDays : activeDaysInMonth),
+    grossSalary: activeGross,
+    perDayIncome: activePerDayIncome,
+    deductions: activeDeductions,
+    netSalary: netSalary ? Number(netSalary) : activeCalculatedNet,
+    payableDays: isCustom ? activePaidDays : (calcMethod === 'working_days' ? paidWorkingDays : payableDays),
+    lossOfPayDays: isCustom ? Math.max(0, activeDaysInMonth - activePaidDays) : unpaidAbsenceDays,
+    basicSalary: Math.round(activeGross * 0.5),
+    hra: Math.round(activeGross * 0.18),
+    allowances: Math.round(activeGross * 0.32),
     pf: 2000,
     tax: 200,
   }
 
   return (
     <>
-      <div className="sal-overlay">
+      <div className="sal-overlay sal-generator-overlay no-print">
         <div className="sal-modal sal-modal-md" style={{ maxWidth: '720px', maxHeight: '94vh', display: 'flex', flexDirection: 'column' }}>
           
           <div className="sal-modal-header" style={{ padding: '16px 24px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
@@ -1038,7 +1830,7 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
                     {/* Selected Employee Info Pill */}
                     {selectedEmployee && (
                       <div style={{ marginTop: '10px', padding: '8px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#3b82f6', color: '#ffffff', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem' }}>
                             {selectedEmployee.firstName[0]}{selectedEmployee.lastName[0]}
                           </div>
@@ -1056,6 +1848,118 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
                             ₹{monthlyGross.toLocaleString('en-IN')}
                           </div>
                         </div>
+                      </div>
+                    )}
+
+                    {/* Selected Employee Bank & UAN / PF Bar (Editable) */}
+                    {selectedEmployee && (
+                      <div style={{ marginTop: '6px', padding: '8px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '0.75rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                            <span><strong>Bank:</strong> {selectedEmployee.payrollDetails?.bankName || <span style={{ color: '#94a3b8' }}>Not set</span>}</span>
+                            <span><strong>A/C:</strong> {selectedEmployee.payrollDetails?.accountNumber ? `••••${(selectedEmployee.payrollDetails.accountNumber || '').slice(-4)}` : <span style={{ color: '#94a3b8' }}>Not set</span>}</span>
+                            <span><strong>UAN / PF:</strong> {selectedEmployee.payrollDetails?.uanNumber || <span style={{ color: '#94a3b8' }}>Not set</span>}</span>
+                          </div>
+                          {!editingEmpBank ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEmpBankName(selectedEmployee.payrollDetails?.bankName || '')
+                                setEmpAccountNo(selectedEmployee.payrollDetails?.accountNumber || '')
+                                setEmpUanNo(selectedEmployee.payrollDetails?.uanNumber || '')
+                                setEditingEmpBank(true)
+                              }}
+                              style={{
+                                background: '#eff6ff',
+                                border: '1px solid #bfdbfe',
+                                color: '#2563eb',
+                                borderRadius: '4px',
+                                padding: '2px 8px',
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              ✏️ Edit Bank / PF
+                            </button>
+                          ) : (
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button
+                                type="button"
+                                disabled={savingEmpBank}
+                                onClick={handleSaveEmpBank}
+                                style={{
+                                  background: '#16a34a',
+                                  border: 'none',
+                                  color: '#ffffff',
+                                  borderRadius: '4px',
+                                  padding: '2px 8px',
+                                  fontSize: '0.7rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {savingEmpBank ? 'Saving...' : '✓ Save'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingEmpBank(false)}
+                                style={{
+                                  background: '#f1f5f9',
+                                  border: '1px solid #cbd5e1',
+                                  color: '#475569',
+                                  borderRadius: '4px',
+                                  padding: '2px 6px',
+                                  fontSize: '0.7rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {editingEmpBank && (
+                          <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                            <div>
+                              <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '2px' }}>Bank Name</label>
+                              <input
+                                type="text"
+                                value={empBankName}
+                                onChange={(e) => setEmpBankName(e.target.value)}
+                                placeholder="e.g. State Bank of India"
+                                style={{ width: '100%', padding: '4px 6px', fontSize: '0.74rem', border: '1px solid #93c5fd', borderRadius: '4px' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '2px' }}>Account Number</label>
+                              <input
+                                type="text"
+                                value={empAccountNo}
+                                onChange={(e) => setEmpAccountNo(e.target.value)}
+                                placeholder="e.g. 1234567890"
+                                style={{ width: '100%', padding: '4px 6px', fontSize: '0.74rem', border: '1px solid #93c5fd', borderRadius: '4px' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '2px' }}>UAN / PF Number</label>
+                              <input
+                                type="text"
+                                value={empUanNo}
+                                onChange={(e) => setEmpUanNo(e.target.value)}
+                                placeholder="e.g. 100987654321"
+                                style={{ width: '100%', padding: '4px 6px', fontSize: '0.74rem', border: '1px solid #93c5fd', borderRadius: '4px' }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                        {empBankSavedMsg && (
+                          <div style={{ marginTop: '4px', fontSize: '0.7rem', color: '#16a34a', fontWeight: 700 }}>
+                            ✓ {empBankSavedMsg}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1156,7 +2060,7 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
                     boxShadow: '0 1px 4px rgba(59,130,246,0.06)'
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showCustomDatePanel ? '10px' : '0' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <div style={{
                           width: '24px',
                           height: '24px',
@@ -1553,9 +2457,24 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
                       </strong>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       {/* Calculation Basis Switcher */}
                       <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '6px', padding: '2px', border: '1px solid #cbd5e1', fontSize: '0.72rem', fontWeight: 700 }}>
+                        <button
+                          type="button"
+                          onClick={() => setCalcMethod('calendar_days')}
+                          style={{
+                            padding: '3px 8px',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            background: calcMethod === 'calendar_days' ? '#3b82f6' : 'transparent',
+                            color: calcMethod === 'calendar_days' ? '#ffffff' : '#64748b',
+                            fontWeight: 700
+                          }}
+                        >
+                          By Calendar Days ({daysInMonth})
+                        </button>
                         <button
                           type="button"
                           onClick={() => setCalcMethod('working_days')}
@@ -1573,18 +2492,26 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setCalcMethod('calendar_days')}
+                          onClick={() => {
+                            setCalcMethod('custom')
+                            if (customDaysInMonth === '') setCustomDaysInMonth(String(daysInMonth))
+                            if (customPaidDays === '') setCustomPaidDays(String(payableDays))
+                            if (customGross === '') setCustomGross(String(monthlyGross))
+                            if (customPerDayIncome === '') setCustomPerDayIncome(String(perDayIncomeCalendar))
+                            if (customDeductions === '') setCustomDeductions(String(totalStandardDeductions))
+                            if (customNetManual === '') setCustomNetManual(String(calculatedStandardNet))
+                          }}
                           style={{
                             padding: '3px 8px',
                             border: 'none',
                             borderRadius: '4px',
                             cursor: 'pointer',
-                            background: calcMethod === 'calendar_days' ? '#3b82f6' : 'transparent',
-                            color: calcMethod === 'calendar_days' ? '#ffffff' : '#64748b',
+                            background: calcMethod === 'custom' ? '#8b5cf6' : 'transparent',
+                            color: calcMethod === 'custom' ? '#ffffff' : '#64748b',
                             fontWeight: 700
                           }}
                         >
-                          By Calendar Days ({daysInMonth})
+                          ✏️ Custom (Editable)
                         </button>
                       </div>
 
@@ -1611,70 +2538,335 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
                     </div>
                   </div>
 
+                  {/* Custom Editing Notice & Reset */}
+                  {calcMethod === 'custom' && (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: '#f5f3ff',
+                      border: '1px solid #ddd6fe',
+                      borderRadius: '6px',
+                      padding: '6px 12px',
+                      marginBottom: '10px',
+                      fontSize: '0.74rem',
+                      color: '#6d28d9'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: 800 }}>✏️ Custom Editable Mode:</span>
+                        <span>Days in month, working days, gross salary, per-day income, deductions, and net salary are now directly editable below with live recalculation.</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomDaysInMonth(String(daysInMonth))
+                          setCustomPaidDays(String(payableDays))
+                          setCustomGross(String(monthlyGross))
+                          setCustomPerDayIncome(String(perDayIncomeCalendar))
+                          setCustomDeductions(String(totalStandardDeductions))
+                          setCustomNetManual('')
+                        }}
+                        style={{
+                          background: '#ffffff',
+                          border: '1px solid #c4b5fd',
+                          color: '#6d28d9',
+                          borderRadius: '4px',
+                          padding: '2px 8px',
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ↺ Reset to Standard
+                      </button>
+                    </div>
+                  )}
+
                   {/* 6 Grid Metric Cards */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
                     
                     {/* 1. No. of Days in Month */}
-                    <div style={{ padding: '10px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                      <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700 }}>1. No. of Days in Month</div>
-                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
-                        {daysInMonth} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#64748b' }}>days</span>
+                    <div style={{
+                      padding: '10px',
+                      background: isCustom ? '#eff6ff' : '#f8fafc',
+                      borderRadius: '6px',
+                      border: isCustom ? '1.5px solid #93c5fd' : '1px solid #e2e8f0'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.7rem', color: isCustom ? '#1d4ed8' : '#64748b', fontWeight: 700 }}>
+                          1. No. of Days in Month
+                        </div>
+                        {isCustom && (
+                          <span style={{ fontSize: '0.6rem', background: '#dbeafe', color: '#1e40af', padding: '1px 5px', borderRadius: '3px', fontWeight: 700 }}>EDITABLE</span>
+                        )}
                       </div>
+                      {isCustom ? (
+                        <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <input
+                            type="number"
+                            value={customDaysInMonth}
+                            onChange={(e) => {
+                              setCustomDaysInMonth(e.target.value)
+                            }}
+                            placeholder={String(daysInMonth)}
+                            style={{
+                              width: '100%',
+                              padding: '3px 6px',
+                              fontSize: '1.05rem',
+                              fontWeight: 800,
+                              color: '#0f172a',
+                              border: '1px solid #93c5fd',
+                              borderRadius: '4px',
+                              background: '#ffffff'
+                            }}
+                          />
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', whiteSpace: 'nowrap' }}>days</span>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+                          {daysInMonth} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#64748b' }}>days</span>
+                        </div>
+                      )}
                       <div style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '2px' }}>
-                        Calendar total for {MONTHS[month - 1]}
+                        {isCustom ? `Standard calendar total: ${daysInMonth} days` : `Calendar total for ${MONTHS[month - 1]}`}
                       </div>
                     </div>
 
                     {/* 2. No. of Working Days */}
-                    <div style={{ padding: '10px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                      <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700 }}>2. No. of Working Days</div>
-                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0284c7', marginTop: '2px' }}>
-                        {totalWorkingDays} <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#0284c7' }}>({paidWorkingDays} paid)</span>
+                    <div style={{
+                      padding: '10px',
+                      background: isCustom ? '#eff6ff' : '#f8fafc',
+                      borderRadius: '6px',
+                      border: isCustom ? '1.5px solid #93c5fd' : '1px solid #e2e8f0'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.7rem', color: isCustom ? '#1d4ed8' : '#64748b', fontWeight: 700 }}>
+                          2. {isCustom ? 'Paid Working Days' : 'No. of Working Days'}
+                        </div>
+                        {isCustom && (
+                          <span style={{ fontSize: '0.6rem', background: '#dbeafe', color: '#1e40af', padding: '1px 5px', borderRadius: '3px', fontWeight: 700 }}>EDITABLE</span>
+                        )}
                       </div>
-                      <div style={{ fontSize: '0.65rem', color: '#0369a1', marginTop: '2px', fontWeight: 600 }}>
-                        {presentWorkingDays} Worked • {onLeaveWorkingDays} on Leave {unpaidAbsenceDays > 0 ? `• ${unpaidAbsenceDays} LOP` : ''}
+                      {isCustom ? (
+                        <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <input
+                            type="number"
+                            value={customPaidDays}
+                            onChange={(e) => {
+                              setCustomPaidDays(e.target.value)
+                              setCustomNetManual('')
+                            }}
+                            placeholder={String(paidWorkingDays)}
+                            style={{
+                              width: '100%',
+                              padding: '3px 6px',
+                              fontSize: '1.05rem',
+                              fontWeight: 800,
+                              color: '#0284c7',
+                              border: '1px solid #93c5fd',
+                              borderRadius: '4px',
+                              background: '#ffffff'
+                            }}
+                          />
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0284c7', whiteSpace: 'nowrap' }}>paid</span>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0284c7', marginTop: '2px' }}>
+                          {totalWorkingDays} <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#0284c7' }}>({paidWorkingDays} paid)</span>
+                        </div>
+                      )}
+                      <div style={{ fontSize: '0.65rem', color: isCustom ? '#1e40af' : '#0369a1', marginTop: '2px', fontWeight: 600 }}>
+                        {isCustom ? `Standard: ${paidWorkingDays} paid / ${totalWorkingDays} total` : `${presentWorkingDays} Worked • ${onLeaveWorkingDays} on Leave ${unpaidAbsenceDays > 0 ? `• ${unpaidAbsenceDays} LOP` : ''}`}
                       </div>
                     </div>
 
                     {/* 3. Gross Salary */}
-                    <div style={{ padding: '10px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                      <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700 }}>3. Gross Salary</div>
-                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#15803d', marginTop: '2px' }}>
-                        ₹{monthlyGross.toLocaleString('en-IN')}
+                    <div style={{
+                      padding: '10px',
+                      background: isCustom ? '#f0fdf4' : '#f8fafc',
+                      borderRadius: '6px',
+                      border: isCustom ? '1.5px solid #86efac' : '1px solid #e2e8f0'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.7rem', color: isCustom ? '#15803d' : '#64748b', fontWeight: 700 }}>
+                          3. Gross Salary {isCustom ? '(₹)' : ''}
+                        </div>
+                        {isCustom && (
+                          <span style={{ fontSize: '0.6rem', background: '#dcfce7', color: '#166534', padding: '1px 5px', borderRadius: '3px', fontWeight: 700 }}>EDITABLE</span>
+                        )}
                       </div>
+                      {isCustom ? (
+                        <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#15803d' }}>₹</span>
+                          <input
+                            type="number"
+                            value={customGross}
+                            onChange={(e) => {
+                              setCustomGross(e.target.value)
+                              setCustomNetManual('')
+                            }}
+                            placeholder={String(monthlyGross)}
+                            style={{
+                              width: '100%',
+                              padding: '3px 6px',
+                              fontSize: '1.05rem',
+                              fontWeight: 800,
+                              color: '#15803d',
+                              border: '1px solid #86efac',
+                              borderRadius: '4px',
+                              background: '#ffffff'
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#15803d', marginTop: '2px' }}>
+                          ₹{monthlyGross.toLocaleString('en-IN')}
+                        </div>
+                      )}
                       <div style={{ fontSize: '0.65rem', color: '#166534', marginTop: '2px' }}>
-                        Annual CTC: ₹{(selectedEmployee.salaryGross || 0).toLocaleString('en-IN')}
+                        {isCustom ? `Standard Gross: ₹${monthlyGross.toLocaleString('en-IN')}` : `Annual CTC: ₹${(selectedEmployee.salaryGross || 0).toLocaleString('en-IN')}`}
                       </div>
                     </div>
 
                     {/* 4. Per-Day Income */}
-                    <div style={{ padding: '10px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                      <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700 }}>4. Per-Day Income</div>
-                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
-                        ₹{perDayIncome.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    <div style={{
+                      padding: '10px',
+                      background: isCustom ? '#eff6ff' : '#f8fafc',
+                      borderRadius: '6px',
+                      border: isCustom ? '1.5px solid #93c5fd' : '1px solid #e2e8f0'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.7rem', color: isCustom ? '#1d4ed8' : '#64748b', fontWeight: 700 }}>
+                          4. Per-Day Income {isCustom ? '(₹)' : ''}
+                        </div>
+                        {isCustom && (
+                          <span style={{ fontSize: '0.6rem', background: '#dbeafe', color: '#1e40af', padding: '1px 5px', borderRadius: '3px', fontWeight: 700 }}>EDITABLE</span>
+                        )}
                       </div>
+                      {isCustom ? (
+                        <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a' }}>₹</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={customPerDayIncome !== '' ? customPerDayIncome : activePerDayIncome}
+                            onChange={(e) => {
+                              setCustomPerDayIncome(e.target.value)
+                              setCustomNetManual('')
+                            }}
+                            placeholder={String(activePerDayIncome)}
+                            style={{
+                              width: '100%',
+                              padding: '3px 6px',
+                              fontSize: '1.05rem',
+                              fontWeight: 800,
+                              color: '#0f172a',
+                              border: '1px solid #93c5fd',
+                              borderRadius: '4px',
+                              background: '#ffffff'
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+                          ₹{activePerDayIncome.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </div>
+                      )}
                       <div style={{ fontSize: '0.65rem', color: '#475569', marginTop: '2px' }}>
-                        {calcMethod === 'working_days' ? `Formula: Gross ÷ ${totalWorkingDays} work days` : `Formula: Gross ÷ ${daysInMonth} cal days`}
+                        {isCustom ? `Formula: Gross (₹${activeGross.toLocaleString('en-IN')}) ÷ ${activeDaysDivisor} days (editable)` : (calcMethod === 'working_days' ? `Formula: Gross ÷ ${totalWorkingDays} work days` : `Formula: Gross (₹${monthlyGross.toLocaleString('en-IN')}) ÷ ${daysInMonth} days in month`)}
                       </div>
                     </div>
 
-                    {/* 5. Deductions (-2200) */}
-                    <div style={{ padding: '10px', background: '#fef2f2', borderRadius: '6px', border: '1px solid #fecaca' }}>
-                      <div style={{ fontSize: '0.7rem', color: '#991b1b', fontWeight: 700 }}>5. Deductions (-2200)</div>
-                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#dc2626', marginTop: '2px' }}>
-                        -₹{totalDeductions.toLocaleString('en-IN')}
+                    {/* 5. Deductions */}
+                    <div style={{
+                      padding: '10px',
+                      background: isCustom ? '#fef2f2' : '#fef2f2',
+                      borderRadius: '6px',
+                      border: isCustom ? '1.5px solid #fca5a5' : '1px solid #fecaca'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.7rem', color: '#991b1b', fontWeight: 700 }}>
+                          5. Deductions {isCustom ? '(₹)' : '(-2200)'}
+                        </div>
+                        {isCustom && (
+                          <span style={{ fontSize: '0.6rem', background: '#fee2e2', color: '#b91c1c', padding: '1px 5px', borderRadius: '3px', fontWeight: 700 }}>EDITABLE</span>
+                        )}
                       </div>
+                      {isCustom ? (
+                        <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#dc2626' }}>-₹</span>
+                          <input
+                            type="number"
+                            value={customDeductions}
+                            onChange={(e) => {
+                              setCustomDeductions(e.target.value)
+                              setCustomNetManual('')
+                            }}
+                            placeholder={String(totalStandardDeductions)}
+                            style={{
+                              width: '100%',
+                              padding: '3px 6px',
+                              fontSize: '1.05rem',
+                              fontWeight: 800,
+                              color: '#dc2626',
+                              border: '1px solid #fca5a5',
+                              borderRadius: '4px',
+                              background: '#ffffff'
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#dc2626', marginTop: '2px' }}>
+                          -₹{totalStandardDeductions.toLocaleString('en-IN')}
+                        </div>
+                      )}
                       <div style={{ fontSize: '0.65rem', color: '#b91c1c', marginTop: '2px' }}>
-                        PF ₹2,000 + PT ₹200 {unpaidAbsenceDays > 0 ? `+ LOP ₹${lopDeduction.toLocaleString('en-IN')}` : ''}
+                        {isCustom ? `Standard: -₹${totalStandardDeductions.toLocaleString('en-IN')}` : `PF ₹2,000 + PT ₹200 ${unpaidAbsenceDays > 0 ? `+ LOP ₹${lopDeduction.toLocaleString('en-IN')}` : ''}`}
                       </div>
                     </div>
 
                     {/* 6. Net Salary for Month */}
-                    <div style={{ padding: '10px', background: '#f0fdf4', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
-                      <div style={{ fontSize: '0.7rem', color: '#166534', fontWeight: 700 }}>6. Net Salary for Month</div>
-                      <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#15803d', marginTop: '2px' }}>
-                        ₹{calculatedNet.toLocaleString('en-IN')}
+                    <div style={{
+                      padding: '10px',
+                      background: isCustom ? '#f0fdf4' : '#f0fdf4',
+                      borderRadius: '6px',
+                      border: isCustom ? '1.5px solid #86efac' : '1px solid #bbf7d0'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.7rem', color: '#166534', fontWeight: 700 }}>
+                          6. Net Salary for Month
+                        </div>
+                        {isCustom && (
+                          <span style={{ fontSize: '0.6rem', background: '#dcfce7', color: '#15803d', padding: '1px 5px', borderRadius: '3px', fontWeight: 700 }}>EDITABLE</span>
+                        )}
                       </div>
+                      {isCustom ? (
+                        <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ fontSize: '0.9rem', fontWeight: 900, color: '#15803d' }}>₹</span>
+                          <input
+                            type="number"
+                            value={customNetManual !== '' ? customNetManual : activeCalculatedNet}
+                            onChange={(e) => {
+                              setCustomNetManual(e.target.value)
+                            }}
+                            placeholder={String(activeCalculatedNet)}
+                            style={{
+                              width: '100%',
+                              padding: '3px 6px',
+                              fontSize: '1.05rem',
+                              fontWeight: 900,
+                              color: '#15803d',
+                              border: '1px solid #86efac',
+                              borderRadius: '4px',
+                              background: '#ffffff'
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#15803d', marginTop: '2px' }}>
+                          ₹{activeCalculatedNet.toLocaleString('en-IN')}
+                        </div>
+                      )}
                       <div style={{ fontSize: '0.65rem', color: '#15803d', fontWeight: 600, marginTop: '2px' }}>
                         ✓ Syncs to Net Disbursed Pay
                       </div>
@@ -1691,7 +2883,7 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
                     4. Net Disbursed Salary (₹)
                   </label>
                   <span style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 600 }}>
-                    ✓ Real-time calculated: {paidWorkingDays} Paid Days × ₹{perDayIncome.toFixed(2)} - Deductions
+                    ✓ Real-time calculated: {activePaidDays} Paid Days × ₹{activePerDayIncome.toFixed(2)} - Deductions (₹{activeDeductions.toLocaleString('en-IN')})
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -1703,26 +2895,52 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
                     style={{ fontSize: '0.92rem', height: '40px', fontWeight: 800, color: '#15803d', flex: 1 }}
                   />
                   {selectedEmployee && (
-                    <button
-                      type="button"
-                      onClick={() => setShowPreviewModal(true)}
-                      style={{
-                        padding: '0 16px',
-                        background: '#eff6ff',
-                        border: '1px solid #bfdbfe',
-                        borderRadius: '6px',
-                        color: '#2563eb',
-                        fontWeight: 700,
-                        fontSize: '0.82rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      <Eye size={15} /> Preview Payslip
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAutoPrintRequested(false)
+                          setShowPreviewModal(true)
+                        }}
+                        style={{
+                          padding: '0 14px',
+                          background: '#eff6ff',
+                          border: '1px solid #bfdbfe',
+                          borderRadius: '6px',
+                          color: '#2563eb',
+                          fontWeight: 700,
+                          fontSize: '0.82rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        <Eye size={15} /> Preview Payslip
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleOpenPrintPayslip}
+                        style={{
+                          padding: '0 16px',
+                          background: '#16a34a',
+                          border: 'none',
+                          borderRadius: '6px',
+                          color: '#ffffff',
+                          fontWeight: 700,
+                          fontSize: '0.82rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                          boxShadow: '0 2px 6px rgba(22,163,74,0.3)'
+                        }}
+                      >
+                        <Printer size={15} /> Print / Save Salary Slip
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -1784,27 +3002,52 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
 
           {/* Modal Footer */}
           <div className="sal-modal-footer" style={{ padding: '14px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
+            <div style={{ display: 'flex', gap: '8px' }}>
               {selectedEmployee && (
-                <button
-                  type="button"
-                  onClick={() => setShowPreviewModal(true)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 16px',
-                    background: '#ffffff',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '6px',
-                    fontSize: '0.82rem',
-                    fontWeight: 700,
-                    color: '#334155',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <Eye size={15} style={{ color: '#2563eb' }} /> Preview Payslip
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAutoPrintRequested(false)
+                      setShowPreviewModal(true)
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 14px',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      color: '#334155',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Eye size={15} style={{ color: '#2563eb' }} /> Preview Payslip
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOpenPrintPayslip}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 18px',
+                      background: '#16a34a',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      color: '#ffffff',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 6px rgba(22,163,74,0.3)'
+                    }}
+                  >
+                    <Printer size={15} /> Print / Save Salary Slip
+                  </button>
+                </>
               )}
             </div>
 
@@ -1834,16 +3077,34 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
         </div>
       </div>
 
-      {/* Payslip Preview Modal */}
+      {/* Payslip Preview Modal (Interactive) */}
       {showPreviewModal && selectedEmployee && (
         <PayslipPreviewModal
           employee={selectedEmployee}
           month={month}
           year={year}
           calcData={previewCalcData}
-          onClose={() => setShowPreviewModal(false)}
+          onClose={() => {
+            setShowPreviewModal(false)
+            setAutoPrintRequested(false)
+          }}
           uploadedFile={file}
+          autoPrint={autoPrintRequested}
         />
+      )}
+
+      {/* Payslip Print Fallback (triggers if user presses Ctrl+P directly while generator modal is open) */}
+      {!showPreviewModal && selectedEmployee && (
+        <div className="print-only-payslip-wrapper">
+          <PayslipPreviewModal
+            employee={selectedEmployee}
+            month={month}
+            year={year}
+            calcData={previewCalcData}
+            onClose={() => {}}
+            uploadedFile={file}
+          />
+        </div>
       )}
     </>
   )
@@ -3302,28 +4563,53 @@ export default function Salary() {
         
         .sal-tab-badge { background: #ef4444; color: white; padding: 2px 6px; border-radius: 10px; font-size: 0.7rem; font-weight: 800; margin-left: 4px; }
 
+        .print-only-payslip-wrapper { display: none !important; }
+
         @media print {
+          /* Hide non-printable app UI elements */
           .no-print,
+          .sal-header,
+          .sal-kpi-grid,
+          .sal-page-header,
+          .sal-tab-bar,
+          .sal-toolbar,
+          .sal-toast,
+          .sal-card,
+          .sal-generator-overlay,
           .sidebar,
           .mobile-header,
           .mobile-overlay,
           .shell-topbar,
           .sal-header-actions,
-          .sal-tab-bar,
-          .sal-toolbar,
           .sal-payroll-controls,
           .sal-edit-btn,
           .sal-mark-paid-btn,
+          .sal-modal-header,
+          .sal-modal-footer,
+          .sal-close-btn,
+          .sal-modal:not(.payslip-preview-modal),
+          .sal-overlay:not(.payslip-preview-overlay),
           .sal-row:not(.expanded) + .sal-detail-row,
           .sal-detail-row,
-          th:last-child,
-          td:last-child {
+          .sal-table th:last-child,
+          .sal-table td:last-child {
             display: none !important;
+          }
+
+          .print-only-payslip-wrapper {
+            display: block !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
           }
 
           body {
             background: white !important;
             color: black !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
           }
 
           .app-shell {
@@ -3340,6 +4626,85 @@ export default function Salary() {
             max-width: 100% !important;
             padding: 0 !important;
             margin: 0 !important;
+          }
+
+          /* Payslip Print Isolation */
+          .payslip-preview-overlay {
+            position: static !important;
+            display: block !important;
+            background: transparent !important;
+            backdrop-filter: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            overflow: visible !important;
+            inset: auto !important;
+            z-index: auto !important;
+          }
+
+          .payslip-preview-modal {
+            position: static !important;
+            display: block !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            border: none !important;
+            border-radius: 0 !important;
+            max-width: 100% !important;
+            width: 100% !important;
+            max-height: none !important;
+            height: auto !important;
+            overflow: visible !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            animation: none !important;
+          }
+
+          .payslip-preview-modal .sal-modal-body {
+            background: transparent !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            overflow: visible !important;
+            max-height: none !important;
+            height: auto !important;
+          }
+
+          .payslip-preview-sheet {
+            background: #ffffff !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 auto !important;
+            max-width: 100% !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+            overflow: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          .payslip-preview-sheet table {
+            width: 100% !important;
+            table-layout: fixed !important;
+            border-collapse: collapse !important;
+            box-sizing: border-box !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            page-break-inside: avoid !important;
+          }
+
+          .payslip-preview-sheet th,
+          .payslip-preview-sheet td {
+            box-sizing: border-box !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          .payslip-preview-sheet div {
+            box-sizing: border-box !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
 
           .sal-card {
@@ -3365,6 +4730,11 @@ export default function Salary() {
 
           .sal-table td {
             border-bottom: 1px solid #e2e8f0 !important;
+          }
+
+          @page {
+            size: A4 portrait;
+            margin: 12mm 15mm;
           }
         }
       `}</style>

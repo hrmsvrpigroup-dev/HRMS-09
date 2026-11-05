@@ -423,7 +423,7 @@ export const payrollController = {
       const tenantId = req.tenantId ?? req.user?.tenantId
       if (!tenantId) return sendError(res, 'Tenant context not found', 400)
 
-      const { employeeId, month, year, netSalary, daysPaid, lossOfPay, deductions } = req.body
+      const { employeeId, month, year, netSalary, daysPaid, lossOfPay, deductions, grossSalary } = req.body
       if (!employeeId || !month || !year) {
         return sendError(res, 'employeeId, month, and year are required', 400)
       }
@@ -437,6 +437,7 @@ export const payrollController = {
         daysPaid: daysPaid !== undefined ? Number(daysPaid) : undefined,
         lossOfPay: lossOfPay !== undefined ? Number(lossOfPay) : undefined,
         deductions: deductions !== undefined ? Number(deductions) : undefined,
+        grossSalary: grossSalary !== undefined ? Number(grossSalary) : undefined,
       })
 
       return sendSuccess(res, result, 'Payslip generated and synced to employee portal successfully')

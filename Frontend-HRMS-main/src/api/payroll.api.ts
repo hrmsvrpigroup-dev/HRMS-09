@@ -2,12 +2,12 @@ import api from './axios'
 
 export const payrollApi = {
   list: () => api.get('/payroll'),
-  
+
   downloadPayslip: (id: string) => api.get(`/payroll/${id}/download`, { responseType: 'blob' }),
 
   // HR Salary Management
   getEmployeeSalaries: () => api.get('/payroll/salary/employees'),
-  
+
   getPayrollRecords: (month: number, year: number) =>
     api.get('/payroll/salary/records', { params: { month, year } }),
 
@@ -32,6 +32,7 @@ export const payrollApi = {
     daysPaid?: number
     lossOfPay?: number
     deductions?: number
+    grossSalary?: number
   }) => api.post('/payroll/salary/generate-slip', data),
 
   getAttendanceAnalysis: (employeeId: string, month: number, year: number) =>

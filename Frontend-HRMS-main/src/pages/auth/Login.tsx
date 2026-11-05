@@ -6,6 +6,7 @@ import { cn } from '../../lib/utils'
 import api from '../../api/axios'
 import { useAuthStore } from '../../store/auth.store'
 import { getSubdomain } from '../../utils/subdomain'
+import { VRPI_LOGO_DATA_URI } from '../../utils/offerLetterTemplate'
 import './sunset.css'
 
 type LoginResponse = {
@@ -47,13 +48,13 @@ export default function Login() {
   const logout = useAuthStore((state) => state.logout)
   const { isAuthenticated, user } = useAuthStore()
   const navigate = useNavigate()
-  
+
   const currentSubdomain = getSubdomain(window.location.host)
   const isSuperAdminPortal = false // Removed as per user request to use generic portal
-  
+
   // Lower tabs navigation state (Sign In, Enquire, Recovery)
   const [authMode, setAuthMode] = useState<'signin' | 'register' | 'recover'>('signin')
-  
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -110,7 +111,7 @@ export default function Login() {
 
     try {
       const response = await api.post<LoginResponse>('/auth/login', { email: email.trim(), password, subdomain: currentSubdomain })
-      
+
       if (!response.data || response.data.success === false) {
         setError((response.data as any)?.message || 'Invalid credentials. Please try again.')
         return
@@ -162,7 +163,7 @@ export default function Login() {
 
       setRegSuccess('Thank you! We will contact you within 2-3 business hours.')
       setHasRegistered(true)
-      
+
       // Clean up fields
       setRegName('')
       setRegSubdomain('')
@@ -211,20 +212,29 @@ export default function Login() {
 
       {/* Main Glass Container */}
       <div className={`sunset-glass-container ${authMode === 'register' ? 'is-flipped' : ''}`}>
-        
+
         {/* Left Side: Brand, Slogan & Socials */}
         <div className="sunset-glass-left">
           {isSuperAdminPortal ? (
             <>
               <div className="sunset-brand-header">
+                <img
+                  src="/vrpi_group_logo.png"
+                  alt="VR Pi Group of Companies"
+                  className="sunset-brand-logo"
+                  onError={(e) => {
+                    const target = e.currentTarget
+                    if (target.src !== VRPI_LOGO_DATA_URI) target.src = VRPI_LOGO_DATA_URI
+                  }}
+                />
                 <span>HRMS Admin Portal</span>
               </div>
-              
+
               <h1 className="sunset-heading">
                 Platform<br />
                 Management
               </h1>
-              
+
               <p className="sunset-subtitle-text">
                 Control, provision, and monitor the multi-tenant SaaS platform.<br />
                 Secure, automated, and centralized administration portal.
@@ -233,14 +243,23 @@ export default function Login() {
           ) : (
             <>
               <div className="sunset-brand-header">
+                <img
+                  src="/vrpi_group_logo.png"
+                  alt="VR Pi Group of Companies"
+                  className="sunset-brand-logo"
+                  onError={(e) => {
+                    const target = e.currentTarget
+                    if (target.src !== VRPI_LOGO_DATA_URI) target.src = VRPI_LOGO_DATA_URI
+                  }}
+                />
                 <span>HRMS</span>
               </div>
-              
+
               <h1 className="sunset-heading">
                 Welcome !<br />
                 To Our Channel
               </h1>
-              
+
               <p className="sunset-subtitle-text">
                 Inspire. Learn. Create.<br />
                 Let's build something amazing together.
@@ -268,15 +287,15 @@ export default function Login() {
 
           {!isSuperAdminPortal && currentSubdomain === '' && (
             <div className="sunset-mid-capsules">
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => { setError(''); setRegError(''); setForgotError(''); setAuthMode('signin'); }}
                 className={cn('sunset-capsule-btn', authMode === 'signin' && 'sunset-capsule-btn--active')}
               >
                 Sign In
               </button>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => { setError(''); setRegError(''); setForgotError(''); setAuthMode('register'); }}
                 className={cn('sunset-capsule-btn', authMode === 'register' && 'sunset-capsule-btn--active')}
               >
@@ -292,12 +311,12 @@ export default function Login() {
                 <div className="sunset-label">
                   Email
                   <div className="sunset-input-wrap">
-                    <input 
-                      type="text" 
-                      placeholder="Email" 
+                    <input
+                      type="text"
+                      placeholder="Email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      required 
+                      required
                     />
                     <Mail className="sunset-input-icon h-4 w-4" />
                   </div>
@@ -306,15 +325,15 @@ export default function Login() {
                 <div className="sunset-label">
                   Password
                   <div className="sunset-input-wrap">
-                    <input 
-                      type={showPassword ? "text" : "password"} 
-                      placeholder="Password" 
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      required 
+                      required
                     />
-                    <button 
-                      type="button" 
+                    <button
+                      type="button"
                       className="sunset-password-toggle"
                       onClick={() => setShowPassword(!showPassword)}
                     >
@@ -354,15 +373,15 @@ export default function Login() {
                   <div className="sunset-label">
                     Company Name
                     <div className="sunset-input-wrap">
-                      <input 
-                        type="text" 
-                        value={regName} 
+                      <input
+                        type="text"
+                        value={regName}
                         onChange={e => {
                           const val = e.target.value;
                           setRegName(val);
                           setRegSubdomain(val.toLowerCase().replace(/[^a-z0-9]/g, ''));
-                        }} 
-                        required 
+                        }}
+                        required
                       />
                     </div>
                   </div>
@@ -411,11 +430,11 @@ export default function Login() {
                 <div className="sunset-label">
                   Email or Username
                   <div className="sunset-input-wrap">
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={forgotEmailOrUsername}
                       onChange={(e) => setForgotEmailOrUsername(e.target.value)}
-                      required 
+                      required
                     />
                     <Mail className="sunset-input-icon h-4 w-4" />
                   </div>

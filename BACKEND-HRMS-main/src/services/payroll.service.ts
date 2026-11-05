@@ -385,8 +385,9 @@ export const payrollService = {
     daysPaid?: number
     lossOfPay?: number
     deductions?: number
+    grossSalary?: number
   }) {
-    const { tenantId, employeeId, month, year, netSalary, daysPaid, lossOfPay, deductions: customDeductions } = params
+    const { tenantId, employeeId, month, year, netSalary, daysPaid, lossOfPay, deductions: customDeductions, grossSalary: customGross } = params
 
     const emp = await prisma.employee.findFirst({
       where: { id: employeeId, tenantId },
@@ -401,7 +402,7 @@ export const payrollService = {
     if (!emp) throw new Error('Employee not found')
 
     const totalDays = new Date(year, month, 0).getDate()
-    let monthlyCTC = (emp.salaryGross || 0) / 12
+    let monthlyCTC = customGross !== undefined && customGross > 0 ? customGross : ((emp.salaryGross || 0) / 12)
     const pfDeduction = 2000
     const professionalTax = 200
     const totalDeductions = customDeductions !== undefined ? customDeductions : (pfDeduction + professionalTax)

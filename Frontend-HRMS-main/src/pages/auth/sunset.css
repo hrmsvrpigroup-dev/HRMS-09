@@ -114,11 +114,36 @@
 .sunset-brand-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 16px;
   margin-bottom: 2rem;
-  font-size: 1.8rem;
-  font-weight: 800;
+  font-size: 2rem;
+  font-weight: 900;
   letter-spacing: -0.02em;
+}
+
+.sunset-brand-header span {
+  display: inline-block;
+  transform: translate(-89px, 36px);
+  line-height: 1;
+}
+
+.sunset-brand-logo {
+  height: 52px;
+  max-width: 180px;
+  object-fit: contain;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  display: inline-block;
+  flex-shrink: 0;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.35)) drop-shadow(0 1px 3px rgba(255, 255, 255, 0.4));
+  transition: transform 0.25s ease, filter 0.25s ease;
+}
+
+.sunset-brand-logo:hover {
+  transform: scale(1.04);
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.45)) drop-shadow(0 1px 5px rgba(255, 255, 255, 0.7));
 }
 
 .sunset-brand-header .icon {
