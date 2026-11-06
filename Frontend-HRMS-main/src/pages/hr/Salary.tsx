@@ -321,6 +321,7 @@ function PayslipPreviewModal({
     allowances: number
     pf: number
     tax: number
+    rateBasis?: 'GROSS' | 'BASIC'
   }
   onClose: () => void
   uploadedFile: File | null
@@ -387,65 +388,108 @@ function PayslipPreviewModal({
   const [itemDedInsurance, setItemDedInsurance] = useState<number>(Math.round(initialGross * 0.10))
   const [itemOtherDed, setItemOtherDed] = useState<number>(200)
 
-  // Auto calculate all factors from a given Gross
-  const autoCalculateBreakdown = (baseGross: number) => {
-    setBreakdownGross(baseGross)
-    setItemBasic(Math.round(baseGross * 0.50))
-    setItemHra(Math.round(baseGross * 0.18))
-    setItemLta(Math.round(baseGross * 0.10))
-    setItemEmployerPf(Math.round(baseGross * 0.12))
-    setItemInsurance(Math.round(baseGross * 0.10))
+  // Auto calculate all factors from a given amount and basis
+  const autoCalculateBreakdown = (baseAmount: number, basis: 'GROSS' | 'BASIC' = dailyRateBasis) => {
+    if (basis === 'GROSS') {
+      setBreakdownGross(baseAmount)
+      setItemBasic(Math.round(baseAmount * 0.50))
+      setItemHra(Math.round(baseAmount * 0.18))
+      setItemLta(Math.round(baseAmount * 0.10))
+      setItemEmployerPf(Math.round(baseAmount * 0.12))
+      setItemInsurance(Math.round(baseAmount * 0.10))
 
-    setItemPt(200)
-    setItemDedEmployerPf(Math.round(baseGross * 0.12))
-    setItemDedEmployeePf(Math.round(baseGross * 0.12))
-    setItemDedInsurance(Math.round(baseGross * 0.10))
-    setItemOtherDed(200)
+      setItemPt(200)
+      setItemDedEmployerPf(Math.round(baseAmount * 0.12))
+      setItemDedEmployeePf(Math.round(baseAmount * 0.12))
+      setItemDedInsurance(Math.round(baseAmount * 0.10))
+      setItemOtherDed(200)
+    } else {
+      // Basic Salary Basis: Calculations are derived using Basic Salary as the foundation
+      setItemBasic(baseAmount)
+      setBreakdownGross(baseAmount)
+      setItemHra(Math.round(baseAmount * 0.18))
+      setItemLta(Math.round(baseAmount * 0.10))
+      setItemEmployerPf(Math.round(baseAmount * 0.12))
+      setItemInsurance(Math.round(baseAmount * 0.10))
+
+      setItemPt(200)
+      setItemDedEmployerPf(Math.round(baseAmount * 0.12))
+      setItemDedEmployeePf(Math.round(baseAmount * 0.12))
+      setItemDedInsurance(Math.round(baseAmount * 0.10))
+      setItemOtherDed(200)
+    }
   }
 
   // Update when calcData.grossSalary or employee changes
   useEffect(() => {
     const g = calcData.grossSalary || (employee.salaryGross ? Math.round(employee.salaryGross / 12) : 50000)
-    autoCalculateBreakdown(g)
+    autoCalculateBreakdown(g, dailyRateBasis)
   }, [calcData.grossSalary, employee.id])
 
   // Editable Attendance & Loss of Pay State
   const [isEditingAttendance, setIsEditingAttendance] = useState(false)
+  const [dailyRateBasis, setDailyRateBasis] = useState<'GROSS' | 'BASIC'>(calcData.rateBasis || 'GROSS')
   const [attDaysInMonth, setAttDaysInMonth] = useState<number>(calcData.daysInMonth || 30)
   const [attPayableDays, setAttPayableDays] = useState<number>(calcData.payableDays ?? ((calcData.daysInMonth || 30) - (calcData.lossOfPayDays || 0)))
   const [attLopDays, setAttLopDays] = useState<number>(calcData.lossOfPayDays || 0)
   const [attPerDayIncome, setAttPerDayIncome] = useState<number>(() => {
     const days = calcData.daysInMonth || 30
     const g = calcData.grossSalary || (employee.salaryGross ? Math.round(employee.salaryGross / 12) : 50000)
-    return days > 0 ? Math.round((g / days) * 100) / 100 : (calcData.perDayIncome || 0)
+    const base = calcData.rateBasis === 'BASIC' ? (calcData.basicSalary || Math.round(g * 0.5)) : g
+    return days > 0 ? Math.round((base / days) * 100) / 100 : (calcData.perDayIncome || 0)
   })
-
-  useEffect(() => {
-    const days = calcData.daysInMonth || 30
-    const lop = calcData.lossOfPayDays || 0
-    const payable = calcData.payableDays ?? (days - lop)
-    const g = calcData.grossSalary || (employee.salaryGross ? Math.round(employee.salaryGross / 12) : 50000)
-    setAttDaysInMonth(days)
-    setAttPayableDays(payable)
-    setAttLopDays(lop)
-    if (days > 0 && g > 0) {
-      setAttPerDayIncome(Math.round((g / days) * 100) / 100)
-    } else {
-      setAttPerDayIncome(calcData.perDayIncome || 0)
-    }
-  }, [calcData.daysInMonth, calcData.payableDays, calcData.lossOfPayDays, calcData.grossSalary, calcData.perDayIncome, employee.salaryGross])
 
   // Gross Totals
   const totalParticularsMonthly = itemBasic + itemHra + itemLta + itemEmployerPf + itemInsurance
   const displayGrossMonthly = isEditingBreakdown ? totalParticularsMonthly : breakdownGross
   const displayGrossYearly = displayGrossMonthly * 12
 
-  // Auto-sync Per-Day Income whenever Gross Salary changes
+  // Effective Base Salary for Daily Rate Factor (Gross Salary vs Basic Salary)
+  const effectiveDailyRateBase = dailyRateBasis === 'BASIC' ? itemBasic : displayGrossMonthly
+
   useEffect(() => {
-    if (attDaysInMonth > 0 && displayGrossMonthly > 0) {
-      setAttPerDayIncome(Math.round((displayGrossMonthly / attDaysInMonth) * 100) / 100)
+    const days = calcData.daysInMonth || 30
+    const lop = calcData.lossOfPayDays || 0
+    const payable = calcData.payableDays ?? (days - lop)
+    const g = calcData.grossSalary || (employee.salaryGross ? Math.round(employee.salaryGross / 12) : 50000)
+    const base = dailyRateBasis === 'BASIC' ? itemBasic : g
+    setAttDaysInMonth(days)
+    setAttPayableDays(payable)
+    setAttLopDays(lop)
+    if (days > 0 && base > 0) {
+      setAttPerDayIncome(Math.round((base / days) * 100) / 100)
+    } else {
+      setAttPerDayIncome(calcData.perDayIncome || 0)
     }
-  }, [displayGrossMonthly])
+  }, [calcData.daysInMonth, calcData.payableDays, calcData.lossOfPayDays, calcData.grossSalary, calcData.perDayIncome, employee.salaryGross, dailyRateBasis])
+
+  // Auto-sync Per-Day Income whenever Gross/Basic Salary, Basis, or Days in Month change
+  useEffect(() => {
+    if (attDaysInMonth > 0 && effectiveDailyRateBase > 0) {
+      setAttPerDayIncome(Math.round((effectiveDailyRateBase / attDaysInMonth) * 100) / 100)
+    }
+  }, [effectiveDailyRateBase, dailyRateBasis, attDaysInMonth])
+
+  // Effective Base Amount for calculations and table display
+  const effectiveBaseMonthly = dailyRateBasis === 'BASIC' ? itemBasic : displayGrossMonthly
+  const effectiveBaseYearly = effectiveBaseMonthly * 12
+
+  const handleRateBasisChange = (newBasis: 'GROSS' | 'BASIC') => {
+    setDailyRateBasis(newBasis)
+    if (newBasis === 'BASIC') {
+      const b = itemBasic > 0 ? itemBasic : (calcData.basicSalary || Math.round(initialGross * 0.50))
+      autoCalculateBreakdown(b, 'BASIC')
+      if (attDaysInMonth > 0 && b > 0) {
+        setAttPerDayIncome(Math.round((b / attDaysInMonth) * 100) / 100)
+      }
+    } else {
+      const g = initialGross
+      autoCalculateBreakdown(g, 'GROSS')
+      if (attDaysInMonth > 0 && g > 0) {
+        setAttPerDayIncome(Math.round((g / attDaysInMonth) * 100) / 100)
+      }
+    }
+  }
 
   // Deductions Totals (Using interactive attLopDays)
   const lopDeductionAmount = attLopDays > 0 ? Math.round(attLopDays * attPerDayIncome) : 0
@@ -453,8 +497,8 @@ function PayslipPreviewModal({
   const totalDeductionsYearly = totalDeductionsMonthly * 12
 
   // Net Take-Home (In-Hand)
-  const netTakeHomeMonthly = Math.max(0, displayGrossMonthly - totalDeductionsMonthly)
-  const netTakeHomeYearly = Math.max(0, displayGrossYearly - totalDeductionsYearly)
+  const netTakeHomeMonthly = Math.max(0, effectiveBaseMonthly - totalDeductionsMonthly)
+  const netTakeHomeYearly = Math.max(0, effectiveBaseYearly - totalDeductionsYearly)
 
   useEffect(() => {
     if (uploadedFile) {
@@ -470,9 +514,19 @@ function PayslipPreviewModal({
     setIsEditingBankPf(false)
     setIsEditingAttendance(false)
     setIsEditingBreakdown(false)
+    const prevTitle = document.title
+    document.title = ''
+    const restore = () => {
+      document.title = prevTitle
+      window.removeEventListener('afterprint', restore)
+    }
+    window.addEventListener('afterprint', restore)
+
     setTimeout(() => {
       window.print()
     }, 60)
+      setTimeout(restore, 1200)
+    }, 80)
   }
 
   useEffect(() => {
@@ -766,18 +820,79 @@ function PayslipPreviewModal({
                 </div>
               </div>
 
-              {/* Attendance Bar Header with In-Place Edit */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Attendance &amp; Daily Rate Factors
-                </span>
+              {/* Attendance Bar Header with In-Place Edit & Basis Switch Button */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Attendance &amp; Daily Rate Factors
+                  </span>
+
+                  {/* Switch button: Gross salary to Basic salary */}
+                  <div className="no-print" style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    background: '#e0e7ff',
+                    borderRadius: '20px',
+                    padding: '2px',
+                    border: '1px solid #bfdbfe',
+                    boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.05)'
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => handleRateBasisChange('GROSS')}
+                      style={{
+                        padding: '3px 10px',
+                        borderRadius: '16px',
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: dailyRateBasis === 'GROSS' ? '#2563eb' : 'transparent',
+                        color: dailyRateBasis === 'GROSS' ? '#ffffff' : '#3b82f6',
+                        fontWeight: 700,
+                        fontSize: '0.7rem',
+                        transition: 'all 0.15s ease',
+                        boxShadow: dailyRateBasis === 'GROSS' ? '0 1px 4px rgba(37,99,235,0.35)' : 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                      title="Calculate Daily Rate & LOP using Gross Salary"
+                    >
+                      {dailyRateBasis === 'GROSS' && <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#ffffff', display: 'inline-block' }} />}
+                      Gross Salary
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRateBasisChange('BASIC')}
+                      style={{
+                        padding: '3px 10px',
+                        borderRadius: '16px',
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: dailyRateBasis === 'BASIC' ? '#2563eb' : 'transparent',
+                        color: dailyRateBasis === 'BASIC' ? '#ffffff' : '#3b82f6',
+                        fontWeight: 700,
+                        fontSize: '0.7rem',
+                        transition: 'all 0.15s ease',
+                        boxShadow: dailyRateBasis === 'BASIC' ? '0 1px 4px rgba(37,99,235,0.35)' : 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                      title="Calculate Daily Rate & LOP using Basic Salary"
+                    >
+                      {dailyRateBasis === 'BASIC' && <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#ffffff', display: 'inline-block' }} />}
+                      Basic Salary
+                    </button>
+                  </div>
+                </div>
+
                 <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   {isEditingAttendance && (
                     <button
                       type="button"
                       onClick={() => {
-                        if (attDaysInMonth > 0 && displayGrossMonthly > 0) {
-                          setAttPerDayIncome(Math.round((displayGrossMonthly / attDaysInMonth) * 100) / 100)
+                        if (attDaysInMonth > 0 && effectiveDailyRateBase > 0) {
+                          setAttPerDayIncome(Math.round((effectiveDailyRateBase / attDaysInMonth) * 100) / 100)
                         }
                       }}
                       style={{
@@ -790,9 +905,9 @@ function PayslipPreviewModal({
                         fontWeight: 700,
                         cursor: 'pointer'
                       }}
-                      title="Auto calculate: Gross Salary ÷ Total Days in Month"
+                      title={`Auto calculate: ${dailyRateBasis === 'GROSS' ? 'Gross' : 'Basic'} Salary ÷ Total Days in Month`}
                     >
-                      ↺ Salary ÷ {attDaysInMonth} days
+                      ↺ {dailyRateBasis === 'GROSS' ? 'Gross' : 'Basic'} ÷ {attDaysInMonth} days
                     </button>
                   )}
                   {!isEditingAttendance ? (
@@ -848,8 +963,8 @@ function PayslipPreviewModal({
                         const val = Math.max(1, Number(e.target.value) || 0)
                         setAttDaysInMonth(val)
                         setAttPayableDays(Math.max(0, val - attLopDays))
-                        if (val > 0 && displayGrossMonthly > 0) {
-                          setAttPerDayIncome(Math.round((displayGrossMonthly / val) * 100) / 100)
+                        if (val > 0 && effectiveDailyRateBase > 0) {
+                          setAttPerDayIncome(Math.round((effectiveDailyRateBase / val) * 100) / 100)
                         }
                       }}
                       style={{ width: '80%', padding: '2px 6px', fontSize: '1rem', fontWeight: 800, textAlign: 'center', border: '1px solid #93c5fd', borderRadius: '4px', color: '#1e3a8a', marginTop: '2px', background: '#ffffff' }}
@@ -907,7 +1022,7 @@ function PayslipPreviewModal({
                     <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>₹{attPerDayIncome.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                   )}
                   <div style={{ fontSize: '0.62rem', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>
-                    Salary ÷ {attDaysInMonth} days
+                    {dailyRateBasis === 'GROSS' ? 'Gross' : 'Basic'} (₹{effectiveDailyRateBase.toLocaleString('en-IN')}) ÷ {attDaysInMonth} days
                   </div>
                 </div>
               </div>
@@ -942,7 +1057,7 @@ function PayslipPreviewModal({
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button
                         type="button"
-                        onClick={() => autoCalculateBreakdown(breakdownGross)}
+                        onClick={() => autoCalculateBreakdown(dailyRateBasis === 'BASIC' ? itemBasic : breakdownGross, dailyRateBasis)}
                         style={{
                           background: '#f8fafc',
                           border: '1px solid #cbd5e1',
@@ -954,7 +1069,7 @@ function PayslipPreviewModal({
                           cursor: 'pointer'
                         }}
                       >
-                        ↺ Auto-Calculate (50/18/10/12/10)
+                        ↺ Auto-Calculate ({dailyRateBasis === 'BASIC' ? 'Basic' : 'Gross'} Basis)
                       </button>
                       <button
                         type="button"
@@ -982,7 +1097,7 @@ function PayslipPreviewModal({
                 <thead>
                   <tr style={{ background: '#009a49', color: '#ffffff', textAlign: 'center', fontWeight: 'bold' }}>
                     <th colSpan={3} style={{ padding: '8px 12px', fontSize: '0.88rem', letterSpacing: '0.5px', textTransform: 'uppercase', border: '1.5px solid #000000', boxSizing: 'border-box' }}>
-                      GROSS SALARY CALCULATIONS
+                      {dailyRateBasis === 'BASIC' ? 'BASIC SALARY CALCULATIONS' : 'GROSS SALARY CALCULATIONS'}
                     </th>
                   </tr>
                   <tr style={{ background: '#ffff00', color: '#000000', fontWeight: 'bold', fontSize: '0.82rem' }}>
@@ -992,48 +1107,52 @@ function PayslipPreviewModal({
                   </tr>
                 </thead>
                 <tbody style={{ fontSize: '0.82rem' }}>
-                  {/* Gross Row (Highlighted Light Green) */}
+                  {/* Gross / Basic Primary Row (Highlighted Light Green) */}
                   <tr style={{ background: '#9bd770', fontWeight: 'bold' }}>
-                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Gross</td>
+                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>
+                      {dailyRateBasis === 'BASIC' ? 'Basic Salary' : 'Gross'}
+                    </td>
                     <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
                       {isEditingBreakdown ? (
                         <input
                           type="number"
-                          value={breakdownGross}
+                          value={dailyRateBasis === 'BASIC' ? itemBasic : breakdownGross}
                           onChange={(e) => {
                             const val = Number(e.target.value) || 0
-                            autoCalculateBreakdown(val)
+                            autoCalculateBreakdown(val, dailyRateBasis)
                           }}
                           style={{ width: '110px', textAlign: 'right', padding: '2px 4px', fontWeight: 'bold', border: '1px solid #16a34a', borderRadius: '3px' }}
                         />
                       ) : (
-                        displayGrossMonthly.toLocaleString('en-IN')
+                        effectiveBaseMonthly.toLocaleString('en-IN')
                       )}
                     </td>
                     <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                      {displayGrossYearly.toLocaleString('en-IN')}
+                      {effectiveBaseYearly.toLocaleString('en-IN')}
                     </td>
                   </tr>
 
-                  {/* Basic */}
-                  <tr>
-                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Basic</td>
-                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                      {isEditingBreakdown ? (
-                        <input
-                          type="number"
-                          value={itemBasic}
-                          onChange={(e) => setItemBasic(Number(e.target.value) || 0)}
-                          style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px' }}
-                        />
-                      ) : (
-                        itemBasic.toLocaleString('en-IN')
-                      )}
-                    </td>
-                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                      {(itemBasic * 12).toLocaleString('en-IN')}
-                    </td>
-                  </tr>
+                  {/* Basic Sub-Row (Only shown when in Gross mode, as Basic is already the primary row in Basic mode) */}
+                  {dailyRateBasis === 'GROSS' && (
+                    <tr>
+                      <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Basic</td>
+                      <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                        {isEditingBreakdown ? (
+                          <input
+                            type="number"
+                            value={itemBasic}
+                            onChange={(e) => setItemBasic(Number(e.target.value) || 0)}
+                            style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px' }}
+                          />
+                        ) : (
+                          itemBasic.toLocaleString('en-IN')
+                        )}
+                      </td>
+                      <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                        {(itemBasic * 12).toLocaleString('en-IN')}
+                      </td>
+                    </tr>
+                  )}
 
                   {/* House Rent Allowance (HRA) */}
                   <tr>
@@ -1115,14 +1234,16 @@ function PayslipPreviewModal({
                     </td>
                   </tr>
 
-                  {/* Total Amount (CTC) */}
+                  {/* Total Amount (CTC / Basic Basis) */}
                   <tr style={{ fontWeight: 'bold' }}>
-                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Total Amount (CTC)</td>
-                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                      {displayGrossMonthly.toLocaleString('en-IN')}
+                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>
+                      {dailyRateBasis === 'BASIC' ? 'Total Amount (Basic Basis)' : 'Total Amount (CTC)'}
                     </td>
                     <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                      {displayGrossYearly.toLocaleString('en-IN')}
+                      {effectiveBaseMonthly.toLocaleString('en-IN')}
+                    </td>
+                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {effectiveBaseYearly.toLocaleString('en-IN')}
                     </td>
                   </tr>
 
@@ -1338,6 +1459,7 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
   const [serverAnalysis, setServerAnalysis] = useState<any>(null)
   const [dayOverrides, setDayOverrides] = useState<Record<number, string>>({})
   const [calcMethod, setCalcMethod] = useState<'calendar_days' | 'working_days' | 'custom'>('calendar_days')
+  const [drawerRateBasis, setDrawerRateBasis] = useState<'GROSS' | 'BASIC'>('GROSS')
   const [customDaysInMonth, setCustomDaysInMonth] = useState<string>('')
   const [customPaidDays, setCustomPaidDays] = useState<string>('')
   const [customGross, setCustomGross] = useState<string>('')
@@ -1574,19 +1696,20 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
   const paidWorkingDays = presentWorkingDays + onLeaveWorkingDays
   const payableDays = Math.max(0, daysInMonth - unpaidAbsenceDays)
 
+  const isCustom = calcMethod === 'custom'
+  const monthlyBasic = (selectedEmployee as any)?.basicSalary ? Number((selectedEmployee as any).basicSalary) : Math.round(monthlyGross * 0.5)
+  const baseSalaryForRate = drawerRateBasis === 'BASIC' ? monthlyBasic : (isCustom && customGross !== '' ? Number(customGross) : monthlyGross)
+
   // Standard calculation values
-  const perDayIncomeWorking = totalWorkingDays > 0 ? Math.round((monthlyGross / totalWorkingDays) * 100) / 100 : 0
-  const perDayIncomeCalendar = daysInMonth > 0 ? Math.round((monthlyGross / daysInMonth) * 100) / 100 : 0
+  const perDayIncomeWorking = totalWorkingDays > 0 ? Math.round((baseSalaryForRate / totalWorkingDays) * 100) / 100 : 0
+  const perDayIncomeCalendar = daysInMonth > 0 ? Math.round((baseSalaryForRate / daysInMonth) * 100) / 100 : 0
   const standardDeductions = 2200
   const lopDeduction = Math.round(unpaidAbsenceDays * (calcMethod === 'calendar_days' ? perDayIncomeCalendar : perDayIncomeWorking))
   const totalStandardDeductions = standardDeductions + lopDeduction
 
-  const calculatedStandardNet = calcMethod === 'calendar_days'
-    ? Math.max(0, Math.round((payableDays * perDayIncomeCalendar) - standardDeductions))
-    : Math.max(0, Math.round((paidWorkingDays * perDayIncomeWorking) - standardDeductions))
+  const calculatedStandardNet = Math.max(0, monthlyGross - totalStandardDeductions)
 
   // Custom / Active calculations
-  const isCustom = calcMethod === 'custom'
   const activeDaysInMonth = isCustom && customDaysInMonth !== '' ? Math.max(1, Number(customDaysInMonth) || daysInMonth) : daysInMonth
   const activeGross = isCustom && customGross !== '' ? Math.max(0, Number(customGross) || 0) : monthlyGross
   const activePaidDays = isCustom && customPaidDays !== '' ? Math.max(0, Number(customPaidDays) || 0) : (calcMethod === 'calendar_days' ? payableDays : paidWorkingDays)
@@ -1596,7 +1719,8 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
     ? (totalWorkingDays > 0 ? totalWorkingDays : 1)
     : activeDaysInMonth
 
-  const autoComputedPerDayIncome = activeDaysDivisor > 0 ? Math.round((activeGross / activeDaysDivisor) * 100) / 100 : 0
+  const effectiveCustomBase = drawerRateBasis === 'BASIC' ? monthlyBasic : activeGross
+  const autoComputedPerDayIncome = activeDaysDivisor > 0 ? Math.round((effectiveCustomBase / activeDaysDivisor) * 100) / 100 : 0
   const activePerDayIncome = isCustom && customPerDayIncome !== '' ? Math.max(0, Number(customPerDayIncome) || 0) : autoComputedPerDayIncome
 
   const activeCalculatedNet = isCustom
@@ -1608,7 +1732,7 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
     if (selectedEmployee && activeCalculatedNet > 0) {
       setNetSalary(String(activeCalculatedNet))
     }
-  }, [selectedEmployee?.id, month, year, activeCalculatedNet, calcMethod])
+  }, [selectedEmployee?.id, month, year, activeCalculatedNet, calcMethod, drawerRateBasis])
 
   const handleSelectEmployee = (id: string) => {
     setEmployeeId(id)
@@ -1743,11 +1867,12 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
     netSalary: netSalary ? Number(netSalary) : activeCalculatedNet,
     payableDays: isCustom ? activePaidDays : (calcMethod === 'working_days' ? paidWorkingDays : payableDays),
     lossOfPayDays: isCustom ? Math.max(0, activeDaysInMonth - activePaidDays) : unpaidAbsenceDays,
-    basicSalary: Math.round(activeGross * 0.5),
+    basicSalary: monthlyBasic,
     hra: Math.round(activeGross * 0.18),
     allowances: Math.round(activeGross * 0.32),
     pf: 2000,
     tax: 200,
+    rateBasis: drawerRateBasis,
   }
 
   return (
@@ -2515,6 +2640,62 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
                         </button>
                       </div>
 
+                      {/* Switch button: Gross salary to Basic salary for Drawer */}
+                      <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        background: '#e0e7ff',
+                        borderRadius: '20px',
+                        padding: '2px',
+                        border: '1px solid #bfdbfe',
+                        boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.05)'
+                      }}>
+                        <button
+                          type="button"
+                          onClick={() => setDrawerRateBasis('GROSS')}
+                          style={{
+                            padding: '3px 8px',
+                            borderRadius: '14px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            background: drawerRateBasis === 'GROSS' ? '#2563eb' : 'transparent',
+                            color: drawerRateBasis === 'GROSS' ? '#ffffff' : '#3b82f6',
+                            fontWeight: 700,
+                            fontSize: '0.68rem',
+                            transition: 'all 0.15s ease',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '3px'
+                          }}
+                          title="Calculate Daily Rate using Gross Salary"
+                        >
+                          {drawerRateBasis === 'GROSS' && <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#ffffff', display: 'inline-block' }} />}
+                          Gross Rate
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDrawerRateBasis('BASIC')}
+                          style={{
+                            padding: '3px 8px',
+                            borderRadius: '14px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            background: drawerRateBasis === 'BASIC' ? '#2563eb' : 'transparent',
+                            color: drawerRateBasis === 'BASIC' ? '#ffffff' : '#3b82f6',
+                            fontWeight: 700,
+                            fontSize: '0.68rem',
+                            transition: 'all 0.15s ease',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '3px'
+                          }}
+                          title="Calculate Daily Rate using Basic Salary"
+                        >
+                          {drawerRateBasis === 'BASIC' && <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#ffffff', display: 'inline-block' }} />}
+                          Basic Rate
+                        </button>
+                      </div>
+
                       <button
                         type="button"
                         onClick={() => setShowPreviewModal(true)}
@@ -2737,7 +2918,7 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ fontSize: '0.7rem', color: isCustom ? '#1d4ed8' : '#64748b', fontWeight: 700 }}>
-                          4. Per-Day Income {isCustom ? '(₹)' : ''}
+                          4. Per-Day Income ({drawerRateBasis === 'BASIC' ? 'Basic' : 'Gross'}) {isCustom ? '(₹)' : ''}
                         </div>
                         {isCustom && (
                           <span style={{ fontSize: '0.6rem', background: '#dbeafe', color: '#1e40af', padding: '1px 5px', borderRadius: '3px', fontWeight: 700 }}>EDITABLE</span>
@@ -2773,7 +2954,7 @@ function UploadPayslipModal({ employees, onClose, onSaved }: {
                         </div>
                       )}
                       <div style={{ fontSize: '0.65rem', color: '#475569', marginTop: '2px' }}>
-                        {isCustom ? `Formula: Gross (₹${activeGross.toLocaleString('en-IN')}) ÷ ${activeDaysDivisor} days (editable)` : (calcMethod === 'working_days' ? `Formula: Gross ÷ ${totalWorkingDays} work days` : `Formula: Gross (₹${monthlyGross.toLocaleString('en-IN')}) ÷ ${daysInMonth} days in month`)}
+                        {isCustom ? `Formula: ${drawerRateBasis === 'BASIC' ? 'Basic' : 'Gross'} (₹${effectiveCustomBase.toLocaleString('en-IN')}) ÷ ${activeDaysDivisor} days (editable)` : (calcMethod === 'working_days' ? `Formula: ${drawerRateBasis === 'BASIC' ? 'Basic' : 'Gross'} ÷ ${totalWorkingDays} work days` : `Formula: ${drawerRateBasis === 'BASIC' ? 'Basic' : 'Gross'} (₹${baseSalaryForRate.toLocaleString('en-IN')}) ÷ ${daysInMonth} days in month`)}
                       </div>
                     </div>
 
@@ -3483,6 +3664,19 @@ export default function Salary() {
               boxShadow: '0 4px 14px rgba(99,102,241,0.35)'
             }}
             onClick={() => window.print()}
+            onClick={() => {
+              const prevTitle = document.title
+              document.title = ''
+              const restore = () => {
+                document.title = prevTitle
+                window.removeEventListener('afterprint', restore)
+              }
+              window.addEventListener('afterprint', restore)
+              setTimeout(() => {
+                window.print()
+                setTimeout(restore, 1200)
+              }, 80)
+            }}
           >
             <Download size={15} /> Export PDF
           </button>
@@ -4675,6 +4869,7 @@ export default function Salary() {
             border-radius: 0 !important;
             box-shadow: none !important;
             padding: 0 !important;
+            padding: 12mm 15mm !important;
             margin: 0 auto !important;
             max-width: 100% !important;
             width: 100% !important;
@@ -4735,6 +4930,7 @@ export default function Salary() {
           @page {
             size: A4 portrait;
             margin: 12mm 15mm;
+            margin: 0 !important;
           }
         }
       `}</style>
