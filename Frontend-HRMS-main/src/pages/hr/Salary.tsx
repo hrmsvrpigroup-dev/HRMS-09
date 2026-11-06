@@ -388,42 +388,26 @@ function PayslipPreviewModal({
   const [itemDedInsurance, setItemDedInsurance] = useState<number>(Math.round(initialGross * 0.10))
   const [itemOtherDed, setItemOtherDed] = useState<number>(200)
 
-  // Auto calculate all factors from a given amount and basis
-  const autoCalculateBreakdown = (baseAmount: number, basis: 'GROSS' | 'BASIC' = dailyRateBasis) => {
-    if (basis === 'GROSS') {
-      setBreakdownGross(baseAmount)
-      setItemBasic(Math.round(baseAmount * 0.50))
-      setItemHra(Math.round(baseAmount * 0.18))
-      setItemLta(Math.round(baseAmount * 0.10))
-      setItemEmployerPf(Math.round(baseAmount * 0.12))
-      setItemInsurance(Math.round(baseAmount * 0.10))
+  // Auto calculate all factors from a given Gross
+  const autoCalculateBreakdown = (baseGross: number) => {
+    setBreakdownGross(baseGross)
+    setItemBasic(Math.round(baseGross * 0.50))
+    setItemHra(Math.round(baseGross * 0.18))
+    setItemLta(Math.round(baseGross * 0.10))
+    setItemEmployerPf(Math.round(baseGross * 0.12))
+    setItemInsurance(Math.round(baseGross * 0.10))
 
-      setItemPt(200)
-      setItemDedEmployerPf(Math.round(baseAmount * 0.12))
-      setItemDedEmployeePf(Math.round(baseAmount * 0.12))
-      setItemDedInsurance(Math.round(baseAmount * 0.10))
-      setItemOtherDed(200)
-    } else {
-      // Basic Salary Basis: Calculations are derived using Basic Salary as the foundation
-      setItemBasic(baseAmount)
-      setBreakdownGross(baseAmount)
-      setItemHra(Math.round(baseAmount * 0.18))
-      setItemLta(Math.round(baseAmount * 0.10))
-      setItemEmployerPf(Math.round(baseAmount * 0.12))
-      setItemInsurance(Math.round(baseAmount * 0.10))
-
-      setItemPt(200)
-      setItemDedEmployerPf(Math.round(baseAmount * 0.12))
-      setItemDedEmployeePf(Math.round(baseAmount * 0.12))
-      setItemDedInsurance(Math.round(baseAmount * 0.10))
-      setItemOtherDed(200)
-    }
+    setItemPt(200)
+    setItemDedEmployerPf(Math.round(baseGross * 0.12))
+    setItemDedEmployeePf(Math.round(baseGross * 0.12))
+    setItemDedInsurance(Math.round(baseGross * 0.10))
+    setItemOtherDed(200)
   }
 
   // Update when calcData.grossSalary or employee changes
   useEffect(() => {
     const g = calcData.grossSalary || (employee.salaryGross ? Math.round(employee.salaryGross / 12) : 50000)
-    autoCalculateBreakdown(g, dailyRateBasis)
+    autoCalculateBreakdown(g)
   }, [calcData.grossSalary, employee.id])
 
   // Editable Attendance & Loss of Pay State
@@ -470,24 +454,11 @@ function PayslipPreviewModal({
     }
   }, [effectiveDailyRateBase, dailyRateBasis, attDaysInMonth])
 
-  // Effective Base Amount for calculations and table display
-  const effectiveBaseMonthly = dailyRateBasis === 'BASIC' ? itemBasic : displayGrossMonthly
-  const effectiveBaseYearly = effectiveBaseMonthly * 12
-
   const handleRateBasisChange = (newBasis: 'GROSS' | 'BASIC') => {
     setDailyRateBasis(newBasis)
-    if (newBasis === 'BASIC') {
-      const b = itemBasic > 0 ? itemBasic : (calcData.basicSalary || Math.round(initialGross * 0.50))
-      autoCalculateBreakdown(b, 'BASIC')
-      if (attDaysInMonth > 0 && b > 0) {
-        setAttPerDayIncome(Math.round((b / attDaysInMonth) * 100) / 100)
-      }
-    } else {
-      const g = initialGross
-      autoCalculateBreakdown(g, 'GROSS')
-      if (attDaysInMonth > 0 && g > 0) {
-        setAttPerDayIncome(Math.round((g / attDaysInMonth) * 100) / 100)
-      }
+    const base = newBasis === 'BASIC' ? itemBasic : displayGrossMonthly
+    if (attDaysInMonth > 0 && base > 0) {
+      setAttPerDayIncome(Math.round((base / attDaysInMonth) * 100) / 100)
     }
   }
 
@@ -497,8 +468,8 @@ function PayslipPreviewModal({
   const totalDeductionsYearly = totalDeductionsMonthly * 12
 
   // Net Take-Home (In-Hand)
-  const netTakeHomeMonthly = Math.max(0, effectiveBaseMonthly - totalDeductionsMonthly)
-  const netTakeHomeYearly = Math.max(0, effectiveBaseYearly - totalDeductionsYearly)
+  const netTakeHomeMonthly = Math.max(0, displayGrossMonthly - totalDeductionsMonthly)
+  const netTakeHomeYearly = Math.max(0, displayGrossYearly - totalDeductionsYearly)
 
   useEffect(() => {
     if (uploadedFile) {
@@ -524,7 +495,6 @@ function PayslipPreviewModal({
 
     setTimeout(() => {
       window.print()
-    }, 60)
       setTimeout(restore, 1200)
     }, 80)
   }
@@ -1057,7 +1027,7 @@ function PayslipPreviewModal({
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button
                         type="button"
-                        onClick={() => autoCalculateBreakdown(dailyRateBasis === 'BASIC' ? itemBasic : breakdownGross, dailyRateBasis)}
+                        onClick={() => autoCalculateBreakdown(breakdownGross)}
                         style={{
                           background: '#f8fafc',
                           border: '1px solid #cbd5e1',
@@ -1069,7 +1039,7 @@ function PayslipPreviewModal({
                           cursor: 'pointer'
                         }}
                       >
-                        ↺ Auto-Calculate ({dailyRateBasis === 'BASIC' ? 'Basic' : 'Gross'} Basis)
+                        ↺ Auto-Calculate (50/18/10/12/10)
                       </button>
                       <button
                         type="button"
@@ -1097,7 +1067,7 @@ function PayslipPreviewModal({
                 <thead>
                   <tr style={{ background: '#009a49', color: '#ffffff', textAlign: 'center', fontWeight: 'bold' }}>
                     <th colSpan={3} style={{ padding: '8px 12px', fontSize: '0.88rem', letterSpacing: '0.5px', textTransform: 'uppercase', border: '1.5px solid #000000', boxSizing: 'border-box' }}>
-                      {dailyRateBasis === 'BASIC' ? 'BASIC SALARY CALCULATIONS' : 'GROSS SALARY CALCULATIONS'}
+                      GROSS SALARY CALCULATIONS
                     </th>
                   </tr>
                   <tr style={{ background: '#ffff00', color: '#000000', fontWeight: 'bold', fontSize: '0.82rem' }}>
@@ -1107,52 +1077,50 @@ function PayslipPreviewModal({
                   </tr>
                 </thead>
                 <tbody style={{ fontSize: '0.82rem' }}>
-                  {/* Gross / Basic Primary Row (Highlighted Light Green) */}
+                  {/* Gross Primary Row (Highlighted Light Green) */}
                   <tr style={{ background: '#9bd770', fontWeight: 'bold' }}>
                     <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>
-                      {dailyRateBasis === 'BASIC' ? 'Basic Salary' : 'Gross'}
+                      Gross
                     </td>
                     <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
                       {isEditingBreakdown ? (
                         <input
                           type="number"
-                          value={dailyRateBasis === 'BASIC' ? itemBasic : breakdownGross}
+                          value={breakdownGross}
                           onChange={(e) => {
                             const val = Number(e.target.value) || 0
-                            autoCalculateBreakdown(val, dailyRateBasis)
+                            autoCalculateBreakdown(val)
                           }}
                           style={{ width: '110px', textAlign: 'right', padding: '2px 4px', fontWeight: 'bold', border: '1px solid #16a34a', borderRadius: '3px' }}
                         />
                       ) : (
-                        effectiveBaseMonthly.toLocaleString('en-IN')
+                        displayGrossMonthly.toLocaleString('en-IN')
                       )}
                     </td>
                     <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                      {effectiveBaseYearly.toLocaleString('en-IN')}
+                      {displayGrossYearly.toLocaleString('en-IN')}
                     </td>
                   </tr>
 
-                  {/* Basic Sub-Row (Only shown when in Gross mode, as Basic is already the primary row in Basic mode) */}
-                  {dailyRateBasis === 'GROSS' && (
-                    <tr>
-                      <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Basic</td>
-                      <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                        {isEditingBreakdown ? (
-                          <input
-                            type="number"
-                            value={itemBasic}
-                            onChange={(e) => setItemBasic(Number(e.target.value) || 0)}
-                            style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px' }}
-                          />
-                        ) : (
-                          itemBasic.toLocaleString('en-IN')
-                        )}
-                      </td>
-                      <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                        {(itemBasic * 12).toLocaleString('en-IN')}
-                      </td>
-                    </tr>
-                  )}
+                  {/* Basic Sub-Row */}
+                  <tr>
+                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Basic</td>
+                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {isEditingBreakdown ? (
+                        <input
+                          type="number"
+                          value={itemBasic}
+                          onChange={(e) => setItemBasic(Number(e.target.value) || 0)}
+                          style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px' }}
+                        />
+                      ) : (
+                        itemBasic.toLocaleString('en-IN')
+                      )}
+                    </td>
+                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                      {(itemBasic * 12).toLocaleString('en-IN')}
+                    </td>
+                  </tr>
 
                   {/* House Rent Allowance (HRA) */}
                   <tr>
@@ -1234,16 +1202,16 @@ function PayslipPreviewModal({
                     </td>
                   </tr>
 
-                  {/* Total Amount (CTC / Basic Basis) */}
+                  {/* Total Amount (CTC) */}
                   <tr style={{ fontWeight: 'bold' }}>
                     <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>
-                      {dailyRateBasis === 'BASIC' ? 'Total Amount (Basic Basis)' : 'Total Amount (CTC)'}
+                      Total Amount (CTC)
                     </td>
                     <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                      {effectiveBaseMonthly.toLocaleString('en-IN')}
+                      {displayGrossMonthly.toLocaleString('en-IN')}
                     </td>
                     <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                      {effectiveBaseYearly.toLocaleString('en-IN')}
+                      {displayGrossYearly.toLocaleString('en-IN')}
                     </td>
                   </tr>
 
@@ -3663,7 +3631,6 @@ export default function Salary() {
               background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
               boxShadow: '0 4px 14px rgba(99,102,241,0.35)'
             }}
-            onClick={() => window.print()}
             onClick={() => {
               const prevTitle = document.title
               document.title = ''
