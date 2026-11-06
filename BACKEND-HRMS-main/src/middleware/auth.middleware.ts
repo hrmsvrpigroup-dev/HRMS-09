@@ -33,7 +33,22 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
     const decoded = jwt.verify(token, jwtSecret) as TokenPayload
     const user = await prisma.user.findUnique({ where: { id: decoded.userId } })
     if (!user || !user.isActive) {
-      return res.status(401).json({ success: false, message: 'Unauthorized' })
+      return res.status(401).json({ success: false, message: 'Your account is inactive. Please contact HR.' })
+    }
+
+    if (user.role === 'EMPLOYEE') {
+      const emp = await prisma.employee.findFirst({
+        where: {
+          OR: [
+            { userId: user.id },
+            { email: user.email }
+          ]
+        },
+        select: { status: true }
+      })
+      if (emp && emp.status === 'INACTIVE') {
+        return res.status(401).json({ success: false, message: 'Your employee portal is inactive. Please contact HR.' })
+      }
     }
 
     req.user = {

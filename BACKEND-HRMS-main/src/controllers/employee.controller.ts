@@ -676,15 +676,28 @@ export const employeeController = {
           designationId = des.id
         }
 
+        // Determine status and portal active state
+        const newStatus = (data.status || data.employmentStatus || employee.status || 'ACTIVE') as any
+        const isPortalActive = (newStatus === 'ACTIVE' || newStatus === 'PROBATION')
+
+        let targetUserId = employee.userId
+        if (!targetUserId && (data.workEmail || employee.email)) {
+          const matchedUser = await tx.user.findUnique({
+            where: { email: data.workEmail || employee.email }
+          })
+          if (matchedUser) targetUserId = matchedUser.id
+        }
+
         // Update User
-        if (employee.userId) {
+        if (targetUserId) {
           await tx.user.update({
-            where: { id: employee.userId },
+            where: { id: targetUserId },
             data: {
-              email: data.workEmail,
-              firstName: data.firstName,
-              lastName: data.lastName,
-              phone: data.mobileNumber || null,
+              email: data.workEmail || employee.email,
+              firstName: data.firstName || employee.firstName,
+              lastName: data.lastName || employee.lastName,
+              phone: data.mobileNumber || employee.phone || null,
+              isActive: isPortalActive,
             }
           })
         }
@@ -710,7 +723,8 @@ export const employeeController = {
             salaryGross: parseFloat(data.basicSalary) || 0,
             joiningDate: data.joiningDate ? new Date(data.joiningDate) : new Date(),
             employmentType: data.employmentType || 'FULL_TIME',
-            status: data.employmentStatus || 'ACTIVE',
+            status: newStatus,
+            userId: targetUserId || employee.userId,
             branchId: data.branchId || null,
             shift: data.shift || null,
             attendanceType: data.attendanceType || 'FACIAL',
@@ -924,6 +938,70 @@ export const employeeController = {
       return sendSuccess(res, updated, 'Employee shift updated successfully')
     } catch (error: any) {
       return sendError(res, error.message || 'Failed to update employee shift', 500)
+    }
+  },
+
+  async updateStatus(req: AuthRequest, res: Response) {
+    const tenantId = req.tenantId ?? req.user?.tenantId
+    const { id } = req.params
+    const { status } = req.body
+
+    if (!tenantId || !id) {
+      return sendError(res, 'Context not found', 400)
+    }
+
+    if (!status || !['ACTIVE', 'INACTIVE'].includes(status)) {
+      return sendError(res, 'Invalid status. Status must be ACTIVE or INACTIVE', 400)
+    }
+
+    try {
+      const employee = await prisma.employee.findUnique({
+        where: { id },
+        include: { user: true }
+      })
+
+      if (!employee || employee.tenantId !== tenantId) {
+        return sendError(res, 'Employee not found', 404)
+      }
+
+      const isPortalActive = (status === 'ACTIVE')
+
+      let targetUserId = employee.userId
+      if (!targetUserId && employee.email) {
+        const u = await prisma.user.findUnique({ where: { email: employee.email } })
+        if (u) targetUserId = u.id
+      }
+
+      const updated = await prisma.$transaction(async (tx) => {
+        if (targetUserId) {
+          await tx.user.update({
+            where: { id: targetUserId },
+            data: { isActive: isPortalActive }
+          })
+        }
+
+        return tx.employee.update({
+          where: { id },
+          data: {
+            status: status as any,
+            userId: targetUserId || employee.userId
+          },
+          include: {
+            user: { select: { id: true, email: true, isActive: true } },
+            department: true,
+            designation: true,
+          }
+        })
+      })
+
+      return sendSuccess(
+        res,
+        updated,
+        `Employee portal is now ${status === 'ACTIVE' ? 'Active (login enabled)' : 'Inactive (login blocked)'}`
+      )
+    } catch (error: any) {
+      console.error('[updateStatus error]', error)
+      return sendError(res, error.message || 'Failed to update employee status', 500)
     }
   },
 }

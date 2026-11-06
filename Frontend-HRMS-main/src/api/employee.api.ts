@@ -50,6 +50,8 @@ export const employeeApi = {
   update: (id: string, formData: FormData) => api.put<{ success: boolean; data: any }>(`/employees/${id}`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
+  updateStatus: (id: string, status: 'ACTIVE' | 'INACTIVE') =>
+    api.patch<{ success: boolean; data: any; message: string }>(`/employees/${id}/status`, { status }),
   updateShift: (id: string, shift: string) => api.put<{ success: boolean; data: any }>(`/employees/${id}/shift`, { shift }),
   uploadDocument: (formData: FormData) => api.post<{ success: boolean; data: any }>('/employees/me/documents', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }

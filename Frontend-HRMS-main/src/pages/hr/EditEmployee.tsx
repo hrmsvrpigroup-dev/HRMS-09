@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { employeeApi } from '../../api/employee.api'
-import { CheckCircle, ChevronRight, UploadCloud, Shield, User, MapPin, Building, CreditCard, Activity, ArrowLeft } from 'lucide-react'
+import { CheckCircle, ChevronRight, UploadCloud, Shield, User, MapPin, Building, CreditCard, Activity, ArrowLeft, ChevronDown, Check } from 'lucide-react'
 import { LoadingSpinner } from '../../components/shared/LoadingSpinner'
 
 export default function EditEmployee() {
@@ -14,6 +14,22 @@ export default function EditEmployee() {
   const [error, setError] = useState('')
   const [updatedSuccessfully, setUpdatedSuccessfully] = useState(false)
   const [employeeList, setEmployeeList] = useState<any[]>([])
+
+  // Portal Active / Inactive state
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
+  const [statusToastMessage, setStatusToastMessage] = useState('')
+  const statusDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target as Node)) {
+        setIsStatusDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const [formData, setFormData] = useState({
     employeeCode: '',
@@ -139,6 +155,35 @@ export default function EditEmployee() {
     }
   }
 
+  const handleStatusChange = async (newStatus: 'ACTIVE' | 'INACTIVE') => {
+    setIsStatusDropdownOpen(false)
+    if (formData.employmentStatus === newStatus) return
+
+    setFormData(prev => ({ ...prev, employmentStatus: newStatus }))
+
+    if (!id) return
+    setIsUpdatingStatus(true)
+    setStatusToastMessage('')
+    try {
+      await employeeApi.updateStatus(id, newStatus)
+      setStatusToastMessage(
+        newStatus === 'ACTIVE'
+          ? '✓ Employee portal is now ACTIVE (portal login enabled)'
+          : '⚠️ Employee portal is now INACTIVE (portal login blocked)'
+      )
+      setTimeout(() => setStatusToastMessage(''), 5000)
+    } catch (err: any) {
+      console.error('Failed to update status', err)
+      setFormData(prev => ({
+        ...prev,
+        employmentStatus: newStatus === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
+      }))
+      setError(err.response?.data?.message || 'Failed to update employee status')
+    } finally {
+      setIsUpdatingStatus(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!id) return
@@ -246,10 +291,76 @@ export default function EditEmployee() {
                 <p>Modify credentials, role parameters, salary structures, or upload updated KYC documents.</p>
               </div>
             </div>
-            <button onClick={() => navigate(directoryPath)} className="btn-cancel">
-              Cancel
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {/* Active / Inactive Status Dropdown Button */}
+              <div style={{ position: 'relative', zIndex: 60 }} ref={statusDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+                  disabled={isUpdatingStatus}
+                  className={`status-pill-btn ${formData.employmentStatus === 'ACTIVE' ? 'status-active' : 'status-inactive'}`}
+                  title="Click to change Employee Portal login access (Active / Inactive)"
+                >
+                  <span className={`status-dot ${formData.employmentStatus === 'ACTIVE' ? 'dot-active' : 'dot-inactive'}`} />
+                  <span>
+                    {isUpdatingStatus ? 'Updating...' : (formData.employmentStatus === 'ACTIVE' ? 'Active' : 'Inactive')}
+                  </span>
+                  <ChevronDown size={14} style={{ transition: 'transform 0.2s', transform: isStatusDropdownOpen ? 'rotate(180deg)' : 'none' }} />
+                </button>
+
+                {isStatusDropdownOpen && (
+                  <div className="status-dropdown-menu">
+                    <div className="status-dropdown-header">
+                      Employee Portal Access
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleStatusChange('ACTIVE')}
+                      className={`status-option-item ${formData.employmentStatus === 'ACTIVE' ? 'selected' : ''}`}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span className="status-dot dot-active" />
+                        <div>
+                          <div style={{ fontWeight: 700, color: '#065f46', fontSize: '0.86rem' }}>Active</div>
+                          <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Portal login enabled — Employee can log in</div>
+                        </div>
+                      </div>
+                      {formData.employmentStatus === 'ACTIVE' && <Check size={16} color="#059669" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleStatusChange('INACTIVE')}
+                      className={`status-option-item ${formData.employmentStatus === 'INACTIVE' ? 'selected' : ''}`}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span className="status-dot dot-inactive" />
+                        <div>
+                          <div style={{ fontWeight: 700, color: '#991b1b', fontSize: '0.86rem' }}>Inactive</div>
+                          <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Portal login blocked — Cannot log in</div>
+                        </div>
+                      </div>
+                      {formData.employmentStatus === 'INACTIVE' && <Check size={16} color="#dc2626" />}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <button onClick={() => navigate(directoryPath)} className="btn-cancel">
+                Cancel
+              </button>
+            </div>
           </div>
+
+          {statusToastMessage && (
+            <div className={`status-toast-banner ${formData.employmentStatus === 'ACTIVE' ? 'toast-active' : 'toast-inactive'}`}>
+              {formData.employmentStatus === 'ACTIVE' ? (
+                <CheckCircle size={18} style={{ color: '#059669', flexShrink: 0 }} />
+              ) : (
+                <Shield size={18} style={{ color: '#dc2626', flexShrink: 0 }} />
+              )}
+              <span>{statusToastMessage}</span>
+            </div>
+          )}
 
           <div className="onboard-layout">
             <div className="onboard-sidebar glass-panel">
@@ -536,6 +647,129 @@ export default function EditEmployee() {
       )}
 
       <style>{`
+        .status-pill-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          border-radius: 9999px;
+          font-size: 0.84rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          border: 1.5px solid transparent;
+        }
+        .status-pill-btn.status-active {
+          background: #ecfdf5;
+          color: #065f46;
+          border-color: #a7f3d0;
+        }
+        .status-pill-btn.status-active:hover {
+          background: #d1fae5;
+          border-color: #6ee7b7;
+        }
+        .status-pill-btn.status-inactive {
+          background: #fef2f2;
+          color: #991b1b;
+          border-color: #fecaca;
+        }
+        .status-pill-btn.status-inactive:hover {
+          background: #fee2e2;
+          border-color: #fca5a5;
+        }
+        .status-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          display: inline-block;
+          flex-shrink: 0;
+        }
+        .status-dot.dot-active {
+          background: #10b981;
+          box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25);
+        }
+        .status-dot.dot-inactive {
+          background: #ef4444;
+          box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25);
+        }
+        .status-dropdown-menu {
+          position: absolute;
+          top: calc(100% + 8px);
+          right: 0;
+          width: 300px;
+          background: #ffffff;
+          border: 1px solid #cbd5e1;
+          border-radius: 14px;
+          box-shadow: 0 20px 45px -4px rgba(0, 0, 0, 0.22), 0 10px 20px -6px rgba(0, 0, 0, 0.12);
+          z-index: 99999;
+          overflow: hidden;
+          animation: slideDown 0.18s ease-out;
+        }
+        .status-dropdown-header {
+          padding: 10px 14px;
+          border-bottom: 1px solid #f1f5f9;
+          font-size: 0.72rem;
+          font-weight: 800;
+          color: #64748b;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          background: #f8fafc;
+        }
+        .status-option-item {
+          width: 100%;
+          padding: 12px 14px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          border: none;
+          background: transparent;
+          cursor: pointer;
+          text-align: left;
+          transition: background 0.15s ease;
+          border-bottom: 1px solid #f8fafc;
+        }
+        .status-option-item:last-child {
+          border-bottom: none;
+        }
+        .status-option-item:hover {
+          background: #f8fafc;
+        }
+        .status-option-item.selected {
+          background: #f1f5f9;
+        }
+        .status-toast-banner {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 16px;
+          border-radius: 10px;
+          margin-bottom: 20px;
+          font-size: 0.85rem;
+          font-weight: 600;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+          animation: fadeIn 0.3s ease-out;
+        }
+        .status-toast-banner.toast-active {
+          background: #ecfdf5;
+          border: 1px solid #a7f3d0;
+          color: #065f46;
+        }
+        .status-toast-banner.toast-inactive {
+          background: #fef2f2;
+          border: 1px solid #fecaca;
+          color: #991b1b;
+        }
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-6px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
         .onboard-container {
           max-width: 1200px;
           margin: 0 auto;
@@ -596,6 +830,8 @@ export default function EditEmployee() {
           align-items: center;
           padding: 24px 32px;
           margin-bottom: 32px;
+          position: relative;
+          z-index: 50;
         }
 
         .header-text h1 {

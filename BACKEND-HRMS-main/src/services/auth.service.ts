@@ -37,7 +37,20 @@ export const authService = {
     }
 
     if (!user.isActive) {
-      throw new Error('Your account is currently inactive.')
+      throw new Error('Your account is currently inactive. Please contact HR.')
+    }
+
+    // Check linked employee status if user has an employee record
+    const linkedEmployee = await prisma.employee.findFirst({
+      where: {
+        OR: [
+          { userId: user.id },
+          { email: user.email }
+        ]
+      }
+    })
+    if (linkedEmployee && linkedEmployee.status === 'INACTIVE') {
+      throw new Error('Your employee portal is currently inactive. Please contact HR.')
     }
 
     let valid = await comparePassword(password, user.password)

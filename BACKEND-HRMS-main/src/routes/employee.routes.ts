@@ -48,6 +48,7 @@ router.use(authenticate, authorize('ADMIN', 'HR'), tenantIsolation)
 router.get('/', employeeController.list)
 router.post('/', employeeController.create)
 router.get('/:id', employeeController.getById)
+router.patch('/:id/status', employeeController.updateStatus)
 router.put('/:id/shift', employeeController.updateShift)
 router.put('/:id', upload.fields([
   { name: 'aadhaarCard', maxCount: 1 },
