@@ -2114,24 +2114,25 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   };
 
   const handleUpdateCandidateBreakdown = (candId: string, candEmail: string | undefined, updates: Record<string, number>) => {
+    const emailKey = candEmail ? candEmail.trim().toLowerCase() : undefined;
     setCandidateOfferForms(prev => {
-      const existing = prev[candId] || (candEmail ? prev[candEmail] : undefined) || {};
+      const existing = prev[candId] || (emailKey ? prev[emailKey] : undefined) || {};
       const currentBreakdown = existing.customBreakdown || {};
       const updatedBreakdown = { ...currentBreakdown, ...updates };
+      const updatedForm = { ...existing, customBreakdown: updatedBreakdown };
 
       return {
         ...prev,
-        [candId]: {
-          ...existing,
-          customBreakdown: updatedBreakdown
-        }
+        [candId]: updatedForm,
+        ...(emailKey ? { [emailKey]: updatedForm } : {})
       };
     });
   };
 
   const handleToggleWithGross = (candId: string, candEmail: string | undefined, withGross: boolean) => {
+    const emailKey = candEmail ? candEmail.trim().toLowerCase() : undefined;
     setCandidateOfferForms(prev => {
-      const existing = prev[candId] || (candEmail ? prev[candEmail] : undefined) || {};
+      const existing = prev[candId] || (emailKey ? prev[emailKey] : undefined) || {};
       const currentBreakdown = existing.customBreakdown;
       let updatedBreakdown = currentBreakdown;
       if (currentBreakdown) {
@@ -2147,18 +2148,21 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
           netYearly: Math.max(0, baseYearly - totalDeductY)
         };
       }
+      const updatedForm = {
+        ...existing,
+        withGross,
+        customBreakdown: updatedBreakdown
+      };
       return {
         ...prev,
-        [candId]: {
-          ...existing,
-          withGross,
-          customBreakdown: updatedBreakdown
-        }
+        [candId]: updatedForm,
+        ...(emailKey ? { [emailKey]: updatedForm } : {})
       };
     });
   };
 
   const handleAutoCalculateCandidateBreakdown = (candId: string, candEmail: string | undefined, baseGrossMonthly: number, withGrossMode?: boolean) => {
+    const emailKey = candEmail ? candEmail.trim().toLowerCase() : undefined;
     const grossMonthly = Math.round(baseGrossMonthly);
     const grossYearly = grossMonthly * 12;
     const basicMonthly = Math.round(grossMonthly * 0.50);
@@ -2185,7 +2189,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
     const totalDeductMonthly = ptMonthly + deductEmployerPfMonthly + deductEmployeePfMonthly + deductInsuranceMonthly + otherDeductMonthly;
     const totalDeductYearly = ptYearly + deductEmployerPfYearly + deductEmployeePfYearly + deductInsuranceYearly + otherDeductYearly;
-    const isWithGross = withGrossMode !== undefined ? withGrossMode : true;
+    const isWithGross = withGrossMode === true;
     const netBaseMonthly = isWithGross ? grossMonthly : basicMonthly;
     const netBaseYearly = isWithGross ? grossYearly : basicYearly;
     const netMonthly = Math.max(0, netBaseMonthly - totalDeductMonthly);
@@ -2221,15 +2225,17 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     };
 
     setCandidateOfferForms(prev => {
-      const existing = prev[candId] || (candEmail ? prev[candEmail] : undefined) || {};
+      const existing = prev[candId] || (emailKey ? prev[emailKey] : undefined) || {};
+      const updatedForm = {
+        ...existing,
+        annualCtc: String(grossYearly),
+        withGross: withGrossMode !== undefined ? withGrossMode : (existing.withGross === true),
+        customBreakdown: newBreakdown
+      };
       return {
         ...prev,
-        [candId]: {
-          ...existing,
-          annualCtc: String(grossYearly),
-          withGross: withGrossMode !== undefined ? withGrossMode : (existing.withGross !== undefined ? existing.withGross : true),
-          customBreakdown: newBreakdown
-        }
+        [candId]: updatedForm,
+        ...(emailKey ? { [emailKey]: updatedForm } : {})
       };
     });
   };
@@ -4443,7 +4449,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       ? includeTrainingOverride 
       : (candForm.includeTraining !== undefined ? candForm.includeTraining : true);
 
-    const isWithGross = candForm.withGross !== false;
+    const isWithGross = candForm.withGross === true;
     const offerData: OfferLetterData = {
       candidateName: candName,
       jobTitle: role,
@@ -9961,7 +9967,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                             {/* ── Salary & Deductions Interactive Calculation Table (Editable & Reference Styled) ── */}
                             {(() => {
                               const isEditingBreakdown = !!editingBreakdownIds[c.id];
-                              const withGross = candForm.withGross !== false;
+                              const withGross = candForm.withGross === true;
                               const custom = candForm.customBreakdown;
 
                               const bGrossMonthly = custom?.monthlyGross !== undefined ? Number(custom.monthlyGross) : breakdown.monthlyGross;
@@ -10157,7 +10163,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                                 value={bGrossMonthly}
                                                 onChange={(e) => {
                                                   const val = Number(e.target.value) || 0;
-                                                  handleAutoCalculateCandidateBreakdown(c.id, c.email, val, true);
+                                                  handleAutoCalculateCandidateBreakdown(c.id, c.email, val, withGross);
                                                 }}
                                                 style={{ width: '100px', textAlign: 'right', padding: '2px 4px', fontWeight: 'bold', border: '1px solid #16a34a', borderRadius: '3px', fontSize: '0.78rem' }}
                                               />
@@ -13149,7 +13155,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                 const defaultVenue = '8th Floor (B-Block), Meenakshi Tech Park, Phase-2, Gachibowli, Hyderabad, Telangana 500032, India';
                 const venue = candForm.venue || previewOfferCandidate.callLetterVenue || defaultVenue;
 
-                const isWithGross = candForm.withGross !== false;
+                const isWithGross = candForm.withGross === true;
                 const offerData: OfferLetterData = {
                   candidateName: candName,
                   jobTitle: role,

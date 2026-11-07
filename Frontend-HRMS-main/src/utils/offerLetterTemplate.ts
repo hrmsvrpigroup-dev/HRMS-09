@@ -155,10 +155,11 @@ export function numberToWordsINR(num: number): string {
 export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): string {
   const autoB = calculateSalaryBreakdown(d.annualCtc || 420000);
   const b = d.customBreakdown ? { ...autoB, ...d.customBreakdown } : { ...autoB };
-  if (d.withoutGross || d.withGross === false) {
+  const isWithGross = d.withGross === true && !d.withoutGross;
+  if (!isWithGross) {
     b.netMonthly = Math.max(0, b.basicMonthly - b.totalDeductMonthly);
     b.netYearly = Math.max(0, b.basicYearly - b.totalDeductYearly);
-  } else if (!d.customBreakdown || d.customBreakdown.netMonthly === undefined) {
+  } else {
     b.netMonthly = Math.max(0, b.monthlyGross - b.totalDeductMonthly);
     b.netYearly = Math.max(0, b.annualCtc - b.totalDeductYearly);
   }
@@ -518,13 +519,13 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
                   <td style="width: 25%; text-align: right;">Yearly</td>
                 </tr>
 
-                ${d.withoutGross ? '' : `
+                ${d.withGross === true && !d.withoutGross ? `
                 <tr class="table-row-lightgreen-gross">
                     <td><strong>Gross</strong></td>
                     <td style="text-align: right;"><strong>\${b.monthlyGross.toLocaleString('en-IN')}</strong></td>
                     <td style="text-align: right;"><strong>\${b.annualCtc.toLocaleString('en-IN')}</strong></td>
                   </tr>
-                `}
+                ` : ''}
 
                   <tr class="table-row-white">
                     <td>Basic</td>
