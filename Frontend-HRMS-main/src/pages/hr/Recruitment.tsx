@@ -10229,7 +10229,19 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                           </button>
                                           <button
                                             type="button"
-                                            onClick={() => toggleCandidateBreakdownEdit(c.id)}
+                                            onClick={() => {
+                                              toggleCandidateBreakdownEdit(c.id);
+                                              const latestCand: Candidate = {
+                                                ...c,
+                                                customName: candName,
+                                                callLetterDesignation: designation,
+                                                callLetterReferenceNo: referenceNo,
+                                                offerSalary: Math.round(annualCtcNum / 12),
+                                                offerJoiningDate: joiningDate,
+                                                callLetterVenue: venue
+                                              };
+                                              triggerPreviewModal(latestCand);
+                                            }}
                                             style={{
                                               background: '#16a34a',
                                               border: 'none',
@@ -10238,10 +10250,13 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                               padding: '4px 12px',
                                               fontSize: '0.72rem',
                                               fontWeight: 700,
-                                              cursor: 'pointer'
+                                              cursor: 'pointer',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '4px'
                                             }}
                                           >
-                                            ✓ Done Editing
+                                            ✓ Done &amp; Preview
                                           </button>
                                         </div>
                                       )}
