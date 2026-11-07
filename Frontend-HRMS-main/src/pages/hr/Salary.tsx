@@ -400,9 +400,10 @@ function PayslipPreviewModal({
       setItemEmployerPf(Math.round(baseAmount * 0.12))
       setItemInsurance(Math.round(baseAmount * 0.10))
 
+      const epf = Math.round(Math.round(baseAmount * 0.50) * 0.12)
       setItemPt(200)
-      setItemDedEmployerPf(Math.round(baseAmount * 0.12))
-      setItemDedEmployeePf(Math.round(baseAmount * 0.12))
+      setItemDedEmployerPf(0)
+      setItemDedEmployeePf(epf)
       setItemDedInsurance(Math.round(baseAmount * 0.10))
       setItemOtherDed(200)
     } else {
@@ -414,9 +415,10 @@ function PayslipPreviewModal({
       setItemEmployerPf(Math.round(baseAmount * 0.12))
       setItemInsurance(Math.round(baseAmount * 0.10))
 
+      const epf = Math.round(baseAmount * 0.12)
       setItemPt(200)
-      setItemDedEmployerPf(Math.round(baseAmount * 0.12))
-      setItemDedEmployeePf(Math.round(baseAmount * 0.12))
+      setItemDedEmployerPf(0)
+      setItemDedEmployeePf(epf)
       setItemDedInsurance(Math.round(baseAmount * 0.10))
       setItemOtherDed(200)
     }
@@ -501,7 +503,7 @@ function PayslipPreviewModal({
 
   // Deductions Totals (Using interactive attLopDays)
   const lopDeductionAmount = attLopDays > 0 ? Math.round(attLopDays * attPerDayIncome) : 0
-  const totalDeductionsMonthly = itemPt + itemDedEmployerPf + itemDedEmployeePf + itemDedInsurance + itemOtherDed + lopDeductionAmount
+  const totalDeductionsMonthly = itemPt + itemDedEmployeePf + itemDedInsurance + itemOtherDed + lopDeductionAmount
   const totalDeductionsYearly = totalDeductionsMonthly * 12
 
   // Net Take-Home (In-Hand)
@@ -1281,35 +1283,19 @@ function PayslipPreviewModal({
                     </td>
                   </tr>
 
-                  {/* Employer PF (Deductions) */}
+                  {/* EPF (Deductions: Basic Salary * 12%) */}
                   <tr>
-                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Employer PF</td>
-                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                      {isEditingBreakdown ? (
-                        <input
-                          type="number"
-                          value={itemDedEmployerPf}
-                          onChange={(e) => setItemDedEmployerPf(Number(e.target.value) || 0)}
-                          style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px' }}
-                        />
-                      ) : (
-                        itemDedEmployerPf.toLocaleString('en-IN')
-                      )}
-                    </td>
-                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                      {(itemDedEmployerPf * 12).toLocaleString('en-IN')}
-                    </td>
-                  </tr>
-
-                  {/* Employee PF (Deductions) */}
-                  <tr>
-                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Employee PF</td>
+                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>EPF</td>
                     <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
                       {isEditingBreakdown ? (
                         <input
                           type="number"
                           value={itemDedEmployeePf}
-                          onChange={(e) => setItemDedEmployeePf(Number(e.target.value) || 0)}
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0
+                            setItemDedEmployeePf(val)
+                            setItemDedEmployerPf(0)
+                          }}
                           style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px' }}
                         />
                       ) : (

@@ -2002,13 +2002,9 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     const ptMonthly = 200;
     const ptYearly = 2400;
 
-    // Employer PF - 12%
-    const employerPfYearly = Math.round(annualCtc * 0.12);
-    const employerPfMonthly = Math.round(monthlyGross * 0.12);
-
-    // Employee PF - 12%
-    const deductEmployeePfYearly = Math.round(annualCtc * 0.12);
-    const deductEmployeePfMonthly = Math.round(monthlyGross * 0.12);
+    // EPF - Basic salary * 12%
+    const epfMonthly = Math.round(basicMonthly * 0.12);
+    const epfYearly = epfMonthly * 12;
 
     // Insurance (10%)
     const deductInsuranceYearly = Math.round(annualCtc * 0.10);
@@ -2017,8 +2013,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     const otherDeductMonthly = 200;
     const otherDeductYearly = 2400;
 
-    const totalDeductMonthly = ptMonthly + employerPfMonthly + deductEmployeePfMonthly + deductInsuranceMonthly + otherDeductMonthly;
-    const totalDeductYearly = ptYearly + employerPfYearly + deductEmployeePfYearly + deductInsuranceYearly + otherDeductYearly;
+    const totalDeductMonthly = ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly;
+    const totalDeductYearly = ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly;
 
     const netMonthly = Math.max(0, monthlyGross - totalDeductMonthly);
     const netYearly = Math.max(0, annualCtc - totalDeductYearly);
@@ -2040,14 +2036,16 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       otherAllowMonthly: insuranceMonthly,
       ptMonthly,
       ptYearly,
-      employerPfMonthly,
-      employerPfYearly,
-      deductEmployeePfMonthly,
-      deductEmployeePfYearly,
+      employerPfMonthly: 0,
+      employerPfYearly: 0,
+      deductEmployeePfMonthly: epfMonthly,
+      deductEmployeePfYearly: epfYearly,
+      epfMonthly,
+      epfYearly,
       deductInsuranceMonthly,
       deductInsuranceYearly,
-      pfMonthly: deductEmployeePfMonthly,
-      pfYearly: deductEmployeePfYearly,
+      pfMonthly: epfMonthly,
+      pfYearly: epfYearly,
       otherDeductMonthly,
       otherDeductYearly,
       totalDeductMonthly,
@@ -2131,12 +2129,18 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       const grossY = merged.annualCtc !== undefined ? Number(merged.annualCtc) : grossM * 12;
 
       const ptM = merged.ptMonthly !== undefined ? Number(merged.ptMonthly) : 200;
-      const dedEmpPfM = merged.employerPfMonthly !== undefined ? Number(merged.employerPfMonthly) : 0;
-      const dedEmpeePfM = merged.deductEmployeePfMonthly !== undefined ? Number(merged.deductEmployeePfMonthly) : 0;
+      const epfM = merged.epfMonthly !== undefined 
+        ? Number(merged.epfMonthly) 
+        : (merged.deductEmployeePfMonthly !== undefined 
+          ? Number(merged.deductEmployeePfMonthly) 
+          : (merged.employerPfMonthly !== undefined && Number(merged.employerPfMonthly) > 0 && !merged.deductEmployeePfMonthly 
+            ? Number(merged.employerPfMonthly) 
+            : Math.round(basicM * 0.12)));
+      const epfY = merged.epfYearly !== undefined ? Number(merged.epfYearly) : epfM * 12;
       const dedInsM = merged.deductInsuranceMonthly !== undefined ? Number(merged.deductInsuranceMonthly) : 0;
       const otherM = merged.otherDeductMonthly !== undefined ? Number(merged.otherDeductMonthly) : 200;
 
-      const totalDeductM = ptM + dedEmpPfM + dedEmpeePfM + dedInsM + otherM;
+      const totalDeductM = ptM + epfM + dedInsM + otherM;
       const totalDeductY = totalDeductM * 12;
 
       const isWithGross = existing.withGross === true;
@@ -2181,12 +2185,17 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         const baseYearly = withGross ? grossY : basicY;
 
         const ptM = currentBreakdown.ptMonthly !== undefined ? Number(currentBreakdown.ptMonthly) : 200;
-        const dedEmpPfM = currentBreakdown.employerPfMonthly !== undefined ? Number(currentBreakdown.employerPfMonthly) : 0;
-        const dedEmpeePfM = currentBreakdown.deductEmployeePfMonthly !== undefined ? Number(currentBreakdown.deductEmployeePfMonthly) : 0;
+        const epfM = currentBreakdown.epfMonthly !== undefined 
+          ? Number(currentBreakdown.epfMonthly) 
+          : (currentBreakdown.deductEmployeePfMonthly !== undefined 
+            ? Number(currentBreakdown.deductEmployeePfMonthly) 
+            : (currentBreakdown.employerPfMonthly !== undefined && Number(currentBreakdown.employerPfMonthly) > 0 && !currentBreakdown.deductEmployeePfMonthly 
+              ? Number(currentBreakdown.employerPfMonthly) 
+              : Math.round(basicM * 0.12)));
         const dedInsM = currentBreakdown.deductInsuranceMonthly !== undefined ? Number(currentBreakdown.deductInsuranceMonthly) : 0;
         const otherM = currentBreakdown.otherDeductMonthly !== undefined ? Number(currentBreakdown.otherDeductMonthly) : 200;
 
-        const totalDeductM = ptM + dedEmpPfM + dedEmpeePfM + dedInsM + otherM;
+        const totalDeductM = ptM + epfM + dedInsM + otherM;
         const totalDeductY = totalDeductM * 12;
 
         updatedBreakdown = {
@@ -2227,17 +2236,16 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
     const ptMonthly = 200;
     const ptYearly = 2400;
-    const deductEmployerPfMonthly = Math.round(grossMonthly * 0.12);
-    const deductEmployerPfYearly = deductEmployerPfMonthly * 12;
-    const deductEmployeePfMonthly = Math.round(grossMonthly * 0.12);
-    const deductEmployeePfYearly = deductEmployeePfMonthly * 12;
+    // EPF - Basic salary * 12%
+    const epfMonthly = Math.round(basicMonthly * 0.12);
+    const epfYearly = epfMonthly * 12;
     const deductInsuranceMonthly = Math.round(grossMonthly * 0.10);
     const deductInsuranceYearly = deductInsuranceMonthly * 12;
     const otherDeductMonthly = 200;
     const otherDeductYearly = 2400;
 
-    const totalDeductMonthly = ptMonthly + deductEmployerPfMonthly + deductEmployeePfMonthly + deductInsuranceMonthly + otherDeductMonthly;
-    const totalDeductYearly = ptYearly + deductEmployerPfYearly + deductEmployeePfYearly + deductInsuranceYearly + otherDeductYearly;
+    const totalDeductMonthly = ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly;
+    const totalDeductYearly = ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly;
     const isWithGross = withGrossMode === true;
     const netBaseMonthly = isWithGross ? grossMonthly : basicMonthly;
     const netBaseYearly = isWithGross ? grossYearly : basicYearly;
@@ -2255,14 +2263,18 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       ltaYearly,
       employeePfMonthly: employerPfMonthly,
       employeePfYearly: employerPfYearly,
-      employerPfMonthly: deductEmployerPfMonthly,
-      employerPfYearly: deductEmployerPfYearly,
       insuranceMonthly,
       insuranceYearly,
       ptMonthly,
       ptYearly,
-      deductEmployeePfMonthly,
-      deductEmployeePfYearly,
+      employerPfMonthly: 0,
+      employerPfYearly: 0,
+      deductEmployeePfMonthly: epfMonthly,
+      deductEmployeePfYearly: epfYearly,
+      epfMonthly,
+      epfYearly,
+      pfMonthly: epfMonthly,
+      pfYearly: epfYearly,
       deductInsuranceMonthly,
       deductInsuranceYearly,
       otherDeductMonthly,
@@ -9874,11 +9886,14 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                         const bPtMonthly = custom?.ptMonthly !== undefined ? Number(custom.ptMonthly) : breakdown.ptMonthly;
                         const bPtYearly = custom?.ptYearly !== undefined ? Number(custom.ptYearly) : (bPtMonthly * 12);
 
-                        const bDedEmployerPfMonthly = custom?.employerPfMonthly !== undefined ? Number(custom.employerPfMonthly) : breakdown.employerPfMonthly;
-                        const bDedEmployerPfYearly = custom?.employerPfYearly !== undefined ? Number(custom.employerPfYearly) : (bDedEmployerPfMonthly * 12);
-
-                        const bDedEmployeePfMonthly = custom?.deductEmployeePfMonthly !== undefined ? Number(custom.deductEmployeePfMonthly) : breakdown.deductEmployeePfMonthly;
-                        const bDedEmployeePfYearly = custom?.deductEmployeePfYearly !== undefined ? Number(custom.deductEmployeePfYearly) : (bDedEmployeePfMonthly * 12);
+                        const bEpfMonthly = custom?.epfMonthly !== undefined 
+                          ? Number(custom.epfMonthly) 
+                          : (custom?.deductEmployeePfMonthly !== undefined 
+                            ? Number(custom.deductEmployeePfMonthly) 
+                            : (custom?.employerPfMonthly !== undefined && Number(custom.employerPfMonthly) > 0 && !custom?.deductEmployeePfMonthly 
+                              ? Number(custom.employerPfMonthly) 
+                              : Math.round(bBasicMonthly * 0.12)));
+                        const bEpfYearly = bEpfMonthly * 12;
 
                         const bDedInsuranceMonthly = custom?.deductInsuranceMonthly !== undefined ? Number(custom.deductInsuranceMonthly) : breakdown.deductInsuranceMonthly;
                         const bDedInsuranceYearly = custom?.deductInsuranceYearly !== undefined ? Number(custom.deductInsuranceYearly) : (bDedInsuranceMonthly * 12);
@@ -9886,8 +9901,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                         const bOtherDedMonthly = custom?.otherDeductMonthly !== undefined ? Number(custom.otherDeductMonthly) : breakdown.otherDeductMonthly;
                         const bOtherDedYearly = custom?.otherDeductYearly !== undefined ? Number(custom.otherDeductYearly) : (bOtherDedMonthly * 12);
 
-                        const bTotalDeductMonthly = bPtMonthly + bDedEmployerPfMonthly + bDedEmployeePfMonthly + bDedInsuranceMonthly + bOtherDedMonthly;
-                        const bTotalDeductYearly = bPtYearly + bDedEmployerPfYearly + bDedEmployeePfYearly + bDedInsuranceYearly + bOtherDedYearly;
+                        const bTotalDeductMonthly = bPtMonthly + bEpfMonthly + bDedInsuranceMonthly + bOtherDedMonthly;
+                        const bTotalDeductYearly = bPtYearly + bEpfYearly + bDedInsuranceYearly + bOtherDedYearly;
 
                         const baseForNetMonthly = withGross ? bGrossMonthly : bBasicMonthly;
                         const baseForNetYearly = withGross ? bGrossYearly : bBasicYearly;
@@ -9912,12 +9927,14 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                           otherAllowYearly: bInsuranceYearly,
                           ptMonthly: bPtMonthly,
                           ptYearly: bPtYearly,
-                          employerPfMonthly: bDedEmployerPfMonthly,
-                          employerPfYearly: bDedEmployerPfYearly,
-                          deductEmployeePfMonthly: bDedEmployeePfMonthly,
-                          deductEmployeePfYearly: bDedEmployeePfYearly,
-                          pfMonthly: bDedEmployeePfMonthly,
-                          pfYearly: bDedEmployeePfYearly,
+                          employerPfMonthly: 0,
+                          employerPfYearly: 0,
+                          deductEmployeePfMonthly: bEpfMonthly,
+                          deductEmployeePfYearly: bEpfYearly,
+                          epfMonthly: bEpfMonthly,
+                          epfYearly: bEpfYearly,
+                          pfMonthly: bEpfMonthly,
+                          pfYearly: bEpfYearly,
                           deductInsuranceMonthly: bDedInsuranceMonthly,
                           deductInsuranceYearly: bDedInsuranceYearly,
                           otherDeductMonthly: bOtherDedMonthly,
@@ -10439,49 +10456,33 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                         </td>
                                       </tr>
 
-                                      {/* Employer PF (Deductions) */}
+                                      {/* EPF (Deductions: Basic Salary * 12%) */}
                                       <tr>
-                                        <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Employer PF</td>
+                                        <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>EPF</td>
                                         <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
                                           {isEditingBreakdown ? (
                                             <input
                                               type="number"
-                                              value={bDedEmployerPfMonthly}
+                                              value={bEpfMonthly}
                                               onChange={(e) => {
                                                 const val = Number(e.target.value) || 0;
-                                                handleUpdateCandidateBreakdown(c.id, c.email, { employerPfMonthly: val, employerPfYearly: val * 12 });
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { 
+                                                  epfMonthly: val, 
+                                                  epfYearly: val * 12,
+                                                  deductEmployeePfMonthly: val,
+                                                  deductEmployeePfYearly: val * 12,
+                                                  employerPfMonthly: 0,
+                                                  employerPfYearly: 0
+                                                });
                                               }}
                                               style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
                                             />
                                           ) : (
-                                            bDedEmployerPfMonthly.toLocaleString('en-IN')
+                                            bEpfMonthly.toLocaleString('en-IN')
                                           )}
                                         </td>
                                         <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                          {bDedEmployerPfYearly.toLocaleString('en-IN')}
-                                        </td>
-                                      </tr>
-
-                                      {/* Employee PF (Deductions) */}
-                                      <tr>
-                                        <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Employee PF</td>
-                                        <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                          {isEditingBreakdown ? (
-                                            <input
-                                              type="number"
-                                              value={bDedEmployeePfMonthly}
-                                              onChange={(e) => {
-                                                const val = Number(e.target.value) || 0;
-                                                handleUpdateCandidateBreakdown(c.id, c.email, { deductEmployeePfMonthly: val, deductEmployeePfYearly: val * 12 });
-                                              }}
-                                              style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
-                                            />
-                                          ) : (
-                                            bDedEmployeePfMonthly.toLocaleString('en-IN')
-                                          )}
-                                        </td>
-                                        <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                          {bDedEmployeePfYearly.toLocaleString('en-IN')}
+                                          {bEpfYearly.toLocaleString('en-IN')}
                                         </td>
                                       </tr>
 

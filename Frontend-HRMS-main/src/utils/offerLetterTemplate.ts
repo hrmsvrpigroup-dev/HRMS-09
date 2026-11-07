@@ -45,6 +45,8 @@ export interface SalaryBreakdown {
   employerPfYearly: number;
   deductEmployeePfMonthly: number;
   deductEmployeePfYearly: number;
+  epfMonthly?: number;
+  epfYearly?: number;
   deductInsuranceMonthly: number;
   deductInsuranceYearly: number;
   otherDeductMonthly: number;
@@ -84,20 +86,17 @@ export function calculateSalaryBreakdown(annualCtc: number): SalaryBreakdown {
   // PT - ₹200
   const ptMonthly = 200;
   const ptYearly = 2400;
-  // Employer PF - 12%
-  const employerPfMonthly = Math.round(monthlyGross * 0.12);
-  const employerPfYearly = employerPfMonthly * 12;
-  // Employee PF - 12%
-  const deductEmployeePfMonthly = Math.round(monthlyGross * 0.12);
-  const deductEmployeePfYearly = deductEmployeePfMonthly * 12;
+  // EPF - Basic salary * 12%
+  const epfMonthly = Math.round(basicMonthly * 0.12);
+  const epfYearly = epfMonthly * 12;
   // Insurance - 10%
   const deductInsuranceMonthly = Math.round(monthlyGross * 0.10);
   const deductInsuranceYearly = deductInsuranceMonthly * 12;
   // Other deductions - ₹200
   const otherDeductMonthly = 200;
   const otherDeductYearly = 2400;
-  const totalDeductMonthly = ptMonthly + employerPfMonthly + deductEmployeePfMonthly + deductInsuranceMonthly + otherDeductMonthly;
-  const totalDeductYearly = ptYearly + employerPfYearly + deductEmployeePfYearly + deductInsuranceYearly + otherDeductYearly;
+  const totalDeductMonthly = ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly;
+  const totalDeductYearly = ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly;
 
   const netMonthly = Math.max(0, monthlyGross - totalDeductMonthly);
   const netYearly = Math.max(0, ctc - totalDeductYearly);
@@ -117,10 +116,12 @@ export function calculateSalaryBreakdown(annualCtc: number): SalaryBreakdown {
     insuranceYearly,
     ptMonthly,
     ptYearly,
-    employerPfMonthly,
-    employerPfYearly,
-    deductEmployeePfMonthly,
-    deductEmployeePfYearly,
+    employerPfMonthly: 0,
+    employerPfYearly: 0,
+    deductEmployeePfMonthly: epfMonthly,
+    deductEmployeePfYearly: epfYearly,
+    epfMonthly,
+    epfYearly,
     deductInsuranceMonthly,
     deductInsuranceYearly,
     otherDeductMonthly,
@@ -131,8 +132,8 @@ export function calculateSalaryBreakdown(annualCtc: number): SalaryBreakdown {
     netYearly,
     otherAllowMonthly: insuranceMonthly,
     otherAllowYearly: insuranceYearly,
-    pfMonthly: deductEmployeePfMonthly,
-    pfYearly: deductEmployeePfYearly
+    pfMonthly: epfMonthly,
+    pfYearly: epfYearly
   };
 }
 
@@ -174,16 +175,20 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
   // Re-derive deductions dynamically so Total Deductions always equals the exact sum of rows
   const ptMonthly = Math.round(Number(rawB.ptMonthly) || 200);
   const ptYearly = ptMonthly * 12;
-  const employerPfMonthly = Math.round(Number(rawB.employerPfMonthly) || 0);
-  const employerPfYearly = employerPfMonthly * 12;
-  const deductEmployeePfMonthly = Math.round(Number(rawB.deductEmployeePfMonthly) || 0);
-  const deductEmployeePfYearly = deductEmployeePfMonthly * 12;
+  const epfMonthly = rawB.epfMonthly !== undefined 
+    ? Math.round(Number(rawB.epfMonthly)) 
+    : (rawB.deductEmployeePfMonthly !== undefined 
+      ? Math.round(Number(rawB.deductEmployeePfMonthly)) 
+      : (rawB.employerPfMonthly !== undefined && Number(rawB.employerPfMonthly) > 0 && !rawB.deductEmployeePfMonthly 
+        ? Math.round(Number(rawB.employerPfMonthly)) 
+        : Math.round(basicMonthly * 0.12)));
+  const epfYearly = epfMonthly * 12;
   const deductInsuranceMonthly = Math.round(Number(rawB.deductInsuranceMonthly) || 0);
   const deductInsuranceYearly = deductInsuranceMonthly * 12;
   const otherDeductMonthly = Math.round(Number(rawB.otherDeductMonthly) || 200);
   const otherDeductYearly = otherDeductMonthly * 12;
 
-  const totalDeductMonthly = ptMonthly + employerPfMonthly + deductEmployeePfMonthly + deductInsuranceMonthly + otherDeductMonthly;
+  const totalDeductMonthly = ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly;
   const totalDeductYearly = totalDeductMonthly * 12;
 
   const isWithGross = d.withGross === true && !d.withoutGross;
@@ -209,10 +214,12 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
     insuranceYearly,
     ptMonthly,
     ptYearly,
-    employerPfMonthly,
-    employerPfYearly,
-    deductEmployeePfMonthly,
-    deductEmployeePfYearly,
+    employerPfMonthly: 0,
+    employerPfYearly: 0,
+    deductEmployeePfMonthly: epfMonthly,
+    deductEmployeePfYearly: epfYearly,
+    epfMonthly,
+    epfYearly,
     deductInsuranceMonthly,
     deductInsuranceYearly,
     otherDeductMonthly,
@@ -627,14 +634,9 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
                     <td style="text-align: right;">${b.ptYearly.toLocaleString('en-IN')}</td>
                   </tr>
                   <tr class="table-row-white">
-                    <td>Employer PF</td>
-                    <td style="text-align: right;">${b.employerPfMonthly.toLocaleString('en-IN')}</td>
-                    <td style="text-align: right;">${b.employerPfYearly.toLocaleString('en-IN')}</td>
-                  </tr>
-                  <tr class="table-row-white">
-                    <td>Employee PF</td>
-                    <td style="text-align: right;">${b.deductEmployeePfMonthly.toLocaleString('en-IN')}</td>
-                    <td style="text-align: right;">${b.deductEmployeePfYearly.toLocaleString('en-IN')}</td>
+                    <td>EPF</td>
+                    <td style="text-align: right;">${(b.epfMonthly !== undefined ? b.epfMonthly : (b.deductEmployeePfMonthly || 0)).toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${((b.epfMonthly !== undefined ? b.epfMonthly : (b.deductEmployeePfMonthly || 0)) * 12).toLocaleString('en-IN')}</td>
                   </tr>
                   <tr class="table-row-white">
                     <td>Insurance</td>
