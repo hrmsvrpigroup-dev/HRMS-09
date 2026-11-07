@@ -2009,11 +2009,15 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     const deductEmployeePfYearly = Math.round(annualCtc * 0.12);
     const deductEmployeePfMonthly = Math.round(monthlyGross * 0.12);
 
+    // Insurance (10%)
+    const deductInsuranceYearly = Math.round(annualCtc * 0.10);
+    const deductInsuranceMonthly = Math.round(monthlyGross * 0.10);
+
     const otherDeductMonthly = 200;
     const otherDeductYearly = 2400;
 
-    const totalDeductMonthly = ptMonthly + employerPfMonthly + deductEmployeePfMonthly + otherDeductMonthly;
-    const totalDeductYearly = ptYearly + employerPfYearly + deductEmployeePfYearly + otherDeductYearly;
+    const totalDeductMonthly = ptMonthly + employerPfMonthly + deductEmployeePfMonthly + deductInsuranceMonthly + otherDeductMonthly;
+    const totalDeductYearly = ptYearly + employerPfYearly + deductEmployeePfYearly + deductInsuranceYearly + otherDeductYearly;
 
     const netMonthly = Math.max(0, monthlyGross - totalDeductMonthly);
     const netYearly = Math.max(0, annualCtc - totalDeductYearly);
@@ -2039,6 +2043,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       employerPfYearly,
       deductEmployeePfMonthly,
       deductEmployeePfYearly,
+      deductInsuranceMonthly,
+      deductInsuranceYearly,
       pfMonthly: deductEmployeePfMonthly,
       pfYearly: deductEmployeePfYearly,
       otherDeductMonthly,
@@ -9883,6 +9889,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                       <td style={{ padding: '4px 10px' }}>Employee PF (12%)</td>
                                       <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.deductEmployeePfMonthly.toLocaleString('en-IN')}</td>
                                       <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.deductEmployeePfYearly.toLocaleString('en-IN')}</td>
+                                    </tr>
+                                    <tr style={{ borderBottom: '1px solid #fef2f2' }}>
+                                      <td style={{ padding: '4px 10px' }}>Insurance (10%)</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.deductInsuranceMonthly.toLocaleString('en-IN')}</td>
+                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.deductInsuranceYearly.toLocaleString('en-IN')}</td>
                                     </tr>
                                     <tr style={{ borderBottom: '1px solid #fef2f2' }}>
                                       <td style={{ padding: '4px 10px' }}>Other Deductions</td>
