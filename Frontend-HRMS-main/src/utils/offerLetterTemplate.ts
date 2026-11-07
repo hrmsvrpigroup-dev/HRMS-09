@@ -21,6 +21,7 @@ export interface OfferLetterData {
   reportingVenue?: string;
   trainingSalary?: string | number;
   includeTraining?: boolean;
+  customBreakdown?: Partial<SalaryBreakdown>;
 }
 
 export interface SalaryBreakdown {
@@ -150,7 +151,8 @@ export function numberToWordsINR(num: number): string {
 }
 
 export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): string {
-  const b = calculateSalaryBreakdown(d.annualCtc || 420000);
+  const autoB = calculateSalaryBreakdown(d.annualCtc || 420000);
+  const b = d.customBreakdown ? { ...autoB, ...d.customBreakdown } : autoB;
   const rawWords = numberToWordsINR(b.annualCtc);
   const ctcWords = rawWords
     ? (rawWords.startsWith('Rupees') ? rawWords : 'Rupees ' + rawWords.replace(/\s*Rupees Only$/i, ' Only'))

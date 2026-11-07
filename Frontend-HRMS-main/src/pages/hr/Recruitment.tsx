@@ -29,6 +29,7 @@ import {
   getOfferLetterPageHtml,
   getOfferLetterStyles,
   OfferLetterData,
+  SalaryBreakdown,
   VRPI_WATERMARK_DATA_URI
 } from '../../utils/offerLetterTemplate';
 import { RecruitmentGoogleConfigModal } from './RecruitmentGoogleConfigModal';
@@ -2070,6 +2071,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     venue?: string;
     includeTraining?: boolean;
     trainingSalary?: string;
+    customBreakdown?: any;
   }>>(() => {
     try {
       const saved = localStorage.getItem('hrms_candidate_offer_forms');
@@ -2103,6 +2105,99 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       ...prev,
       [candidateId]: !prev[candidateId]
     }));
+  };
+
+  const [editingBreakdownIds, setEditingBreakdownIds] = useState<Record<string, boolean>>({});
+  const toggleCandidateBreakdownEdit = (candId: string) => {
+    setEditingBreakdownIds(prev => ({ ...prev, [candId]: !prev[candId] }));
+  };
+
+  const handleUpdateCandidateBreakdown = (candId: string, candEmail: string | undefined, updates: Record<string, number>) => {
+    setCandidateOfferForms(prev => {
+      const existing = prev[candId] || (candEmail ? prev[candEmail] : undefined) || {};
+      const currentBreakdown = existing.customBreakdown || {};
+      const updatedBreakdown = { ...currentBreakdown, ...updates };
+
+      return {
+        ...prev,
+        [candId]: {
+          ...existing,
+          customBreakdown: updatedBreakdown
+        }
+      };
+    });
+  };
+
+  const handleAutoCalculateCandidateBreakdown = (candId: string, candEmail: string | undefined, baseGrossMonthly: number) => {
+    const grossMonthly = Math.round(baseGrossMonthly);
+    const grossYearly = grossMonthly * 12;
+    const basicMonthly = Math.round(grossMonthly * 0.50);
+    const basicYearly = basicMonthly * 12;
+    const hraMonthly = Math.round(grossMonthly * 0.18);
+    const hraYearly = hraMonthly * 12;
+    const ltaMonthly = Math.round(grossMonthly * 0.10);
+    const ltaYearly = ltaMonthly * 12;
+    const employerPfMonthly = Math.round(grossMonthly * 0.12);
+    const employerPfYearly = employerPfMonthly * 12;
+    const insuranceMonthly = Math.round(grossMonthly * 0.10);
+    const insuranceYearly = insuranceMonthly * 12;
+
+    const ptMonthly = 200;
+    const ptYearly = 2400;
+    const deductEmployerPfMonthly = Math.round(grossMonthly * 0.12);
+    const deductEmployerPfYearly = deductEmployerPfMonthly * 12;
+    const deductEmployeePfMonthly = Math.round(grossMonthly * 0.12);
+    const deductEmployeePfYearly = deductEmployeePfMonthly * 12;
+    const deductInsuranceMonthly = Math.round(grossMonthly * 0.10);
+    const deductInsuranceYearly = deductInsuranceMonthly * 12;
+    const otherDeductMonthly = 200;
+    const otherDeductYearly = 2400;
+
+    const totalDeductMonthly = ptMonthly + deductEmployerPfMonthly + deductEmployeePfMonthly + deductInsuranceMonthly + otherDeductMonthly;
+    const totalDeductYearly = ptYearly + deductEmployerPfYearly + deductEmployeePfYearly + deductInsuranceYearly + otherDeductYearly;
+    const netMonthly = Math.max(0, grossMonthly - totalDeductMonthly);
+    const netYearly = Math.max(0, grossYearly - totalDeductYearly);
+
+    const newBreakdown = {
+      monthlyGross: grossMonthly,
+      annualCtc: grossYearly,
+      basicMonthly,
+      basicYearly,
+      hraMonthly,
+      hraYearly,
+      ltaMonthly,
+      ltaYearly,
+      employeePfMonthly: employerPfMonthly,
+      employeePfYearly: employerPfYearly,
+      employerPfMonthly: deductEmployerPfMonthly,
+      employerPfYearly: deductEmployerPfYearly,
+      insuranceMonthly,
+      insuranceYearly,
+      ptMonthly,
+      ptYearly,
+      deductEmployeePfMonthly,
+      deductEmployeePfYearly,
+      deductInsuranceMonthly,
+      deductInsuranceYearly,
+      otherDeductMonthly,
+      otherDeductYearly,
+      totalDeductMonthly,
+      totalDeductYearly,
+      netMonthly,
+      netYearly
+    };
+
+    setCandidateOfferForms(prev => {
+      const existing = prev[candId] || (candEmail ? prev[candEmail] : undefined) || {};
+      return {
+        ...prev,
+        [candId]: {
+          ...existing,
+          annualCtc: String(grossYearly),
+          customBreakdown: newBreakdown
+        }
+      };
+    });
   };
 
   const handleUpdateCandidateOfferForm = (
@@ -4283,7 +4378,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     referenceNoOverride?: string,
     venueOverride?: string,
     candidateNameOverride?: string,
-    includeTrainingOverride?: boolean
+    includeTrainingOverride?: boolean,
+    customBreakdownOverride?: Partial<SalaryBreakdown>
   ) => {
     const candForm = candidateOfferForms[cand.id] || (cand.email ? candidateOfferForms[cand.email] : undefined) || (cand.email ? candidateOfferForms[cand.email.toLowerCase().trim()] : undefined) || {};
     const candName = candidateNameOverride || candForm.candidateName || cand.customName || `${cand.firstName || ''} ${cand.lastName || ''}`.trim() || 'Candidate';
@@ -4324,7 +4420,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       genderPrefix: 'Mr./Ms.',
       reportingVenue: venue,
       includeTraining: includeTraining,
-      trainingSalary: candForm.trainingSalary
+      trainingSalary: candForm.trainingSalary,
+      customBreakdown: customBreakdownOverride || candForm.customBreakdown
     };
 
     const fullHtml = renderFormalOfferFullHtml(offerData);
@@ -9824,97 +9921,448 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                               </div>
                             </div>
 
-                            {/* ── Salary & Deductions Interactive Calculation Table ── */}
-                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '0.75rem', overflow: 'hidden', fontSize: '0.72rem' }}>
-                              <div style={{ background: '#f1f5f9', padding: '6px 10px', fontWeight: 800, color: '#1e293b', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ textTransform: 'uppercase', letterSpacing: '0.5px' }}>GROSS SALARY CALCULATIONS</span>
-                                <span style={{ fontSize: '0.65rem', color: '#64748b' }}>Monthly / Yearly Breakup</span>
-                              </div>
-                              
-                              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.7rem' }}>
-                                <thead>
-                                  <tr style={{ background: '#ffffff', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontSize: '0.65rem' }}>
-                                    <th style={{ padding: '4px 10px' }}>Particulars</th>
-                                    <th style={{ padding: '4px 10px', textAlign: 'right' }}>Monthly (₹)</th>
-                                    <th style={{ padding: '4px 10px', textAlign: 'right' }}>Yearly (₹)</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                      <td style={{ padding: '4px 10px' }}>Basic (50%)</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.basicMonthly.toLocaleString('en-IN')}</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.basicYearly.toLocaleString('en-IN')}</td>
-                                    </tr>
-                                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                      <td style={{ padding: '4px 10px' }}>HRA (House Rent Allowance) (18%)</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.hraMonthly.toLocaleString('en-IN')}</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.hraYearly.toLocaleString('en-IN')}</td>
-                                    </tr>
-                                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                      <td style={{ padding: '4px 10px' }}>LTA (Leave Travel Allowance) (10%)</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.ltaMonthly.toLocaleString('en-IN')}</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.ltaYearly.toLocaleString('en-IN')}</td>
-                                    </tr>
-                                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                      <td style={{ padding: '4px 10px' }}>Employer PF (12%)</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.employeePfMonthly.toLocaleString('en-IN')}</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.employeePfYearly.toLocaleString('en-IN')}</td>
-                                    </tr>
-                                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                      <td style={{ padding: '4px 10px' }}>Insurance (10%)</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.insuranceMonthly.toLocaleString('en-IN')}</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.insuranceYearly.toLocaleString('en-IN')}</td>
-                                    </tr>
-                                    <tr style={{ background: '#f1f5f9', fontWeight: 800, color: '#0f172a', borderTop: '1px solid #cbd5e1' }}>
-                                      <td style={{ padding: '5px 10px' }}>Total Amount (CTC)</td>
-                                      <td style={{ padding: '5px 10px', textAlign: 'right' }}>₹{breakdown.monthlyGross.toLocaleString('en-IN')}</td>
-                                      <td style={{ padding: '5px 10px', textAlign: 'right' }}>₹{breakdown.annualCtc.toLocaleString('en-IN')}</td>
-                                    </tr>
+                            {/* ── Salary & Deductions Interactive Calculation Table (Editable & Reference Styled) ── */}
+                            {(() => {
+                              const isEditingBreakdown = !!editingBreakdownIds[c.id];
+                              const custom = candForm.customBreakdown;
 
-                                    {/* DEDUCTIONS SECTION */}
-                                    <tr style={{ background: '#fef2f2', borderTop: '1px solid #fecaca', color: '#991b1b', fontWeight: 800 }}>
-                                      <td colSpan={3} style={{ padding: '4px 10px', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>DEDUCTIONS</td>
-                                    </tr>
-                                    <tr style={{ borderBottom: '1px solid #fef2f2' }}>
-                                      <td style={{ padding: '4px 10px' }}>PT (Professional Tax)</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.ptMonthly.toLocaleString('en-IN')}</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.ptYearly.toLocaleString('en-IN')}</td>
-                                    </tr>
-                                    <tr style={{ borderBottom: '1px solid #fef2f2' }}>
-                                      <td style={{ padding: '4px 10px' }}>Employer PF (12%)</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.employerPfMonthly.toLocaleString('en-IN')}</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.employerPfYearly.toLocaleString('en-IN')}</td>
-                                    </tr>
-                                    <tr style={{ borderBottom: '1px solid #fef2f2' }}>
-                                      <td style={{ padding: '4px 10px' }}>Employee PF (12%)</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.deductEmployeePfMonthly.toLocaleString('en-IN')}</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.deductEmployeePfYearly.toLocaleString('en-IN')}</td>
-                                    </tr>
-                                    <tr style={{ borderBottom: '1px solid #fef2f2' }}>
-                                      <td style={{ padding: '4px 10px' }}>Insurance (10%)</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.deductInsuranceMonthly.toLocaleString('en-IN')}</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.deductInsuranceYearly.toLocaleString('en-IN')}</td>
-                                    </tr>
-                                    <tr style={{ borderBottom: '1px solid #fef2f2' }}>
-                                      <td style={{ padding: '4px 10px' }}>Other Deductions</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.otherDeductMonthly.toLocaleString('en-IN')}</td>
-                                      <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>₹{breakdown.otherDeductYearly.toLocaleString('en-IN')}</td>
-                                    </tr>
-                                    <tr style={{ background: '#fee2e2', fontWeight: 800, color: '#991b1b' }}>
-                                      <td style={{ padding: '5px 10px' }}>Total Deductions</td>
-                                      <td style={{ padding: '5px 10px', textAlign: 'right' }}>₹{breakdown.totalDeductMonthly.toLocaleString('en-IN')}</td>
-                                      <td style={{ padding: '5px 10px', textAlign: 'right' }}>₹{breakdown.totalDeductYearly.toLocaleString('en-IN')}</td>
-                                    </tr>
-                                  </tbody>
-                              </table>
-                              
-                              <div style={{ background: '#ecfdf5', padding: '6px 10px', borderTop: '1px solid #a7f3d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontWeight: 800, color: '#065f46', fontSize: '0.72rem' }}>Net Take-Home (In-Hand):</span>
-                                <span style={{ fontWeight: 800, color: '#047857', fontSize: '0.75rem' }}>
-                                  ₹{breakdown.netMonthly.toLocaleString('en-IN')} <span style={{ fontSize: '0.62rem', fontWeight: 600, color: '#059669' }}>/ mo (₹{breakdown.netYearly.toLocaleString('en-IN')} / yr)</span>
-                                </span>
-                              </div>
-                            </div>
+                              const bGrossMonthly = custom?.monthlyGross !== undefined ? Number(custom.monthlyGross) : breakdown.monthlyGross;
+                              const bGrossYearly = custom?.annualCtc !== undefined ? Number(custom.annualCtc) : (bGrossMonthly * 12);
+
+                              const bBasicMonthly = custom?.basicMonthly !== undefined ? Number(custom.basicMonthly) : breakdown.basicMonthly;
+                              const bBasicYearly = custom?.basicYearly !== undefined ? Number(custom.basicYearly) : (bBasicMonthly * 12);
+
+                              const bHraMonthly = custom?.hraMonthly !== undefined ? Number(custom.hraMonthly) : breakdown.hraMonthly;
+                              const bHraYearly = custom?.hraYearly !== undefined ? Number(custom.hraYearly) : (bHraMonthly * 12);
+
+                              const bLtaMonthly = custom?.ltaMonthly !== undefined ? Number(custom.ltaMonthly) : breakdown.ltaMonthly;
+                              const bLtaYearly = custom?.ltaYearly !== undefined ? Number(custom.ltaYearly) : (bLtaMonthly * 12);
+
+                              const bEmployerPfMonthly = custom?.employeePfMonthly !== undefined ? Number(custom.employeePfMonthly) : breakdown.employeePfMonthly;
+                              const bEmployerPfYearly = custom?.employeePfYearly !== undefined ? Number(custom.employeePfYearly) : (bEmployerPfMonthly * 12);
+
+                              const bInsuranceMonthly = custom?.insuranceMonthly !== undefined ? Number(custom.insuranceMonthly) : breakdown.insuranceMonthly;
+                              const bInsuranceYearly = custom?.insuranceYearly !== undefined ? Number(custom.insuranceYearly) : (bInsuranceMonthly * 12);
+
+                              const bCtcMonthly = bGrossMonthly;
+                              const bCtcYearly = bGrossYearly;
+
+                              const bPtMonthly = custom?.ptMonthly !== undefined ? Number(custom.ptMonthly) : breakdown.ptMonthly;
+                              const bPtYearly = custom?.ptYearly !== undefined ? Number(custom.ptYearly) : (bPtMonthly * 12);
+
+                              const bDedEmployerPfMonthly = custom?.employerPfMonthly !== undefined ? Number(custom.employerPfMonthly) : breakdown.employerPfMonthly;
+                              const bDedEmployerPfYearly = custom?.employerPfYearly !== undefined ? Number(custom.employerPfYearly) : (bDedEmployerPfMonthly * 12);
+
+                              const bDedEmployeePfMonthly = custom?.deductEmployeePfMonthly !== undefined ? Number(custom.deductEmployeePfMonthly) : breakdown.deductEmployeePfMonthly;
+                              const bDedEmployeePfYearly = custom?.deductEmployeePfYearly !== undefined ? Number(custom.deductEmployeePfYearly) : (bDedEmployeePfMonthly * 12);
+
+                              const bDedInsuranceMonthly = custom?.deductInsuranceMonthly !== undefined ? Number(custom.deductInsuranceMonthly) : breakdown.deductInsuranceMonthly;
+                              const bDedInsuranceYearly = custom?.deductInsuranceYearly !== undefined ? Number(custom.deductInsuranceYearly) : (bDedInsuranceMonthly * 12);
+
+                              const bOtherDedMonthly = custom?.otherDeductMonthly !== undefined ? Number(custom.otherDeductMonthly) : breakdown.otherDeductMonthly;
+                              const bOtherDedYearly = custom?.otherDeductYearly !== undefined ? Number(custom.otherDeductYearly) : (bOtherDedMonthly * 12);
+
+                              const bTotalDeductMonthly = bPtMonthly + bDedEmployerPfMonthly + bDedEmployeePfMonthly + bDedInsuranceMonthly + bOtherDedMonthly;
+                              const bTotalDeductYearly = bPtYearly + bDedEmployerPfYearly + bDedEmployeePfYearly + bDedInsuranceYearly + bOtherDedYearly;
+
+                              const bNetMonthly = Math.max(0, bGrossMonthly - bTotalDeductMonthly);
+                              const bNetYearly = Math.max(0, bGrossYearly - bTotalDeductYearly);
+
+                              return (
+                                <div>
+                                  {/* Table Header Bar & Edit Breakdown Controls */}
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0f172a', letterSpacing: '0.4px', textTransform: 'uppercase' }}>
+                                      SALARY PARTICULARS &amp; STATUTORY DEDUCTIONS
+                                    </span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      {!isEditingBreakdown ? (
+                                        <button
+                                          type="button"
+                                          disabled={isLocked}
+                                          onClick={() => toggleCandidateBreakdownEdit(c.id)}
+                                          style={{
+                                            background: '#eff6ff',
+                                            border: '1px solid #bfdbfe',
+                                            color: '#2563eb',
+                                            borderRadius: '4px',
+                                            padding: '4px 10px',
+                                            fontSize: '0.74rem',
+                                            fontWeight: 700,
+                                            cursor: isLocked ? 'not-allowed' : 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '4px'
+                                          }}
+                                        >
+                                          ✏️ Edit Breakdown
+                                        </button>
+                                      ) : (
+                                        <div style={{ display: 'flex', gap: '6px' }}>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleAutoCalculateCandidateBreakdown(c.id, c.email, bGrossMonthly)}
+                                            style={{
+                                              background: '#f8fafc',
+                                              border: '1px solid #cbd5e1',
+                                              color: '#0f172a',
+                                              borderRadius: '4px',
+                                              padding: '4px 8px',
+                                              fontSize: '0.72rem',
+                                              fontWeight: 700,
+                                              cursor: 'pointer'
+                                            }}
+                                          >
+                                            ↺ Auto-Calculate (50/18/10/12/10)
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleCandidateBreakdownEdit(c.id)}
+                                            style={{
+                                              background: '#16a34a',
+                                              border: 'none',
+                                              color: '#ffffff',
+                                              borderRadius: '4px',
+                                              padding: '4px 12px',
+                                              fontSize: '0.72rem',
+                                              fontWeight: 700,
+                                              cursor: 'pointer'
+                                            }}
+                                          >
+                                            ✓ Done Editing
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Exact Reference Table (Gross Salary Calculations & Deductions) */}
+                                  <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', border: '1.5px solid #000000', marginBottom: '12px', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' }}>
+                                    <thead>
+                                      <tr style={{ background: '#009a49', color: '#ffffff', textAlign: 'center', fontWeight: 'bold' }}>
+                                        <th colSpan={3} style={{ padding: '8px 12px', fontSize: '0.85rem', letterSpacing: '0.5px', textTransform: 'uppercase', border: '1.5px solid #000000', boxSizing: 'border-box' }}>
+                                          GROSS SALARY CALCULATIONS
+                                        </th>
+                                      </tr>
+                                      <tr style={{ background: '#ffff00', color: '#000000', fontWeight: 'bold', fontSize: '0.78rem' }}>
+                                        <th style={{ padding: '6px 12px', textAlign: 'left', border: '1px solid #000000', width: '50%', boxSizing: 'border-box' }}>Particulars</th>
+                                        <th style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000', width: '25%', boxSizing: 'border-box' }}>Monthly</th>
+                                        <th style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000', width: '25%', boxSizing: 'border-box' }}>Yearly</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody style={{ fontSize: '0.78rem' }}>
+                                      {/* Gross Primary Row (Highlighted Light Green) */}
+                                      <tr style={{ background: '#9bd770', fontWeight: 'bold' }}>
+                                        <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Gross</td>
+                                        <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {isEditingBreakdown ? (
+                                            <input
+                                              type="number"
+                                              value={bGrossMonthly}
+                                              onChange={(e) => {
+                                                const val = Number(e.target.value) || 0;
+                                                handleAutoCalculateCandidateBreakdown(c.id, c.email, val);
+                                              }}
+                                              style={{ width: '100px', textAlign: 'right', padding: '2px 4px', fontWeight: 'bold', border: '1px solid #16a34a', borderRadius: '3px', fontSize: '0.78rem' }}
+                                            />
+                                          ) : (
+                                            bGrossMonthly.toLocaleString('en-IN')
+                                          )}
+                                        </td>
+                                        <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {bGrossYearly.toLocaleString('en-IN')}
+                                        </td>
+                                      </tr>
+
+                                      {/* Basic */}
+                                      <tr>
+                                        <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Basic</td>
+                                        <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {isEditingBreakdown ? (
+                                            <input
+                                              type="number"
+                                              value={bBasicMonthly}
+                                              onChange={(e) => {
+                                                const val = Number(e.target.value) || 0;
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { basicMonthly: val, basicYearly: val * 12 });
+                                              }}
+                                              style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
+                                            />
+                                          ) : (
+                                            bBasicMonthly.toLocaleString('en-IN')
+                                          )}
+                                        </td>
+                                        <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {bBasicYearly.toLocaleString('en-IN')}
+                                        </td>
+                                      </tr>
+
+                                      {/* House Rent Allowance (HRA) */}
+                                      <tr>
+                                        <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>House Rent Allowance (HRA)</td>
+                                        <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {isEditingBreakdown ? (
+                                            <input
+                                              type="number"
+                                              value={bHraMonthly}
+                                              onChange={(e) => {
+                                                const val = Number(e.target.value) || 0;
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { hraMonthly: val, hraYearly: val * 12 });
+                                              }}
+                                              style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
+                                            />
+                                          ) : (
+                                            bHraMonthly.toLocaleString('en-IN')
+                                          )}
+                                        </td>
+                                        <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {bHraYearly.toLocaleString('en-IN')}
+                                        </td>
+                                      </tr>
+
+                                      {/* LTA */}
+                                      <tr>
+                                        <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>LTA</td>
+                                        <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {isEditingBreakdown ? (
+                                            <input
+                                              type="number"
+                                              value={bLtaMonthly}
+                                              onChange={(e) => {
+                                                const val = Number(e.target.value) || 0;
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { ltaMonthly: val, ltaYearly: val * 12 });
+                                              }}
+                                              style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
+                                            />
+                                          ) : (
+                                            bLtaMonthly.toLocaleString('en-IN')
+                                          )}
+                                        </td>
+                                        <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {bLtaYearly.toLocaleString('en-IN')}
+                                        </td>
+                                      </tr>
+
+                                      {/* Employer PF */}
+                                      <tr>
+                                        <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Employer PF</td>
+                                        <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {isEditingBreakdown ? (
+                                            <input
+                                              type="number"
+                                              value={bEmployerPfMonthly}
+                                              onChange={(e) => {
+                                                const val = Number(e.target.value) || 0;
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { employeePfMonthly: val, employeePfYearly: val * 12 });
+                                              }}
+                                              style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
+                                            />
+                                          ) : (
+                                            bEmployerPfMonthly.toLocaleString('en-IN')
+                                          )}
+                                        </td>
+                                        <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {bEmployerPfYearly.toLocaleString('en-IN')}
+                                        </td>
+                                      </tr>
+
+                                      {/* Insurance */}
+                                      <tr>
+                                        <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Insurance</td>
+                                        <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {isEditingBreakdown ? (
+                                            <input
+                                              type="number"
+                                              value={bInsuranceMonthly}
+                                              onChange={(e) => {
+                                                const val = Number(e.target.value) || 0;
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { insuranceMonthly: val, insuranceYearly: val * 12 });
+                                              }}
+                                              style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
+                                            />
+                                          ) : (
+                                            bInsuranceMonthly.toLocaleString('en-IN')
+                                          )}
+                                        </td>
+                                        <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {bInsuranceYearly.toLocaleString('en-IN')}
+                                        </td>
+                                      </tr>
+
+                                      {/* Total Amount (CTC) */}
+                                      <tr style={{ fontWeight: 'bold' }}>
+                                        <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Total Amount (CTC)</td>
+                                        <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {bCtcMonthly.toLocaleString('en-IN')}
+                                        </td>
+                                        <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {bCtcYearly.toLocaleString('en-IN')}
+                                        </td>
+                                      </tr>
+
+                                      {/* Section 2: DEDUCTIONS */}
+                                      <tr style={{ background: '#009a49', color: '#ffffff', textAlign: 'center', fontWeight: 'bold' }}>
+                                        <td colSpan={3} style={{ padding: '8px 12px', fontSize: '0.85rem', letterSpacing: '0.5px', textTransform: 'uppercase', border: '1.5px solid #000000' }}>
+                                          DEDUCTIONS
+                                        </td>
+                                      </tr>
+
+                                      {/* Professional Tax */}
+                                      <tr>
+                                        <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Professional Tax</td>
+                                        <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {isEditingBreakdown ? (
+                                            <input
+                                              type="number"
+                                              value={bPtMonthly}
+                                              onChange={(e) => {
+                                                const val = Number(e.target.value) || 0;
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { ptMonthly: val, ptYearly: val * 12 });
+                                              }}
+                                              style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
+                                            />
+                                          ) : (
+                                            bPtMonthly.toLocaleString('en-IN')
+                                          )}
+                                        </td>
+                                        <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {bPtYearly.toLocaleString('en-IN')}
+                                        </td>
+                                      </tr>
+
+                                      {/* Employer PF (Deductions) */}
+                                      <tr>
+                                        <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Employer PF</td>
+                                        <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {isEditingBreakdown ? (
+                                            <input
+                                              type="number"
+                                              value={bDedEmployerPfMonthly}
+                                              onChange={(e) => {
+                                                const val = Number(e.target.value) || 0;
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { employerPfMonthly: val, employerPfYearly: val * 12 });
+                                              }}
+                                              style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
+                                            />
+                                          ) : (
+                                            bDedEmployerPfMonthly.toLocaleString('en-IN')
+                                          )}
+                                        </td>
+                                        <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {bDedEmployerPfYearly.toLocaleString('en-IN')}
+                                        </td>
+                                      </tr>
+
+                                      {/* Employee PF (Deductions) */}
+                                      <tr>
+                                        <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Employee PF</td>
+                                        <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {isEditingBreakdown ? (
+                                            <input
+                                              type="number"
+                                              value={bDedEmployeePfMonthly}
+                                              onChange={(e) => {
+                                                const val = Number(e.target.value) || 0;
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { deductEmployeePfMonthly: val, deductEmployeePfYearly: val * 12 });
+                                              }}
+                                              style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
+                                            />
+                                          ) : (
+                                            bDedEmployeePfMonthly.toLocaleString('en-IN')
+                                          )}
+                                        </td>
+                                        <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {bDedEmployeePfYearly.toLocaleString('en-IN')}
+                                        </td>
+                                      </tr>
+
+                                      {/* Insurance (Deductions) */}
+                                      <tr>
+                                        <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Insurance</td>
+                                        <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {isEditingBreakdown ? (
+                                            <input
+                                              type="number"
+                                              value={bDedInsuranceMonthly}
+                                              onChange={(e) => {
+                                                const val = Number(e.target.value) || 0;
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { deductInsuranceMonthly: val, deductInsuranceYearly: val * 12 });
+                                              }}
+                                              style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
+                                            />
+                                          ) : (
+                                            bDedInsuranceMonthly.toLocaleString('en-IN')
+                                          )}
+                                        </td>
+                                        <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {bDedInsuranceYearly.toLocaleString('en-IN')}
+                                        </td>
+                                      </tr>
+
+                                      {/* Other Deductions */}
+                                      <tr>
+                                        <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Other Deductions</td>
+                                        <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {isEditingBreakdown ? (
+                                            <input
+                                              type="number"
+                                              value={bOtherDedMonthly}
+                                              onChange={(e) => {
+                                                const val = Number(e.target.value) || 0;
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { otherDeductMonthly: val, otherDeductYearly: val * 12 });
+                                              }}
+                                              style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
+                                            />
+                                          ) : (
+                                            bOtherDedMonthly.toLocaleString('en-IN')
+                                          )}
+                                        </td>
+                                        <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {bOtherDedYearly.toLocaleString('en-IN')}
+                                        </td>
+                                      </tr>
+
+                                      {/* Total Deductions */}
+                                      <tr style={{ fontWeight: 'bold' }}>
+                                        <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Total Deductions</td>
+                                        <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {bTotalDeductMonthly.toLocaleString('en-IN')}
+                                        </td>
+                                        <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                          {bTotalDeductYearly.toLocaleString('en-IN')}
+                                        </td>
+                                      </tr>
+
+                                      {/* Net Take-Home Salary (In-Hand) */}
+                                      <tr style={{ background: '#e0f2fe', fontWeight: 'bold', fontSize: '0.85rem' }}>
+                                        <td style={{ padding: '8px 12px', border: '1.5px solid #000000', color: '#0f172a' }}>Net Take-Home Salary (In-Hand)</td>
+                                        <td style={{ padding: '8px 12px', textAlign: 'right', border: '1.5px solid #000000', color: '#0f172a' }}>
+                                          ₹{bNetMonthly.toLocaleString('en-IN')}
+                                        </td>
+                                        <td style={{ padding: '8px 12px', textAlign: 'right', border: '1.5px solid #000000', color: '#0f172a' }}>
+                                          ₹{bNetYearly.toLocaleString('en-IN')}
+                                        </td>
+                                      </tr>
+                                    </tbody>
+                                  </table>
+
+                                  {/* Net Disbursed Salary for the Month (In Words) Banner */}
+                                  <div style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', border: '1.5px solid #86efac', borderRadius: '8px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                                    <div>
+                                      <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                        Net Disbursed Salary for the Month
+                                      </div>
+                                      <div style={{ fontSize: '0.76rem', color: '#15803d', fontStyle: 'italic', marginTop: '2px' }}>
+                                        ({numberToWordsINR(bNetMonthly)})
+                                      </div>
+                                    </div>
+                                    <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#14532d' }}>
+                                      ₹{bNetMonthly.toLocaleString('en-IN')}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
 
                             {/* Actions or Simulation */}
                             {c.offerStatus !== 'SENT' ? (
@@ -12603,7 +13051,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                   genderPrefix: 'Mr./Ms.',
                   reportingVenue: venue,
                   includeTraining: previewOfferWithTraining,
-                  trainingSalary: candForm.trainingSalary
+                  trainingSalary: candForm.trainingSalary,
+                  customBreakdown: candForm.customBreakdown
                 };
 
                 const pagesToRender = previewOfferMode === 'all' 
