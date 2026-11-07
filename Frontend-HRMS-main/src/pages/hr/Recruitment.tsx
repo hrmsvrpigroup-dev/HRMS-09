@@ -2118,7 +2118,43 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     setCandidateOfferForms(prev => {
       const existing = prev[candId] || (emailKey ? prev[emailKey] : undefined) || {};
       const currentBreakdown = existing.customBreakdown || {};
-      const updatedBreakdown = { ...currentBreakdown, ...updates };
+      const merged = { ...currentBreakdown, ...updates };
+
+      const basicM = merged.basicMonthly !== undefined ? Number(merged.basicMonthly) : 0;
+      const basicY = merged.basicYearly !== undefined ? Number(merged.basicYearly) : basicM * 12;
+      const hraM = merged.hraMonthly !== undefined ? Number(merged.hraMonthly) : 0;
+      const ltaM = merged.ltaMonthly !== undefined ? Number(merged.ltaMonthly) : 0;
+      const empPfM = merged.employeePfMonthly !== undefined ? Number(merged.employeePfMonthly) : 0;
+      const insM = merged.insuranceMonthly !== undefined ? Number(merged.insuranceMonthly) : 0;
+
+      const grossM = merged.monthlyGross !== undefined ? Number(merged.monthlyGross) : (basicM + hraM + ltaM + empPfM + insM);
+      const grossY = merged.annualCtc !== undefined ? Number(merged.annualCtc) : grossM * 12;
+
+      const ptM = merged.ptMonthly !== undefined ? Number(merged.ptMonthly) : 200;
+      const dedEmpPfM = merged.employerPfMonthly !== undefined ? Number(merged.employerPfMonthly) : 0;
+      const dedEmpeePfM = merged.deductEmployeePfMonthly !== undefined ? Number(merged.deductEmployeePfMonthly) : 0;
+      const dedInsM = merged.deductInsuranceMonthly !== undefined ? Number(merged.deductInsuranceMonthly) : 0;
+      const otherM = merged.otherDeductMonthly !== undefined ? Number(merged.otherDeductMonthly) : 200;
+
+      const totalDeductM = ptM + dedEmpPfM + dedEmpeePfM + dedInsM + otherM;
+      const totalDeductY = totalDeductM * 12;
+
+      const isWithGross = existing.withGross === true;
+      const baseForNetM = isWithGross ? grossM : basicM;
+      const baseForNetY = isWithGross ? grossY : basicY;
+
+      const netM = Math.max(0, baseForNetM - totalDeductM);
+      const netY = Math.max(0, baseForNetY - totalDeductY);
+
+      const updatedBreakdown = {
+        ...merged,
+        monthlyGross: grossM,
+        annualCtc: grossY,
+        totalDeductMonthly: totalDeductM,
+        totalDeductYearly: totalDeductY,
+        netMonthly: netM,
+        netYearly: netY
+      };
       const updatedForm = { ...existing, customBreakdown: updatedBreakdown };
 
       return {
@@ -2136,14 +2172,27 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       const currentBreakdown = existing.customBreakdown;
       let updatedBreakdown = currentBreakdown;
       if (currentBreakdown) {
-        const baseMonthly = withGross 
-          ? (currentBreakdown.monthlyGross || Math.round(Number(existing.annualCtc || 720000) / 12)) 
-          : (currentBreakdown.basicMonthly || Math.round((currentBreakdown.monthlyGross || Number(existing.annualCtc || 720000) / 12) * 0.5));
-        const baseYearly = baseMonthly * 12;
-        const totalDeductM = currentBreakdown.totalDeductMonthly !== undefined ? currentBreakdown.totalDeductMonthly : 0;
-        const totalDeductY = currentBreakdown.totalDeductYearly !== undefined ? currentBreakdown.totalDeductYearly : (totalDeductM * 12);
+        const basicM = currentBreakdown.basicMonthly !== undefined ? Number(currentBreakdown.basicMonthly) : 0;
+        const basicY = currentBreakdown.basicYearly !== undefined ? Number(currentBreakdown.basicYearly) : basicM * 12;
+        const grossM = currentBreakdown.monthlyGross !== undefined ? Number(currentBreakdown.monthlyGross) : Math.round(Number(existing.annualCtc || 720000) / 12);
+        const grossY = currentBreakdown.annualCtc !== undefined ? Number(currentBreakdown.annualCtc) : grossM * 12;
+
+        const baseMonthly = withGross ? grossM : basicM;
+        const baseYearly = withGross ? grossY : basicY;
+
+        const ptM = currentBreakdown.ptMonthly !== undefined ? Number(currentBreakdown.ptMonthly) : 200;
+        const dedEmpPfM = currentBreakdown.employerPfMonthly !== undefined ? Number(currentBreakdown.employerPfMonthly) : 0;
+        const dedEmpeePfM = currentBreakdown.deductEmployeePfMonthly !== undefined ? Number(currentBreakdown.deductEmployeePfMonthly) : 0;
+        const dedInsM = currentBreakdown.deductInsuranceMonthly !== undefined ? Number(currentBreakdown.deductInsuranceMonthly) : 0;
+        const otherM = currentBreakdown.otherDeductMonthly !== undefined ? Number(currentBreakdown.otherDeductMonthly) : 200;
+
+        const totalDeductM = ptM + dedEmpPfM + dedEmpeePfM + dedInsM + otherM;
+        const totalDeductY = totalDeductM * 12;
+
         updatedBreakdown = {
           ...currentBreakdown,
+          totalDeductMonthly: totalDeductM,
+          totalDeductYearly: totalDeductY,
           netMonthly: Math.max(0, baseMonthly - totalDeductM),
           netYearly: Math.max(0, baseYearly - totalDeductY)
         };
@@ -9797,6 +9846,102 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
                         const isEditing = !!editingOfferIds[c.id];
                         const isLocked = c.offerStatus === 'SENT' && !isEditing;
+                        const isEditingBreakdown = !!editingBreakdownIds[c.id];
+                        const withGross = candForm.withGross === true;
+                        const custom = candForm.customBreakdown;
+
+                        const bGrossMonthly = custom?.monthlyGross !== undefined ? Number(custom.monthlyGross) : breakdown.monthlyGross;
+                        const bGrossYearly = custom?.annualCtc !== undefined ? Number(custom.annualCtc) : (bGrossMonthly * 12);
+
+                        const bBasicMonthly = custom?.basicMonthly !== undefined ? Number(custom.basicMonthly) : breakdown.basicMonthly;
+                        const bBasicYearly = custom?.basicYearly !== undefined ? Number(custom.basicYearly) : (bBasicMonthly * 12);
+
+                        const bHraMonthly = custom?.hraMonthly !== undefined ? Number(custom.hraMonthly) : breakdown.hraMonthly;
+                        const bHraYearly = custom?.hraYearly !== undefined ? Number(custom.hraYearly) : (bHraMonthly * 12);
+
+                        const bLtaMonthly = custom?.ltaMonthly !== undefined ? Number(custom.ltaMonthly) : breakdown.ltaMonthly;
+                        const bLtaYearly = custom?.ltaYearly !== undefined ? Number(custom.ltaYearly) : (bLtaMonthly * 12);
+
+                        const bEmployerPfMonthly = custom?.employeePfMonthly !== undefined ? Number(custom.employeePfMonthly) : breakdown.employeePfMonthly;
+                        const bEmployerPfYearly = custom?.employeePfYearly !== undefined ? Number(custom.employeePfYearly) : (bEmployerPfMonthly * 12);
+
+                        const bInsuranceMonthly = custom?.insuranceMonthly !== undefined ? Number(custom.insuranceMonthly) : breakdown.insuranceMonthly;
+                        const bInsuranceYearly = custom?.insuranceYearly !== undefined ? Number(custom.insuranceYearly) : (bInsuranceMonthly * 12);
+
+                        const bCtcMonthly = bGrossMonthly;
+                        const bCtcYearly = bGrossYearly;
+
+                        const bPtMonthly = custom?.ptMonthly !== undefined ? Number(custom.ptMonthly) : breakdown.ptMonthly;
+                        const bPtYearly = custom?.ptYearly !== undefined ? Number(custom.ptYearly) : (bPtMonthly * 12);
+
+                        const bDedEmployerPfMonthly = custom?.employerPfMonthly !== undefined ? Number(custom.employerPfMonthly) : breakdown.employerPfMonthly;
+                        const bDedEmployerPfYearly = custom?.employerPfYearly !== undefined ? Number(custom.employerPfYearly) : (bDedEmployerPfMonthly * 12);
+
+                        const bDedEmployeePfMonthly = custom?.deductEmployeePfMonthly !== undefined ? Number(custom.deductEmployeePfMonthly) : breakdown.deductEmployeePfMonthly;
+                        const bDedEmployeePfYearly = custom?.deductEmployeePfYearly !== undefined ? Number(custom.deductEmployeePfYearly) : (bDedEmployeePfMonthly * 12);
+
+                        const bDedInsuranceMonthly = custom?.deductInsuranceMonthly !== undefined ? Number(custom.deductInsuranceMonthly) : breakdown.deductInsuranceMonthly;
+                        const bDedInsuranceYearly = custom?.deductInsuranceYearly !== undefined ? Number(custom.deductInsuranceYearly) : (bDedInsuranceMonthly * 12);
+
+                        const bOtherDedMonthly = custom?.otherDeductMonthly !== undefined ? Number(custom.otherDeductMonthly) : breakdown.otherDeductMonthly;
+                        const bOtherDedYearly = custom?.otherDeductYearly !== undefined ? Number(custom.otherDeductYearly) : (bOtherDedMonthly * 12);
+
+                        const bTotalDeductMonthly = bPtMonthly + bDedEmployerPfMonthly + bDedEmployeePfMonthly + bDedInsuranceMonthly + bOtherDedMonthly;
+                        const bTotalDeductYearly = bPtYearly + bDedEmployerPfYearly + bDedEmployeePfYearly + bDedInsuranceYearly + bOtherDedYearly;
+
+                        const baseForNetMonthly = withGross ? bGrossMonthly : bBasicMonthly;
+                        const baseForNetYearly = withGross ? bGrossYearly : bBasicYearly;
+
+                        const bNetMonthly = Math.max(0, baseForNetMonthly - bTotalDeductMonthly);
+                        const bNetYearly = Math.max(0, baseForNetYearly - bTotalDeductYearly);
+
+                        const activeBreakdown: SalaryBreakdown = {
+                          monthlyGross: bGrossMonthly,
+                          annualCtc: bGrossYearly,
+                          basicMonthly: bBasicMonthly,
+                          basicYearly: bBasicYearly,
+                          hraMonthly: bHraMonthly,
+                          hraYearly: bHraYearly,
+                          ltaMonthly: bLtaMonthly,
+                          ltaYearly: bLtaYearly,
+                          employeePfMonthly: bEmployerPfMonthly,
+                          employeePfYearly: bEmployerPfYearly,
+                          insuranceMonthly: bInsuranceMonthly,
+                          insuranceYearly: bInsuranceYearly,
+                          otherAllowMonthly: bInsuranceMonthly,
+                          otherAllowYearly: bInsuranceYearly,
+                          ptMonthly: bPtMonthly,
+                          ptYearly: bPtYearly,
+                          employerPfMonthly: bDedEmployerPfMonthly,
+                          employerPfYearly: bDedEmployerPfYearly,
+                          deductEmployeePfMonthly: bDedEmployeePfMonthly,
+                          deductEmployeePfYearly: bDedEmployeePfYearly,
+                          pfMonthly: bDedEmployeePfMonthly,
+                          pfYearly: bDedEmployeePfYearly,
+                          deductInsuranceMonthly: bDedInsuranceMonthly,
+                          deductInsuranceYearly: bDedInsuranceYearly,
+                          otherDeductMonthly: bOtherDedMonthly,
+                          otherDeductYearly: bOtherDedYearly,
+                          totalDeductMonthly: bTotalDeductMonthly,
+                          totalDeductYearly: bTotalDeductYearly,
+                          netMonthly: bNetMonthly,
+                          netYearly: bNetYearly
+                        };
+
+                        const triggerPreviewModal = (latestCand: Candidate) => {
+                          const emailKey = c.email ? c.email.trim().toLowerCase() : undefined;
+                          setCandidateOfferForms(prev => {
+                            const existing = prev[c.id] || (emailKey ? prev[emailKey] : undefined) || {};
+                            const updatedForm = { ...existing, customBreakdown: activeBreakdown, withGross };
+                            return {
+                              ...prev,
+                              [c.id]: updatedForm,
+                              ...(emailKey ? { [emailKey]: updatedForm } : {})
+                            };
+                          });
+                          setPreviewOfferWithTraining(candForm.includeTraining !== false);
+                          setPreviewOfferCandidate(latestCand);
+                        };
 
                         return (
                           <div key={c.id} style={{ background: '#fff', border: isEditing ? '1.5px solid #3b82f6' : '1.5px solid #e2e8f0', borderRadius: '1rem', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.85rem', boxShadow: isEditing ? '0 4px 20px -2px rgba(59, 130, 246, 0.15)' : '0 4px 15px -3px rgba(0,0,0,0.04)' }}>
@@ -9965,57 +10110,6 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                             </div>
 
                             {/* ── Salary & Deductions Interactive Calculation Table (Editable & Reference Styled) ── */}
-                            {(() => {
-                              const isEditingBreakdown = !!editingBreakdownIds[c.id];
-                              const withGross = candForm.withGross === true;
-                              const custom = candForm.customBreakdown;
-
-                              const bGrossMonthly = custom?.monthlyGross !== undefined ? Number(custom.monthlyGross) : breakdown.monthlyGross;
-                              const bGrossYearly = custom?.annualCtc !== undefined ? Number(custom.annualCtc) : (bGrossMonthly * 12);
-
-                              const bBasicMonthly = custom?.basicMonthly !== undefined ? Number(custom.basicMonthly) : breakdown.basicMonthly;
-                              const bBasicYearly = custom?.basicYearly !== undefined ? Number(custom.basicYearly) : (bBasicMonthly * 12);
-
-                              const bHraMonthly = custom?.hraMonthly !== undefined ? Number(custom.hraMonthly) : breakdown.hraMonthly;
-                              const bHraYearly = custom?.hraYearly !== undefined ? Number(custom.hraYearly) : (bHraMonthly * 12);
-
-                              const bLtaMonthly = custom?.ltaMonthly !== undefined ? Number(custom.ltaMonthly) : breakdown.ltaMonthly;
-                              const bLtaYearly = custom?.ltaYearly !== undefined ? Number(custom.ltaYearly) : (bLtaMonthly * 12);
-
-                              const bEmployerPfMonthly = custom?.employeePfMonthly !== undefined ? Number(custom.employeePfMonthly) : breakdown.employeePfMonthly;
-                              const bEmployerPfYearly = custom?.employeePfYearly !== undefined ? Number(custom.employeePfYearly) : (bEmployerPfMonthly * 12);
-
-                              const bInsuranceMonthly = custom?.insuranceMonthly !== undefined ? Number(custom.insuranceMonthly) : breakdown.insuranceMonthly;
-                              const bInsuranceYearly = custom?.insuranceYearly !== undefined ? Number(custom.insuranceYearly) : (bInsuranceMonthly * 12);
-
-                              const bCtcMonthly = bGrossMonthly;
-                              const bCtcYearly = bGrossYearly;
-
-                              const bPtMonthly = custom?.ptMonthly !== undefined ? Number(custom.ptMonthly) : breakdown.ptMonthly;
-                              const bPtYearly = custom?.ptYearly !== undefined ? Number(custom.ptYearly) : (bPtMonthly * 12);
-
-                              const bDedEmployerPfMonthly = custom?.employerPfMonthly !== undefined ? Number(custom.employerPfMonthly) : breakdown.employerPfMonthly;
-                              const bDedEmployerPfYearly = custom?.employerPfYearly !== undefined ? Number(custom.employerPfYearly) : (bDedEmployerPfMonthly * 12);
-
-                              const bDedEmployeePfMonthly = custom?.deductEmployeePfMonthly !== undefined ? Number(custom.deductEmployeePfMonthly) : breakdown.deductEmployeePfMonthly;
-                              const bDedEmployeePfYearly = custom?.deductEmployeePfYearly !== undefined ? Number(custom.deductEmployeePfYearly) : (bDedEmployeePfMonthly * 12);
-
-                              const bDedInsuranceMonthly = custom?.deductInsuranceMonthly !== undefined ? Number(custom.deductInsuranceMonthly) : breakdown.deductInsuranceMonthly;
-                              const bDedInsuranceYearly = custom?.deductInsuranceYearly !== undefined ? Number(custom.deductInsuranceYearly) : (bDedInsuranceMonthly * 12);
-
-                              const bOtherDedMonthly = custom?.otherDeductMonthly !== undefined ? Number(custom.otherDeductMonthly) : breakdown.otherDeductMonthly;
-                              const bOtherDedYearly = custom?.otherDeductYearly !== undefined ? Number(custom.otherDeductYearly) : (bOtherDedMonthly * 12);
-
-                              const bTotalDeductMonthly = bPtMonthly + bDedEmployerPfMonthly + bDedEmployeePfMonthly + bDedInsuranceMonthly + bOtherDedMonthly;
-                              const bTotalDeductYearly = bPtYearly + bDedEmployerPfYearly + bDedEmployeePfYearly + bDedInsuranceYearly + bOtherDedYearly;
-
-                              const baseForNetMonthly = withGross ? bGrossMonthly : bBasicMonthly;
-                              const baseForNetYearly = withGross ? bGrossYearly : bBasicYearly;
-
-                              const bNetMonthly = Math.max(0, baseForNetMonthly - bTotalDeductMonthly);
-                              const bNetYearly = Math.max(0, baseForNetYearly - bTotalDeductYearly);
-
-                              return (
                                 <div>
                                   {/* Table Header Bar & Edit Breakdown Controls */}
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
@@ -10476,8 +10570,6 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                     </div>
                                   </div>
                                 </div>
-                              );
-                            })()}
 
                             {/* Actions or Simulation */}
                             {c.offerStatus !== 'SENT' ? (
@@ -10501,8 +10593,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                       offerJoiningDate: joiningDate,
                                       callLetterVenue: venue
                                     };
-                                    setPreviewOfferWithTraining(candForm.includeTraining !== false);
-                                    setPreviewOfferCandidate(latestCand);
+                                    triggerPreviewModal(latestCand);
                                   }}
                                   className="rec-btn-outline"
                                   style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', fontWeight: 700, gap: '4px' }}
@@ -10512,7 +10603,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleDownloadFormalOfferLetter(c, annualCtcNum, joiningDate, designation, referenceNo, venue, candName)}
+                                  onClick={() => handleDownloadFormalOfferLetter(c, annualCtcNum, joiningDate, designation, referenceNo, venue, candName, candForm.includeTraining !== false, activeBreakdown)}
                                   className="rec-btn-outline"
                                   style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff', fontWeight: 700, gap: '4px' }}
                                   title="Download / Print Formal Offer Letter Contract PDF"
@@ -10561,8 +10652,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                         offerJoiningDate: joiningDate,
                                         callLetterVenue: venue
                                       };
-                                      setPreviewOfferWithTraining(candForm.includeTraining !== false);
-                                      setPreviewOfferCandidate(latestCand);
+                                      triggerPreviewModal(latestCand);
                                     }}
                                     className="rec-btn-outline"
                                     style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', fontWeight: 700, gap: '4px' }}
@@ -10571,7 +10661,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => handleDownloadFormalOfferLetter(c, annualCtcNum, joiningDate, designation, referenceNo, venue, candName)}
+                                    onClick={() => handleDownloadFormalOfferLetter(c, annualCtcNum, joiningDate, designation, referenceNo, venue, candName, candForm.includeTraining !== false, activeBreakdown)}
                                     className="rec-btn-outline"
                                     style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff', fontWeight: 700, gap: '4px' }}
                                   >
@@ -10611,8 +10701,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                         offerJoiningDate: joiningDate,
                                         callLetterVenue: venue
                                       };
-                                      setPreviewOfferWithTraining(candForm.includeTraining !== false);
-                                      setPreviewOfferCandidate(latestCand);
+                                      triggerPreviewModal(latestCand);
                                     }}
                                     className="rec-btn-outline"
                                     style={{ height: '32px', padding: '0 12px', fontSize: '0.7rem', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', fontWeight: 700, gap: '4px' }}
@@ -10621,7 +10710,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => handleDownloadFormalOfferLetter(c, annualCtcNum, joiningDate, designation, referenceNo, venue, candName)}
+                                    onClick={() => handleDownloadFormalOfferLetter(c, annualCtcNum, joiningDate, designation, referenceNo, venue, candName, candForm.includeTraining !== false, activeBreakdown)}
                                     className="rec-btn-outline"
                                     style={{ height: '32px', padding: '0 12px', fontSize: '0.7rem', color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff', fontWeight: 700, gap: '4px' }}
                                   >

@@ -154,15 +154,74 @@ export function numberToWordsINR(num: number): string {
 
 export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): string {
   const autoB = calculateSalaryBreakdown(d.annualCtc || 420000);
-  const b = d.customBreakdown ? { ...autoB, ...d.customBreakdown } : { ...autoB };
+  const rawB = d.customBreakdown ? { ...autoB, ...d.customBreakdown } : { ...autoB };
+
+  // Re-derive particulars from raw items
+  const basicMonthly = Math.round(Number(rawB.basicMonthly) || 0);
+  const basicYearly = basicMonthly * 12;
+  const hraMonthly = Math.round(Number(rawB.hraMonthly) || 0);
+  const hraYearly = hraMonthly * 12;
+  const ltaMonthly = Math.round(Number(rawB.ltaMonthly) || 0);
+  const ltaYearly = ltaMonthly * 12;
+  const employeePfMonthly = Math.round(Number(rawB.employeePfMonthly) || 0);
+  const employeePfYearly = employeePfMonthly * 12;
+  const insuranceMonthly = Math.round(Number(rawB.insuranceMonthly) || 0);
+  const insuranceYearly = insuranceMonthly * 12;
+
+  const monthlyGross = rawB.monthlyGross !== undefined ? Number(rawB.monthlyGross) : (basicMonthly + hraMonthly + ltaMonthly + employeePfMonthly + insuranceMonthly);
+  const annualCtc = monthlyGross * 12;
+
+  // Re-derive deductions dynamically so Total Deductions always equals the exact sum of rows
+  const ptMonthly = Math.round(Number(rawB.ptMonthly) || 200);
+  const ptYearly = ptMonthly * 12;
+  const employerPfMonthly = Math.round(Number(rawB.employerPfMonthly) || 0);
+  const employerPfYearly = employerPfMonthly * 12;
+  const deductEmployeePfMonthly = Math.round(Number(rawB.deductEmployeePfMonthly) || 0);
+  const deductEmployeePfYearly = deductEmployeePfMonthly * 12;
+  const deductInsuranceMonthly = Math.round(Number(rawB.deductInsuranceMonthly) || 0);
+  const deductInsuranceYearly = deductInsuranceMonthly * 12;
+  const otherDeductMonthly = Math.round(Number(rawB.otherDeductMonthly) || 200);
+  const otherDeductYearly = otherDeductMonthly * 12;
+
+  const totalDeductMonthly = ptMonthly + employerPfMonthly + deductEmployeePfMonthly + deductInsuranceMonthly + otherDeductMonthly;
+  const totalDeductYearly = totalDeductMonthly * 12;
+
   const isWithGross = d.withGross === true && !d.withoutGross;
-  if (!isWithGross) {
-    b.netMonthly = Math.max(0, b.basicMonthly - b.totalDeductMonthly);
-    b.netYearly = Math.max(0, b.basicYearly - b.totalDeductYearly);
-  } else {
-    b.netMonthly = Math.max(0, b.monthlyGross - b.totalDeductMonthly);
-    b.netYearly = Math.max(0, b.annualCtc - b.totalDeductYearly);
-  }
+  const baseForNetMonthly = isWithGross ? monthlyGross : basicMonthly;
+  const baseForNetYearly = isWithGross ? annualCtc : basicYearly;
+
+  const netMonthly = Math.max(0, baseForNetMonthly - totalDeductMonthly);
+  const netYearly = Math.max(0, baseForNetYearly - totalDeductYearly);
+
+  const b: SalaryBreakdown = {
+    ...rawB,
+    annualCtc,
+    monthlyGross,
+    basicMonthly,
+    basicYearly,
+    hraMonthly,
+    hraYearly,
+    ltaMonthly,
+    ltaYearly,
+    employeePfMonthly,
+    employeePfYearly,
+    insuranceMonthly,
+    insuranceYearly,
+    ptMonthly,
+    ptYearly,
+    employerPfMonthly,
+    employerPfYearly,
+    deductEmployeePfMonthly,
+    deductEmployeePfYearly,
+    deductInsuranceMonthly,
+    deductInsuranceYearly,
+    otherDeductMonthly,
+    otherDeductYearly,
+    totalDeductMonthly,
+    totalDeductYearly,
+    netMonthly,
+    netYearly
+  };
   const rawWords = numberToWordsINR(b.annualCtc);
   const ctcWords = rawWords
     ? (rawWords.startsWith('Rupees') ? rawWords : 'Rupees ' + rawWords.replace(/\s*Rupees Only$/i, ' Only'))
@@ -522,8 +581,8 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
                 ${d.withGross === true && !d.withoutGross ? `
                 <tr class="table-row-lightgreen-gross">
                     <td><strong>Gross</strong></td>
-                    <td style="text-align: right;"><strong>\${b.monthlyGross.toLocaleString('en-IN')}</strong></td>
-                    <td style="text-align: right;"><strong>\${b.annualCtc.toLocaleString('en-IN')}</strong></td>
+                    <td style="text-align: right;"><strong>${b.monthlyGross.toLocaleString('en-IN')}</strong></td>
+                    <td style="text-align: right;"><strong>${b.annualCtc.toLocaleString('en-IN')}</strong></td>
                   </tr>
                 ` : ''}
 
