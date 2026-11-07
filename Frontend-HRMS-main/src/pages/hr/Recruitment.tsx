@@ -2071,6 +2071,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     venue?: string;
     includeTraining?: boolean;
     trainingSalary?: string;
+    withGross?: boolean;
     customBreakdown?: any;
   }>>(() => {
     try {
@@ -2128,7 +2129,20 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     });
   };
 
-  const handleAutoCalculateCandidateBreakdown = (candId: string, candEmail: string | undefined, baseGrossMonthly: number) => {
+  const handleToggleWithGross = (candId: string, candEmail: string | undefined, withGross: boolean) => {
+    setCandidateOfferForms(prev => {
+      const existing = prev[candId] || (candEmail ? prev[candEmail] : undefined) || {};
+      return {
+        ...prev,
+        [candId]: {
+          ...existing,
+          withGross
+        }
+      };
+    });
+  };
+
+  const handleAutoCalculateCandidateBreakdown = (candId: string, candEmail: string | undefined, baseGrossMonthly: number, withGrossMode?: boolean) => {
     const grossMonthly = Math.round(baseGrossMonthly);
     const grossYearly = grossMonthly * 12;
     const basicMonthly = Math.round(grossMonthly * 0.50);
@@ -2194,6 +2208,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         [candId]: {
           ...existing,
           annualCtc: String(grossYearly),
+          withGross: withGrossMode !== undefined ? withGrossMode : (existing.withGross !== undefined ? existing.withGross : true),
           customBreakdown: newBreakdown
         }
       };
@@ -4409,6 +4424,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       ? includeTrainingOverride 
       : (candForm.includeTraining !== undefined ? candForm.includeTraining : true);
 
+    const isWithGross = candForm.withGross !== false;
     const offerData: OfferLetterData = {
       candidateName: candName,
       jobTitle: role,
@@ -4421,6 +4437,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       reportingVenue: venue,
       includeTraining: includeTraining,
       trainingSalary: candForm.trainingSalary,
+      withGross: isWithGross,
+      withoutGross: !isWithGross,
       customBreakdown: customBreakdownOverride || candForm.customBreakdown
     };
 
@@ -9924,6 +9942,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                             {/* ── Salary & Deductions Interactive Calculation Table (Editable & Reference Styled) ── */}
                             {(() => {
                               const isEditingBreakdown = !!editingBreakdownIds[c.id];
+                              const withGross = candForm.withGross !== false;
                               const custom = candForm.customBreakdown;
 
                               const bGrossMonthly = custom?.monthlyGross !== undefined ? Number(custom.monthlyGross) : breakdown.monthlyGross;
@@ -9977,31 +9996,84 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                     </span>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                       {!isEditingBreakdown ? (
-                                        <button
-                                          type="button"
-                                          disabled={isLocked}
-                                          onClick={() => toggleCandidateBreakdownEdit(c.id)}
-                                          style={{
-                                            background: '#eff6ff',
-                                            border: '1px solid #bfdbfe',
-                                            color: '#2563eb',
-                                            borderRadius: '4px',
-                                            padding: '4px 10px',
-                                            fontSize: '0.74rem',
-                                            fontWeight: 700,
-                                            cursor: isLocked ? 'not-allowed' : 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '4px'
-                                          }}
-                                        >
-                                          ✏️ Edit Breakdown
-                                        </button>
-                                      ) : (
-                                        <div style={{ display: 'flex', gap: '6px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: withGross ? '#f0fdf4' : '#f8fafc', color: withGross ? '#166534' : '#64748b', border: withGross ? '1px solid #bbf7d0' : '1px solid #e2e8f0' }}>
+                                            {withGross ? 'With Gross' : 'Without Gross'}
+                                          </span>
                                           <button
                                             type="button"
-                                            onClick={() => handleAutoCalculateCandidateBreakdown(c.id, c.email, bGrossMonthly)}
+                                            disabled={isLocked}
+                                            onClick={() => toggleCandidateBreakdownEdit(c.id)}
+                                            style={{
+                                              background: '#eff6ff',
+                                              border: '1px solid #bfdbfe',
+                                              color: '#2563eb',
+                                              borderRadius: '4px',
+                                              padding: '4px 10px',
+                                              fontSize: '0.74rem',
+                                              fontWeight: 700,
+                                              cursor: isLocked ? 'not-allowed' : 'pointer',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '4px'
+                                            }}
+                                          >
+                                            ✏️ Edit Breakdown
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                          {/* With Gross / Without Gross Button Group */}
+                                          <div style={{ display: 'inline-flex', background: '#e2e8f0', borderRadius: '6px', padding: '2px', border: '1px solid #cbd5e1' }}>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleToggleWithGross(c.id, c.email, true)}
+                                              style={{
+                                                padding: '3px 9px',
+                                                fontSize: '0.72rem',
+                                                fontWeight: 700,
+                                                borderRadius: '4px',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                background: withGross ? '#2563eb' : 'transparent',
+                                                color: withGross ? '#ffffff' : '#475569',
+                                                boxShadow: withGross ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '3px',
+                                                transition: 'all 0.15s ease'
+                                              }}
+                                              title="Include Gross row in calculations and offer table"
+                                            >
+                                              {withGross && '✓ '}With Gross
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleToggleWithGross(c.id, c.email, false)}
+                                              style={{
+                                                padding: '3px 9px',
+                                                fontSize: '0.72rem',
+                                                fontWeight: 700,
+                                                borderRadius: '4px',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                background: !withGross ? '#2563eb' : 'transparent',
+                                                color: !withGross ? '#ffffff' : '#475569',
+                                                boxShadow: !withGross ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '3px',
+                                                transition: 'all 0.15s ease'
+                                              }}
+                                              title="Exclude Gross row from table"
+                                            >
+                                              {!withGross && '✓ '}Without Gross
+                                            </button>
+                                          </div>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => handleAutoCalculateCandidateBreakdown(c.id, c.email, withGross ? bGrossMonthly : (bBasicMonthly * 2), withGross)}
                                             style={{
                                               background: '#f8fafc',
                                               border: '1px solid #cbd5e1',
@@ -10012,6 +10084,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                               fontWeight: 700,
                                               cursor: 'pointer'
                                             }}
+                                            title="Auto-calculate all breakdown factors (50/18/10/12/10)"
                                           >
                                             ↺ Auto-Calculate (50/18/10/12/10)
                                           </button>
@@ -10051,28 +10124,30 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                       </tr>
                                     </thead>
                                     <tbody style={{ fontSize: '0.78rem' }}>
-                                      {/* Gross Primary Row (Highlighted Light Green) */}
-                                      <tr style={{ background: '#9bd770', fontWeight: 'bold' }}>
-                                        <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Gross</td>
-                                        <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                          {isEditingBreakdown ? (
-                                            <input
-                                              type="number"
-                                              value={bGrossMonthly}
-                                              onChange={(e) => {
-                                                const val = Number(e.target.value) || 0;
-                                                handleAutoCalculateCandidateBreakdown(c.id, c.email, val);
-                                              }}
-                                              style={{ width: '100px', textAlign: 'right', padding: '2px 4px', fontWeight: 'bold', border: '1px solid #16a34a', borderRadius: '3px', fontSize: '0.78rem' }}
-                                            />
-                                          ) : (
-                                            bGrossMonthly.toLocaleString('en-IN')
-                                          )}
-                                        </td>
-                                        <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                          {bGrossYearly.toLocaleString('en-IN')}
-                                        </td>
-                                      </tr>
+                                      {/* Gross Primary Row (Highlighted Light Green - only rendered when withGross is true) */}
+                                      {withGross && (
+                                        <tr style={{ background: '#9bd770', fontWeight: 'bold' }}>
+                                          <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Gross</td>
+                                          <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                            {isEditingBreakdown ? (
+                                              <input
+                                                type="number"
+                                                value={bGrossMonthly}
+                                                onChange={(e) => {
+                                                  const val = Number(e.target.value) || 0;
+                                                  handleAutoCalculateCandidateBreakdown(c.id, c.email, val, true);
+                                                }}
+                                                style={{ width: '100px', textAlign: 'right', padding: '2px 4px', fontWeight: 'bold', border: '1px solid #16a34a', borderRadius: '3px', fontSize: '0.78rem' }}
+                                              />
+                                            ) : (
+                                              bGrossMonthly.toLocaleString('en-IN')
+                                            )}
+                                          </td>
+                                          <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                            {bGrossYearly.toLocaleString('en-IN')}
+                                          </td>
+                                        </tr>
+                                      )}
 
                                       {/* Basic */}
                                       <tr>
@@ -10190,10 +10265,22 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                       </tr>
 
                                       {/* Total Amount (CTC) */}
-                                      <tr style={{ fontWeight: 'bold' }}>
+                                      <tr style={{ fontWeight: 'bold', background: !withGross ? '#f0fdf4' : 'transparent' }}>
                                         <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Total Amount (CTC)</td>
                                         <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                          {bCtcMonthly.toLocaleString('en-IN')}
+                                          {isEditingBreakdown && !withGross ? (
+                                            <input
+                                              type="number"
+                                              value={bCtcMonthly}
+                                              onChange={(e) => {
+                                                const val = Number(e.target.value) || 0;
+                                                handleAutoCalculateCandidateBreakdown(c.id, c.email, val, false);
+                                              }}
+                                              style={{ width: '100px', textAlign: 'right', padding: '2px 4px', fontWeight: 'bold', border: '1px solid #16a34a', borderRadius: '3px', fontSize: '0.78rem' }}
+                                            />
+                                          ) : (
+                                            bCtcMonthly.toLocaleString('en-IN')
+                                          )}
                                         </td>
                                         <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
                                           {bCtcYearly.toLocaleString('en-IN')}
@@ -13040,6 +13127,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                 const defaultVenue = '8th Floor (B-Block), Meenakshi Tech Park, Phase-2, Gachibowli, Hyderabad, Telangana 500032, India';
                 const venue = candForm.venue || previewOfferCandidate.callLetterVenue || defaultVenue;
 
+                const isWithGross = candForm.withGross !== false;
                 const offerData: OfferLetterData = {
                   candidateName: candName,
                   jobTitle: role,
@@ -13052,6 +13140,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                   reportingVenue: venue,
                   includeTraining: previewOfferWithTraining,
                   trainingSalary: candForm.trainingSalary,
+                  withGross: isWithGross,
+                  withoutGross: !isWithGross,
                   customBreakdown: candForm.customBreakdown
                 };
 
