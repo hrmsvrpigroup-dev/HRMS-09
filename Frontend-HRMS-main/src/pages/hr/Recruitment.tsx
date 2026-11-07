@@ -10582,26 +10582,28 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                 >
                                   <Send className="h-4 w-4" /> Issue &amp; Send Offer
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const latestCand: Candidate = {
-                                      ...c,
-                                      customName: candName,
-                                      callLetterDesignation: designation,
-                                      callLetterReferenceNo: referenceNo,
-                                      offerSalary: Math.round(annualCtcNum / 12),
-                                      offerJoiningDate: joiningDate,
-                                      callLetterVenue: venue
-                                    };
-                                    triggerPreviewModal(latestCand);
-                                  }}
-                                  className="rec-btn-outline"
-                                  style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', fontWeight: 700, gap: '4px' }}
-                                  title="Preview Formal Offer Letter Contract & Annexure"
-                                >
-                                  <Eye className="h-3.5 w-3.5" /> Preview
-                                </button>
+                                {!isEditingBreakdown && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const latestCand: Candidate = {
+                                        ...c,
+                                        customName: candName,
+                                        callLetterDesignation: designation,
+                                        callLetterReferenceNo: referenceNo,
+                                        offerSalary: Math.round(annualCtcNum / 12),
+                                        offerJoiningDate: joiningDate,
+                                        callLetterVenue: venue
+                                      };
+                                      triggerPreviewModal(latestCand);
+                                    }}
+                                    className="rec-btn-outline"
+                                    style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', fontWeight: 700, gap: '4px' }}
+                                    title="Preview Formal Offer Letter Contract & Annexure"
+                                  >
+                                    <Eye className="h-3.5 w-3.5" /> Preview
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   onClick={() => handleDownloadFormalOfferLetter(c, annualCtcNum, joiningDate, designation, referenceNo, venue, candName, candForm.includeTraining !== false, activeBreakdown)}
@@ -10641,25 +10643,27 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   >
                                     <Send className="h-4 w-4" /> Save &amp; Update Offer
                                   </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const latestCand: Candidate = {
-                                        ...c,
-                                        customName: candName,
-                                        callLetterDesignation: designation,
-                                        callLetterReferenceNo: referenceNo,
-                                        offerSalary: Math.round(annualCtcNum / 12),
-                                        offerJoiningDate: joiningDate,
-                                        callLetterVenue: venue
-                                      };
-                                      triggerPreviewModal(latestCand);
-                                    }}
-                                    className="rec-btn-outline"
-                                    style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', fontWeight: 700, gap: '4px' }}
-                                  >
-                                    <Eye className="h-3.5 w-3.5" /> Preview
-                                  </button>
+                                  {!isEditingBreakdown && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const latestCand: Candidate = {
+                                          ...c,
+                                          customName: candName,
+                                          callLetterDesignation: designation,
+                                          callLetterReferenceNo: referenceNo,
+                                          offerSalary: Math.round(annualCtcNum / 12),
+                                          offerJoiningDate: joiningDate,
+                                          callLetterVenue: venue
+                                        };
+                                        triggerPreviewModal(latestCand);
+                                      }}
+                                      className="rec-btn-outline"
+                                      style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', fontWeight: 700, gap: '4px' }}
+                                    >
+                                      <Eye className="h-3.5 w-3.5" /> Preview
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => handleDownloadFormalOfferLetter(c, annualCtcNum, joiningDate, designation, referenceNo, venue, candName, candForm.includeTraining !== false, activeBreakdown)}
@@ -10690,25 +10694,27 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                   >
                                     <Edit2 className="h-3.5 w-3.5" /> Edit Offer
                                   </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const latestCand: Candidate = {
-                                        ...c,
-                                        customName: candName,
-                                        callLetterDesignation: designation,
-                                        callLetterReferenceNo: referenceNo,
-                                        offerSalary: Math.round(annualCtcNum / 12),
-                                        offerJoiningDate: joiningDate,
-                                        callLetterVenue: venue
-                                      };
-                                      triggerPreviewModal(latestCand);
-                                    }}
-                                    className="rec-btn-outline"
-                                    style={{ height: '32px', padding: '0 12px', fontSize: '0.7rem', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', fontWeight: 700, gap: '4px' }}
-                                  >
-                                    <Eye className="h-3.5 w-3.5" /> View Offer Letter
-                                  </button>
+                                  {!isEditingBreakdown && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const latestCand: Candidate = {
+                                          ...c,
+                                          customName: candName,
+                                          callLetterDesignation: designation,
+                                          callLetterReferenceNo: referenceNo,
+                                          offerSalary: Math.round(annualCtcNum / 12),
+                                          offerJoiningDate: joiningDate,
+                                          callLetterVenue: venue
+                                        };
+                                        triggerPreviewModal(latestCand);
+                                      }}
+                                      className="rec-btn-outline"
+                                      style={{ height: '32px', padding: '0 12px', fontSize: '0.7rem', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', fontWeight: 700, gap: '4px' }}
+                                    >
+                                      <Eye className="h-3.5 w-3.5" /> View Offer Letter
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => handleDownloadFormalOfferLetter(c, annualCtcNum, joiningDate, designation, referenceNo, venue, candName, candForm.includeTraining !== false, activeBreakdown)}
