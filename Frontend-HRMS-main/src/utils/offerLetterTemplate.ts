@@ -609,7 +609,7 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
                     <td style="text-align: right;">${b.ltaYearly.toLocaleString('en-IN')}</td>
                   </tr>
                   <tr class="table-row-white">
-                    <td>EPF * 12%</td>
+                    <td>EPF</td>
                     <td style="text-align: right;">${b.employeePfMonthly.toLocaleString('en-IN')}</td>
                     <td style="text-align: right;">${b.employeePfYearly.toLocaleString('en-IN')}</td>
                   </tr>

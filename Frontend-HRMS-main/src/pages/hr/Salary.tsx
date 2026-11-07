@@ -1203,9 +1203,9 @@ function PayslipPreviewModal({
                     </td>
                   </tr>
 
-                  {/* EPF * 12% */}
+                  {/* EPF */}
                   <tr>
-                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>EPF * 12%</td>
+                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>EPF</td>
                     <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
                       {isEditingBreakdown ? (
                         <input
