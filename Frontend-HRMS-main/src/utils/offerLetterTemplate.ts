@@ -154,7 +154,14 @@ export function numberToWordsINR(num: number): string {
 
 export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): string {
   const autoB = calculateSalaryBreakdown(d.annualCtc || 420000);
-  const b = d.customBreakdown ? { ...autoB, ...d.customBreakdown } : autoB;
+  const b = d.customBreakdown ? { ...autoB, ...d.customBreakdown } : { ...autoB };
+  if (d.withoutGross || d.withGross === false) {
+    b.netMonthly = Math.max(0, b.basicMonthly - b.totalDeductMonthly);
+    b.netYearly = Math.max(0, b.basicYearly - b.totalDeductYearly);
+  } else if (!d.customBreakdown || d.customBreakdown.netMonthly === undefined) {
+    b.netMonthly = Math.max(0, b.monthlyGross - b.totalDeductMonthly);
+    b.netYearly = Math.max(0, b.annualCtc - b.totalDeductYearly);
+  }
   const rawWords = numberToWordsINR(b.annualCtc);
   const ctcWords = rawWords
     ? (rawWords.startsWith('Rupees') ? rawWords : 'Rupees ' + rawWords.replace(/\s*Rupees Only$/i, ' Only'))

@@ -2132,11 +2132,27 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   const handleToggleWithGross = (candId: string, candEmail: string | undefined, withGross: boolean) => {
     setCandidateOfferForms(prev => {
       const existing = prev[candId] || (candEmail ? prev[candEmail] : undefined) || {};
+      const currentBreakdown = existing.customBreakdown;
+      let updatedBreakdown = currentBreakdown;
+      if (currentBreakdown) {
+        const baseMonthly = withGross 
+          ? (currentBreakdown.monthlyGross || Math.round(Number(existing.annualCtc || 720000) / 12)) 
+          : (currentBreakdown.basicMonthly || Math.round((currentBreakdown.monthlyGross || Number(existing.annualCtc || 720000) / 12) * 0.5));
+        const baseYearly = baseMonthly * 12;
+        const totalDeductM = currentBreakdown.totalDeductMonthly !== undefined ? currentBreakdown.totalDeductMonthly : 0;
+        const totalDeductY = currentBreakdown.totalDeductYearly !== undefined ? currentBreakdown.totalDeductYearly : (totalDeductM * 12);
+        updatedBreakdown = {
+          ...currentBreakdown,
+          netMonthly: Math.max(0, baseMonthly - totalDeductM),
+          netYearly: Math.max(0, baseYearly - totalDeductY)
+        };
+      }
       return {
         ...prev,
         [candId]: {
           ...existing,
-          withGross
+          withGross,
+          customBreakdown: updatedBreakdown
         }
       };
     });
@@ -2169,8 +2185,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
     const totalDeductMonthly = ptMonthly + deductEmployerPfMonthly + deductEmployeePfMonthly + deductInsuranceMonthly + otherDeductMonthly;
     const totalDeductYearly = ptYearly + deductEmployerPfYearly + deductEmployeePfYearly + deductInsuranceYearly + otherDeductYearly;
-    const netMonthly = Math.max(0, grossMonthly - totalDeductMonthly);
-    const netYearly = Math.max(0, grossYearly - totalDeductYearly);
+    const isWithGross = withGrossMode !== undefined ? withGrossMode : true;
+    const netBaseMonthly = isWithGross ? grossMonthly : basicMonthly;
+    const netBaseYearly = isWithGross ? grossYearly : basicYearly;
+    const netMonthly = Math.max(0, netBaseMonthly - totalDeductMonthly);
+    const netYearly = Math.max(0, netBaseYearly - totalDeductYearly);
 
     const newBreakdown = {
       monthlyGross: grossMonthly,
@@ -9984,8 +10003,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                               const bTotalDeductMonthly = bPtMonthly + bDedEmployerPfMonthly + bDedEmployeePfMonthly + bDedInsuranceMonthly + bOtherDedMonthly;
                               const bTotalDeductYearly = bPtYearly + bDedEmployerPfYearly + bDedEmployeePfYearly + bDedInsuranceYearly + bOtherDedYearly;
 
-                              const bNetMonthly = Math.max(0, bGrossMonthly - bTotalDeductMonthly);
-                              const bNetYearly = Math.max(0, bGrossYearly - bTotalDeductYearly);
+                              const baseForNetMonthly = withGross ? bGrossMonthly : bBasicMonthly;
+                              const baseForNetYearly = withGross ? bGrossYearly : bBasicYearly;
+
+                              const bNetMonthly = Math.max(0, baseForNetMonthly - bTotalDeductMonthly);
+                              const bNetYearly = Math.max(0, baseForNetYearly - bTotalDeductYearly);
 
                               return (
                                 <div>
