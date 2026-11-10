@@ -61,45 +61,54 @@ export interface SalaryBreakdown {
   pfYearly: number;
 }
 
+const round2 = (n: number | string | null | undefined): number => {
+  return Math.round((Number(n) || 0) * 100) / 100;
+};
+
+export const formatINR = (val?: number | string | null): string => {
+  const n = Number(val) || 0;
+  return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 export function calculateSalaryBreakdown(annualCtc: number): SalaryBreakdown {
-  const ctc = Math.round(Number(annualCtc) || 0);
-  const monthlyGross = Math.round(ctc / 12);
+  const ctc = round2(Number(annualCtc) || 0);
+  const monthlyGross = round2(ctc / 12);
 
   // Upper Box (Gross Salary Calculations)
   // Basic - 50%
-  const basicMonthly = Math.round(monthlyGross * 0.50);
-  const basicYearly = basicMonthly * 12;
+  const basicMonthly = round2(monthlyGross * 0.50);
+  const basicYearly = round2(ctc * 0.50);
   // HRA - 18%
-  const hraMonthly = Math.round(monthlyGross * 0.18);
-  const hraYearly = hraMonthly * 12;
+  const hraMonthly = round2(monthlyGross * 0.18);
+  const hraYearly = round2(ctc * 0.18);
   // LTA - 10%
-  const ltaMonthly = Math.round(monthlyGross * 0.10);
-  const ltaYearly = ltaMonthly * 12;
+  const ltaMonthly = round2(monthlyGross * 0.10);
+  const ltaYearly = round2(ctc * 0.10);
   // Employee PF - 12%
-  const employeePfMonthly = Math.round(monthlyGross * 0.12);
-  const employeePfYearly = employeePfMonthly * 12;
+  const employeePfMonthly = round2(monthlyGross * 0.12);
+  const employeePfYearly = round2(ctc * 0.12);
   // Insurance - 10%
-  const insuranceMonthly = Math.round(monthlyGross * 0.10);
-  const insuranceYearly = insuranceMonthly * 12;
+  const insuranceMonthly = round2(monthlyGross * 0.10);
+  const insuranceYearly = round2(ctc * 0.10);
 
   // Deductions:
   // PT - ₹200
   const ptMonthly = 200;
   const ptYearly = 2400;
   // EPF - Basic salary * 12%
-  const epfMonthly = Math.round(basicMonthly * 0.12);
-  const epfYearly = epfMonthly * 12;
+  const epfMonthly = round2(basicMonthly * 0.12);
+  const epfYearly = round2(epfMonthly * 12);
   // Insurance - 10%
-  const deductInsuranceMonthly = Math.round(monthlyGross * 0.10);
-  const deductInsuranceYearly = deductInsuranceMonthly * 12;
+  const deductInsuranceMonthly = round2(monthlyGross * 0.10);
+  const deductInsuranceYearly = round2(ctc * 0.10);
   // Other deductions - ₹200
   const otherDeductMonthly = 200;
   const otherDeductYearly = 2400;
-  const totalDeductMonthly = ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly;
-  const totalDeductYearly = ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly;
+  const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly);
+  const totalDeductYearly = round2(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly);
 
-  const netMonthly = Math.max(0, monthlyGross - totalDeductMonthly);
-  const netYearly = Math.max(0, ctc - totalDeductYearly);
+  const netMonthly = round2(Math.max(0, monthlyGross - totalDeductMonthly));
+  const netYearly = round2(Math.max(0, ctc - totalDeductYearly));
 
   return {
     annualCtc: ctc,
@@ -158,45 +167,45 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
   const rawB = d.customBreakdown ? { ...autoB, ...d.customBreakdown } : { ...autoB };
 
   // Re-derive particulars from raw items
-  const basicMonthly = Math.round(Number(rawB.basicMonthly) || 0);
-  const basicYearly = basicMonthly * 12;
-  const hraMonthly = Math.round(Number(rawB.hraMonthly) || 0);
-  const hraYearly = hraMonthly * 12;
-  const ltaMonthly = Math.round(Number(rawB.ltaMonthly) || 0);
-  const ltaYearly = ltaMonthly * 12;
-  const employeePfMonthly = Math.round(Number(rawB.employeePfMonthly) || 0);
-  const employeePfYearly = employeePfMonthly * 12;
-  const insuranceMonthly = Math.round(Number(rawB.insuranceMonthly) || 0);
-  const insuranceYearly = insuranceMonthly * 12;
+  const basicMonthly = round2(rawB.basicMonthly);
+  const basicYearly = round2(basicMonthly * 12);
+  const hraMonthly = round2(rawB.hraMonthly);
+  const hraYearly = round2(hraMonthly * 12);
+  const ltaMonthly = round2(rawB.ltaMonthly);
+  const ltaYearly = round2(ltaMonthly * 12);
+  const employeePfMonthly = round2(rawB.employeePfMonthly);
+  const employeePfYearly = round2(employeePfMonthly * 12);
+  const insuranceMonthly = round2(rawB.insuranceMonthly);
+  const insuranceYearly = round2(insuranceMonthly * 12);
 
-  const monthlyGross = rawB.monthlyGross !== undefined ? Number(rawB.monthlyGross) : (basicMonthly + hraMonthly + ltaMonthly + employeePfMonthly + insuranceMonthly);
-  const annualCtc = monthlyGross * 12;
+  const monthlyGross = rawB.monthlyGross !== undefined ? round2(rawB.monthlyGross) : round2(basicMonthly + hraMonthly + ltaMonthly + employeePfMonthly + insuranceMonthly);
+  const annualCtc = round2(monthlyGross * 12);
 
   // Re-derive deductions dynamically so Total Deductions always equals the exact sum of rows
-  const ptMonthly = Math.round(Number(rawB.ptMonthly) || 200);
-  const ptYearly = ptMonthly * 12;
+  const ptMonthly = rawB.ptMonthly !== undefined ? round2(rawB.ptMonthly) : 200;
+  const ptYearly = round2(ptMonthly * 12);
   const epfMonthly = rawB.epfMonthly !== undefined 
-    ? Math.round(Number(rawB.epfMonthly)) 
+    ? round2(rawB.epfMonthly) 
     : (rawB.deductEmployeePfMonthly !== undefined 
-      ? Math.round(Number(rawB.deductEmployeePfMonthly)) 
+      ? round2(rawB.deductEmployeePfMonthly) 
       : (rawB.employerPfMonthly !== undefined && Number(rawB.employerPfMonthly) > 0 && !rawB.deductEmployeePfMonthly 
-        ? Math.round(Number(rawB.employerPfMonthly)) 
-        : Math.round(basicMonthly * 0.12)));
-  const epfYearly = epfMonthly * 12;
-  const deductInsuranceMonthly = Math.round(Number(rawB.deductInsuranceMonthly) || 0);
-  const deductInsuranceYearly = deductInsuranceMonthly * 12;
-  const otherDeductMonthly = Math.round(Number(rawB.otherDeductMonthly) || 200);
-  const otherDeductYearly = otherDeductMonthly * 12;
+        ? round2(rawB.employerPfMonthly) 
+        : round2(basicMonthly * 0.12)));
+  const epfYearly = round2(epfMonthly * 12);
+  const deductInsuranceMonthly = rawB.deductInsuranceMonthly !== undefined ? round2(rawB.deductInsuranceMonthly) : round2(monthlyGross * 0.10);
+  const deductInsuranceYearly = round2(deductInsuranceMonthly * 12);
+  const otherDeductMonthly = rawB.otherDeductMonthly !== undefined ? round2(rawB.otherDeductMonthly) : 200;
+  const otherDeductYearly = round2(otherDeductMonthly * 12);
 
-  const totalDeductMonthly = ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly;
-  const totalDeductYearly = totalDeductMonthly * 12;
+  const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly);
+  const totalDeductYearly = round2(totalDeductMonthly * 12);
 
   const isWithGross = d.withGross === true && !d.withoutGross;
   const baseForNetMonthly = isWithGross ? monthlyGross : basicMonthly;
   const baseForNetYearly = isWithGross ? annualCtc : basicYearly;
 
-  const netMonthly = Math.max(0, baseForNetMonthly - totalDeductMonthly);
-  const netYearly = Math.max(0, baseForNetYearly - totalDeductYearly);
+  const netMonthly = round2(Math.max(0, baseForNetMonthly - totalDeductMonthly));
+  const netYearly = round2(Math.max(0, baseForNetYearly - totalDeductYearly));
 
   const b: SalaryBreakdown = {
     ...rawB,
@@ -278,7 +287,7 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
 
           <div class="section-title-box">ANNUAL COMPENSATION</div>
           <p class="clause-item-letter text-justify">
-            ${withTraining ? `<strong>a.</strong> Initially, your pay will be ${trainingPay} salary during training period (Training period varies from 3 months to 6 months depending on your performance). After the training you will be sent to the Client location/Project will assigned and Your annual compensation including benefits and perquisites, if any, payable by the Organization Will be increased to <strong>INR ${b.annualCtc.toLocaleString('en-IN')}/- (${ctcWords})</strong>.` : `<strong>a.</strong> Your annual compensation including benefits and perquisites, if any, payable by the Organization will be <strong>INR ${b.annualCtc.toLocaleString('en-IN')}/- (${ctcWords})</strong>.`}
+            ${withTraining ? `<strong>a.</strong> Initially, your pay will be ${trainingPay} salary during training period (Training period varies from 3 months to 6 months depending on your performance). After the training you will be sent to the Client location/Project will assigned and Your annual compensation including benefits and perquisites, if any, payable by the Organization Will be increased to <strong>INR ${formatINR(b.annualCtc)}/- (${ctcWords})</strong>.` : `<strong>a.</strong> Your annual compensation including benefits and perquisites, if any, payable by the Organization will be <strong>INR ${formatINR(b.annualCtc)}/- (${ctcWords})</strong>.`}
           </p>
           <p class="clause-item-letter text-justify">
             <strong>b.</strong> Besides this, you will be eligible for Gratuity and leave encashment as per and subject to the conditions specified in payment of Gratuity Act, 1972 and other applicable acts.
@@ -588,40 +597,40 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
                 ${d.withGross === true && !d.withoutGross ? `
                 <tr class="table-row-lightgreen-gross">
                     <td><strong>Gross</strong></td>
-                    <td style="text-align: right;"><strong>${b.monthlyGross.toLocaleString('en-IN')}</strong></td>
-                    <td style="text-align: right;"><strong>${b.annualCtc.toLocaleString('en-IN')}</strong></td>
+                    <td style="text-align: right;"><strong>${formatINR(b.monthlyGross)}</strong></td>
+                    <td style="text-align: right;"><strong>${formatINR(b.annualCtc)}</strong></td>
                   </tr>
                 ` : ''}
 
                   <tr class="table-row-white">
                     <td>Basic</td>
-                    <td style="text-align: right;">${b.basicMonthly.toLocaleString('en-IN')}</td>
-                    <td style="text-align: right;">${b.basicYearly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${formatINR(b.basicMonthly)}</td>
+                    <td style="text-align: right;">${formatINR(b.basicYearly)}</td>
                   </tr>
                   <tr class="table-row-white">
                     <td>House Rent Allowance (HRA)</td>
-                    <td style="text-align: right;">${b.hraMonthly.toLocaleString('en-IN')}</td>
-                    <td style="text-align: right;">${b.hraYearly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${formatINR(b.hraMonthly)}</td>
+                    <td style="text-align: right;">${formatINR(b.hraYearly)}</td>
                   </tr>
                   <tr class="table-row-white">
                     <td>LTA</td>
-                    <td style="text-align: right;">${b.ltaMonthly.toLocaleString('en-IN')}</td>
-                    <td style="text-align: right;">${b.ltaYearly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${formatINR(b.ltaMonthly)}</td>
+                    <td style="text-align: right;">${formatINR(b.ltaYearly)}</td>
                   </tr>
                   <tr class="table-row-white">
                     <td>EPF</td>
-                    <td style="text-align: right;">${b.employeePfMonthly.toLocaleString('en-IN')}</td>
-                    <td style="text-align: right;">${b.employeePfYearly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${formatINR(b.employeePfMonthly)}</td>
+                    <td style="text-align: right;">${formatINR(b.employeePfYearly)}</td>
                   </tr>
                   <tr class="table-row-white">
                     <td>Insurance</td>
-                    <td style="text-align: right;">${b.insuranceMonthly.toLocaleString('en-IN')}</td>
-                    <td style="text-align: right;">${b.insuranceYearly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${formatINR(b.insuranceMonthly)}</td>
+                    <td style="text-align: right;">${formatINR(b.insuranceYearly)}</td>
                   </tr>
                   <tr class="table-row-white" style="font-weight: 700;">
                     <td>Total Amount (CTC)</td>
-                    <td style="text-align: right;">${b.monthlyGross.toLocaleString('en-IN')}</td>
-                    <td style="text-align: right;">${b.annualCtc.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${formatINR(b.monthlyGross)}</td>
+                    <td style="text-align: right;">${formatINR(b.annualCtc)}</td>
                   </tr>
 
                   <tr class="table-row-green-header">
@@ -630,34 +639,34 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
 
                   <tr class="table-row-white">
                     <td>Professional Tax</td>
-                    <td style="text-align: right;">${b.ptMonthly.toLocaleString('en-IN')}</td>
-                    <td style="text-align: right;">${b.ptYearly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${formatINR(b.ptMonthly)}</td>
+                    <td style="text-align: right;">${formatINR(b.ptYearly)}</td>
                   </tr>
                   <tr class="table-row-white">
                     <td>EPF</td>
-                    <td style="text-align: right;">${(b.epfMonthly !== undefined ? b.epfMonthly : (b.deductEmployeePfMonthly || 0)).toLocaleString('en-IN')}</td>
-                    <td style="text-align: right;">${((b.epfMonthly !== undefined ? b.epfMonthly : (b.deductEmployeePfMonthly || 0)) * 12).toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${formatINR(b.epfMonthly !== undefined ? b.epfMonthly : (b.deductEmployeePfMonthly || 0))}</td>
+                    <td style="text-align: right;">${formatINR(((b.epfMonthly !== undefined ? b.epfMonthly : (b.deductEmployeePfMonthly || 0)) * 12))}</td>
                   </tr>
                   <tr class="table-row-white">
                     <td>Insurance</td>
-                    <td style="text-align: right;">${b.deductInsuranceMonthly.toLocaleString('en-IN')}</td>
-                    <td style="text-align: right;">${b.deductInsuranceYearly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${formatINR(b.deductInsuranceMonthly)}</td>
+                    <td style="text-align: right;">${formatINR(b.deductInsuranceYearly)}</td>
                   </tr>
                   <tr class="table-row-white">
                     <td>Other Deductions</td>
-                    <td style="text-align: right;">${b.otherDeductMonthly.toLocaleString('en-IN')}</td>
-                    <td style="text-align: right;">${b.otherDeductYearly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${formatINR(b.otherDeductMonthly)}</td>
+                    <td style="text-align: right;">${formatINR(b.otherDeductYearly)}</td>
                   </tr>
                   <tr class="table-row-white" style="font-weight: 700;">
                     <td>Total Deductions</td>
-                    <td style="text-align: right;">${b.totalDeductMonthly.toLocaleString('en-IN')}</td>
-                    <td style="text-align: right;">${b.totalDeductYearly.toLocaleString('en-IN')}</td>
+                    <td style="text-align: right;">${formatINR(b.totalDeductMonthly)}</td>
+                    <td style="text-align: right;">${formatINR(b.totalDeductYearly)}</td>
                   </tr>
 
                   <tr class="table-row-net-takehome">
                     <td><strong>Net Take-Home Salary (In-Hand)</strong></td>
-                    <td style="text-align: right;"><strong>₹${b.netMonthly.toLocaleString('en-IN')}</strong></td>
-                    <td style="text-align: right;"><strong>₹${b.netYearly.toLocaleString('en-IN')}</strong></td>
+                    <td style="text-align: right;"><strong>₹${formatINR(b.netMonthly)}</strong></td>
+                    <td style="text-align: right;"><strong>₹${formatINR(b.netYearly)}</strong></td>
                   </tr>
               </tbody>
             </table>

@@ -1969,55 +1969,70 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       return convert(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 !== 0 ? ' ' + convert(n % 10000000) : '');
     };
 
-    return convert(Math.floor(num)) + ' Rupees Only';
+    const rupees = Math.floor(num);
+    const paise = Math.round((num - rupees) * 100);
+    const rupeesText = convert(rupees) + ' Rupees';
+    if (paise > 0) {
+      return rupeesText + ' and ' + convert(paise) + ' Paise Only';
+    }
+    return rupeesText + ' Only';
+  };
+
+  const round2 = (n: number | string | null | undefined): number => {
+    return Math.round((Number(n) || 0) * 100) / 100;
+  };
+
+  const formatINR = (val?: number | string | null): string => {
+    const n = Number(val) || 0;
+    return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
   // Salary & Deductions Calculator according to VR PI Offer Template & Percentage Rules
   const calculateSalaryBreakdown = (annualCtcNum: number) => {
     const annualCtc = Math.max(0, Number(annualCtcNum) || 0);
-    const monthlyGross = Math.round(annualCtc / 12);
+    const monthlyGross = round2(annualCtc / 12);
 
     // Percentages:
     // Basic (50%)
-    const basicYearly = Math.round(annualCtc * 0.50);
-    const basicMonthly = Math.round(monthlyGross * 0.50);
+    const basicYearly = round2(annualCtc * 0.50);
+    const basicMonthly = round2(monthlyGross * 0.50);
 
     // House Rent Allowance (HRA) (18%)
-    const hraYearly = Math.round(annualCtc * 0.18);
-    const hraMonthly = Math.round(monthlyGross * 0.18);
+    const hraYearly = round2(annualCtc * 0.18);
+    const hraMonthly = round2(monthlyGross * 0.18);
 
     // Leave Travel Allowance (LTA) (10%)
-    const ltaYearly = Math.round(annualCtc * 0.10);
-    const ltaMonthly = Math.round(monthlyGross * 0.10);
+    const ltaYearly = round2(annualCtc * 0.10);
+    const ltaMonthly = round2(monthlyGross * 0.10);
 
     // Employee PF (12%)
-    const employeePfYearly = Math.round(annualCtc * 0.12);
-    const employeePfMonthly = Math.round(monthlyGross * 0.12);
+    const employeePfYearly = round2(annualCtc * 0.12);
+    const employeePfMonthly = round2(monthlyGross * 0.12);
 
     // Insurance (10%)
-    const insuranceYearly = Math.round(annualCtc * 0.10);
-    const insuranceMonthly = Math.round(monthlyGross * 0.10);
+    const insuranceYearly = round2(annualCtc * 0.10);
+    const insuranceMonthly = round2(monthlyGross * 0.10);
 
     // Deductions:
     const ptMonthly = 200;
     const ptYearly = 2400;
 
     // EPF - Basic salary * 12%
-    const epfMonthly = Math.round(basicMonthly * 0.12);
-    const epfYearly = epfMonthly * 12;
+    const epfMonthly = round2(basicMonthly * 0.12);
+    const epfYearly = round2(epfMonthly * 12);
 
     // Insurance (10%)
-    const deductInsuranceYearly = Math.round(annualCtc * 0.10);
-    const deductInsuranceMonthly = Math.round(monthlyGross * 0.10);
+    const deductInsuranceYearly = round2(annualCtc * 0.10);
+    const deductInsuranceMonthly = round2(monthlyGross * 0.10);
 
     const otherDeductMonthly = 200;
     const otherDeductYearly = 2400;
 
-    const totalDeductMonthly = ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly;
-    const totalDeductYearly = ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly;
+    const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly);
+    const totalDeductYearly = round2(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly);
 
-    const netMonthly = Math.max(0, monthlyGross - totalDeductMonthly);
-    const netYearly = Math.max(0, annualCtc - totalDeductYearly);
+    const netMonthly = round2(Math.max(0, monthlyGross - totalDeductMonthly));
+    const netYearly = round2(Math.max(0, annualCtc - totalDeductYearly));
 
     return {
       annualCtc,
@@ -2118,37 +2133,37 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       const currentBreakdown = existing.customBreakdown || {};
       const merged = { ...currentBreakdown, ...updates };
 
-      const basicM = merged.basicMonthly !== undefined ? Number(merged.basicMonthly) : 0;
-      const basicY = merged.basicYearly !== undefined ? Number(merged.basicYearly) : basicM * 12;
-      const hraM = merged.hraMonthly !== undefined ? Number(merged.hraMonthly) : 0;
-      const ltaM = merged.ltaMonthly !== undefined ? Number(merged.ltaMonthly) : 0;
-      const empPfM = merged.employeePfMonthly !== undefined ? Number(merged.employeePfMonthly) : 0;
-      const insM = merged.insuranceMonthly !== undefined ? Number(merged.insuranceMonthly) : 0;
+      const basicM = merged.basicMonthly !== undefined ? round2(merged.basicMonthly) : 0;
+      const basicY = merged.basicYearly !== undefined ? round2(merged.basicYearly) : round2(basicM * 12);
+      const hraM = merged.hraMonthly !== undefined ? round2(merged.hraMonthly) : 0;
+      const ltaM = merged.ltaMonthly !== undefined ? round2(merged.ltaMonthly) : 0;
+      const empPfM = merged.employeePfMonthly !== undefined ? round2(merged.employeePfMonthly) : 0;
+      const insM = merged.insuranceMonthly !== undefined ? round2(merged.insuranceMonthly) : 0;
 
-      const grossM = merged.monthlyGross !== undefined ? Number(merged.monthlyGross) : (basicM + hraM + ltaM + empPfM + insM);
-      const grossY = merged.annualCtc !== undefined ? Number(merged.annualCtc) : grossM * 12;
+      const grossM = merged.monthlyGross !== undefined ? round2(merged.monthlyGross) : round2(basicM + hraM + ltaM + empPfM + insM);
+      const grossY = merged.annualCtc !== undefined ? round2(merged.annualCtc) : round2(grossM * 12);
 
-      const ptM = merged.ptMonthly !== undefined ? Number(merged.ptMonthly) : 200;
+      const ptM = merged.ptMonthly !== undefined ? round2(merged.ptMonthly) : 200;
       const epfM = merged.epfMonthly !== undefined 
-        ? Number(merged.epfMonthly) 
+        ? round2(merged.epfMonthly) 
         : (merged.deductEmployeePfMonthly !== undefined 
-          ? Number(merged.deductEmployeePfMonthly) 
+          ? round2(merged.deductEmployeePfMonthly) 
           : (merged.employerPfMonthly !== undefined && Number(merged.employerPfMonthly) > 0 && !merged.deductEmployeePfMonthly 
-            ? Number(merged.employerPfMonthly) 
-            : Math.round(basicM * 0.12)));
-      const epfY = merged.epfYearly !== undefined ? Number(merged.epfYearly) : epfM * 12;
-      const dedInsM = merged.deductInsuranceMonthly !== undefined ? Number(merged.deductInsuranceMonthly) : 0;
-      const otherM = merged.otherDeductMonthly !== undefined ? Number(merged.otherDeductMonthly) : 200;
+            ? round2(merged.employerPfMonthly) 
+            : round2(basicM * 0.12)));
+      const epfY = merged.epfYearly !== undefined ? round2(merged.epfYearly) : round2(epfM * 12);
+      const dedInsM = merged.deductInsuranceMonthly !== undefined ? round2(merged.deductInsuranceMonthly) : 0;
+      const otherM = merged.otherDeductMonthly !== undefined ? round2(merged.otherDeductMonthly) : 200;
 
-      const totalDeductM = ptM + epfM + dedInsM + otherM;
-      const totalDeductY = totalDeductM * 12;
+      const totalDeductM = round2(ptM + epfM + dedInsM + otherM);
+      const totalDeductY = round2(totalDeductM * 12);
 
       const isWithGross = existing.withGross === true;
       const baseForNetM = isWithGross ? grossM : basicM;
       const baseForNetY = isWithGross ? grossY : basicY;
 
-      const netM = Math.max(0, baseForNetM - totalDeductM);
-      const netY = Math.max(0, baseForNetY - totalDeductY);
+      const netM = round2(Math.max(0, baseForNetM - totalDeductM));
+      const netY = round2(Math.max(0, baseForNetY - totalDeductY));
 
       const updatedBreakdown = {
         ...merged,
@@ -2221,36 +2236,36 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
   const handleAutoCalculateCandidateBreakdown = (candId: string, candEmail: string | undefined, baseGrossMonthly: number, withGrossMode?: boolean) => {
     const emailKey = candEmail ? candEmail.trim().toLowerCase() : undefined;
-    const grossMonthly = Math.round(baseGrossMonthly);
-    const grossYearly = grossMonthly * 12;
-    const basicMonthly = Math.round(grossMonthly * 0.50);
-    const basicYearly = basicMonthly * 12;
-    const hraMonthly = Math.round(grossMonthly * 0.18);
-    const hraYearly = hraMonthly * 12;
-    const ltaMonthly = Math.round(grossMonthly * 0.10);
-    const ltaYearly = ltaMonthly * 12;
-    const employerPfMonthly = Math.round(grossMonthly * 0.12);
-    const employerPfYearly = employerPfMonthly * 12;
-    const insuranceMonthly = Math.round(grossMonthly * 0.10);
-    const insuranceYearly = insuranceMonthly * 12;
+    const grossMonthly = round2(baseGrossMonthly);
+    const grossYearly = round2(grossMonthly * 12);
+    const basicMonthly = round2(grossMonthly * 0.50);
+    const basicYearly = round2(basicMonthly * 12);
+    const hraMonthly = round2(grossMonthly * 0.18);
+    const hraYearly = round2(hraMonthly * 12);
+    const ltaMonthly = round2(grossMonthly * 0.10);
+    const ltaYearly = round2(ltaMonthly * 12);
+    const employerPfMonthly = round2(grossMonthly * 0.12);
+    const employerPfYearly = round2(employerPfMonthly * 12);
+    const insuranceMonthly = round2(grossMonthly * 0.10);
+    const insuranceYearly = round2(insuranceMonthly * 12);
 
     const ptMonthly = 200;
     const ptYearly = 2400;
     // EPF - Basic salary * 12%
-    const epfMonthly = Math.round(basicMonthly * 0.12);
-    const epfYearly = epfMonthly * 12;
-    const deductInsuranceMonthly = Math.round(grossMonthly * 0.10);
-    const deductInsuranceYearly = deductInsuranceMonthly * 12;
+    const epfMonthly = round2(basicMonthly * 0.12);
+    const epfYearly = round2(epfMonthly * 12);
+    const deductInsuranceMonthly = round2(grossMonthly * 0.10);
+    const deductInsuranceYearly = round2(deductInsuranceMonthly * 12);
     const otherDeductMonthly = 200;
     const otherDeductYearly = 2400;
 
-    const totalDeductMonthly = ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly;
-    const totalDeductYearly = ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly;
+    const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly);
+    const totalDeductYearly = round2(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly);
     const isWithGross = withGrossMode === true;
     const netBaseMonthly = isWithGross ? grossMonthly : basicMonthly;
     const netBaseYearly = isWithGross ? grossYearly : basicYearly;
-    const netMonthly = Math.max(0, netBaseMonthly - totalDeductMonthly);
-    const netYearly = Math.max(0, netBaseYearly - totalDeductYearly);
+    const netMonthly = round2(Math.max(0, netBaseMonthly - totalDeductMonthly));
+    const netYearly = round2(Math.max(0, netBaseYearly - totalDeductYearly));
 
     const newBreakdown = {
       monthlyGross: grossMonthly,
@@ -9862,53 +9877,53 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                         const withGross = candForm.withGross === true;
                         const custom = candForm.customBreakdown;
 
-                        const bGrossMonthly = custom?.monthlyGross !== undefined ? Number(custom.monthlyGross) : breakdown.monthlyGross;
-                        const bGrossYearly = custom?.annualCtc !== undefined ? Number(custom.annualCtc) : (bGrossMonthly * 12);
+                        const bGrossMonthly = custom?.monthlyGross !== undefined ? round2(custom.monthlyGross) : breakdown.monthlyGross;
+                        const bGrossYearly = custom?.annualCtc !== undefined ? round2(custom.annualCtc) : round2(bGrossMonthly * 12);
 
-                        const bBasicMonthly = custom?.basicMonthly !== undefined ? Number(custom.basicMonthly) : breakdown.basicMonthly;
-                        const bBasicYearly = custom?.basicYearly !== undefined ? Number(custom.basicYearly) : (bBasicMonthly * 12);
+                        const bBasicMonthly = custom?.basicMonthly !== undefined ? round2(custom.basicMonthly) : breakdown.basicMonthly;
+                        const bBasicYearly = custom?.basicYearly !== undefined ? round2(custom.basicYearly) : round2(bBasicMonthly * 12);
 
-                        const bHraMonthly = custom?.hraMonthly !== undefined ? Number(custom.hraMonthly) : breakdown.hraMonthly;
-                        const bHraYearly = custom?.hraYearly !== undefined ? Number(custom.hraYearly) : (bHraMonthly * 12);
+                        const bHraMonthly = custom?.hraMonthly !== undefined ? round2(custom.hraMonthly) : breakdown.hraMonthly;
+                        const bHraYearly = custom?.hraYearly !== undefined ? round2(custom.hraYearly) : round2(bHraMonthly * 12);
 
-                        const bLtaMonthly = custom?.ltaMonthly !== undefined ? Number(custom.ltaMonthly) : breakdown.ltaMonthly;
-                        const bLtaYearly = custom?.ltaYearly !== undefined ? Number(custom.ltaYearly) : (bLtaMonthly * 12);
+                        const bLtaMonthly = custom?.ltaMonthly !== undefined ? round2(custom.ltaMonthly) : breakdown.ltaMonthly;
+                        const bLtaYearly = custom?.ltaYearly !== undefined ? round2(custom.ltaYearly) : round2(bLtaMonthly * 12);
 
-                        const bEmployerPfMonthly = custom?.employeePfMonthly !== undefined ? Number(custom.employeePfMonthly) : breakdown.employeePfMonthly;
-                        const bEmployerPfYearly = custom?.employeePfYearly !== undefined ? Number(custom.employeePfYearly) : (bEmployerPfMonthly * 12);
+                        const bEmployerPfMonthly = custom?.employeePfMonthly !== undefined ? round2(custom.employeePfMonthly) : breakdown.employeePfMonthly;
+                        const bEmployerPfYearly = custom?.employeePfYearly !== undefined ? round2(custom.employeePfYearly) : round2(bEmployerPfMonthly * 12);
 
-                        const bInsuranceMonthly = custom?.insuranceMonthly !== undefined ? Number(custom.insuranceMonthly) : breakdown.insuranceMonthly;
-                        const bInsuranceYearly = custom?.insuranceYearly !== undefined ? Number(custom.insuranceYearly) : (bInsuranceMonthly * 12);
+                        const bInsuranceMonthly = custom?.insuranceMonthly !== undefined ? round2(custom.insuranceMonthly) : breakdown.insuranceMonthly;
+                        const bInsuranceYearly = custom?.insuranceYearly !== undefined ? round2(custom.insuranceYearly) : round2(bInsuranceMonthly * 12);
 
                         const bCtcMonthly = bGrossMonthly;
                         const bCtcYearly = bGrossYearly;
 
-                        const bPtMonthly = custom?.ptMonthly !== undefined ? Number(custom.ptMonthly) : breakdown.ptMonthly;
-                        const bPtYearly = custom?.ptYearly !== undefined ? Number(custom.ptYearly) : (bPtMonthly * 12);
+                        const bPtMonthly = custom?.ptMonthly !== undefined ? round2(custom.ptMonthly) : breakdown.ptMonthly;
+                        const bPtYearly = custom?.ptYearly !== undefined ? round2(custom.ptYearly) : round2(bPtMonthly * 12);
 
                         const bEpfMonthly = custom?.epfMonthly !== undefined 
-                          ? Number(custom.epfMonthly) 
+                          ? round2(custom.epfMonthly) 
                           : (custom?.deductEmployeePfMonthly !== undefined 
-                            ? Number(custom.deductEmployeePfMonthly) 
+                            ? round2(custom.deductEmployeePfMonthly) 
                             : (custom?.employerPfMonthly !== undefined && Number(custom.employerPfMonthly) > 0 && !custom?.deductEmployeePfMonthly 
-                              ? Number(custom.employerPfMonthly) 
-                              : Math.round(bBasicMonthly * 0.12)));
-                        const bEpfYearly = bEpfMonthly * 12;
+                              ? round2(custom.employerPfMonthly) 
+                              : round2(bBasicMonthly * 0.12)));
+                        const bEpfYearly = round2(bEpfMonthly * 12);
 
-                        const bDedInsuranceMonthly = custom?.deductInsuranceMonthly !== undefined ? Number(custom.deductInsuranceMonthly) : breakdown.deductInsuranceMonthly;
-                        const bDedInsuranceYearly = custom?.deductInsuranceYearly !== undefined ? Number(custom.deductInsuranceYearly) : (bDedInsuranceMonthly * 12);
+                        const bDedInsuranceMonthly = custom?.deductInsuranceMonthly !== undefined ? round2(custom.deductInsuranceMonthly) : breakdown.deductInsuranceMonthly;
+                        const bDedInsuranceYearly = custom?.deductInsuranceYearly !== undefined ? round2(custom.deductInsuranceYearly) : round2(bDedInsuranceMonthly * 12);
 
-                        const bOtherDedMonthly = custom?.otherDeductMonthly !== undefined ? Number(custom.otherDeductMonthly) : breakdown.otherDeductMonthly;
-                        const bOtherDedYearly = custom?.otherDeductYearly !== undefined ? Number(custom.otherDeductYearly) : (bOtherDedMonthly * 12);
+                        const bOtherDedMonthly = custom?.otherDeductMonthly !== undefined ? round2(custom.otherDeductMonthly) : breakdown.otherDeductMonthly;
+                        const bOtherDedYearly = custom?.otherDeductYearly !== undefined ? round2(custom.otherDeductYearly) : round2(bOtherDedMonthly * 12);
 
-                        const bTotalDeductMonthly = bPtMonthly + bEpfMonthly + bDedInsuranceMonthly + bOtherDedMonthly;
-                        const bTotalDeductYearly = bPtYearly + bEpfYearly + bDedInsuranceYearly + bOtherDedYearly;
+                        const bTotalDeductMonthly = round2(bPtMonthly + bEpfMonthly + bDedInsuranceMonthly + bOtherDedMonthly);
+                        const bTotalDeductYearly = round2(bPtYearly + bEpfYearly + bDedInsuranceYearly + bOtherDedYearly);
 
                         const baseForNetMonthly = withGross ? bGrossMonthly : bBasicMonthly;
                         const baseForNetYearly = withGross ? bGrossYearly : bBasicYearly;
 
-                        const bNetMonthly = Math.max(0, baseForNetMonthly - bTotalDeductMonthly);
-                        const bNetYearly = Math.max(0, baseForNetYearly - bTotalDeductYearly);
+                        const bNetMonthly = round2(Math.max(0, baseForNetMonthly - bTotalDeductMonthly));
+                        const bNetYearly = round2(Math.max(0, baseForNetYearly - bTotalDeductYearly));
 
                         const activeBreakdown: SalaryBreakdown = {
                           monthlyGross: bGrossMonthly,
@@ -10286,6 +10301,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                             {isEditingBreakdown ? (
                                               <input
                                                 type="number"
+                                                step="0.01"
                                                 value={bGrossMonthly}
                                                 onChange={(e) => {
                                                   const val = Number(e.target.value) || 0;
@@ -10294,11 +10310,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                                 style={{ width: '100px', textAlign: 'right', padding: '2px 4px', fontWeight: 'bold', border: '1px solid #16a34a', borderRadius: '3px', fontSize: '0.78rem' }}
                                               />
                                             ) : (
-                                              bGrossMonthly.toLocaleString('en-IN')
+                                              formatINR(bGrossMonthly)
                                             )}
                                           </td>
                                           <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                            {bGrossYearly.toLocaleString('en-IN')}
+                                            {formatINR(bGrossYearly)}
                                           </td>
                                         </tr>
                                       )}
@@ -10310,19 +10326,20 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                           {isEditingBreakdown ? (
                                             <input
                                               type="number"
+                                              step="0.01"
                                               value={bBasicMonthly}
                                               onChange={(e) => {
                                                 const val = Number(e.target.value) || 0;
-                                                handleUpdateCandidateBreakdown(c.id, c.email, { basicMonthly: val, basicYearly: val * 12 });
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { basicMonthly: val, basicYearly: round2(val * 12) });
                                               }}
                                               style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
                                             />
                                           ) : (
-                                            bBasicMonthly.toLocaleString('en-IN')
+                                            formatINR(bBasicMonthly)
                                           )}
                                         </td>
                                         <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                          {bBasicYearly.toLocaleString('en-IN')}
+                                          {formatINR(bBasicYearly)}
                                         </td>
                                       </tr>
 
@@ -10333,19 +10350,20 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                           {isEditingBreakdown ? (
                                             <input
                                               type="number"
+                                              step="0.01"
                                               value={bHraMonthly}
                                               onChange={(e) => {
                                                 const val = Number(e.target.value) || 0;
-                                                handleUpdateCandidateBreakdown(c.id, c.email, { hraMonthly: val, hraYearly: val * 12 });
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { hraMonthly: val, hraYearly: round2(val * 12) });
                                               }}
                                               style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
                                             />
                                           ) : (
-                                            bHraMonthly.toLocaleString('en-IN')
+                                            formatINR(bHraMonthly)
                                           )}
                                         </td>
                                         <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                          {bHraYearly.toLocaleString('en-IN')}
+                                          {formatINR(bHraYearly)}
                                         </td>
                                       </tr>
 
@@ -10356,19 +10374,20 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                           {isEditingBreakdown ? (
                                             <input
                                               type="number"
+                                              step="0.01"
                                               value={bLtaMonthly}
                                               onChange={(e) => {
                                                 const val = Number(e.target.value) || 0;
-                                                handleUpdateCandidateBreakdown(c.id, c.email, { ltaMonthly: val, ltaYearly: val * 12 });
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { ltaMonthly: val, ltaYearly: round2(val * 12) });
                                               }}
                                               style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
                                             />
                                           ) : (
-                                            bLtaMonthly.toLocaleString('en-IN')
+                                            formatINR(bLtaMonthly)
                                           )}
                                         </td>
                                         <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                          {bLtaYearly.toLocaleString('en-IN')}
+                                          {formatINR(bLtaYearly)}
                                         </td>
                                       </tr>
 
@@ -10379,19 +10398,20 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                           {isEditingBreakdown ? (
                                             <input
                                               type="number"
+                                              step="0.01"
                                               value={bEmployerPfMonthly}
                                               onChange={(e) => {
                                                 const val = Number(e.target.value) || 0;
-                                                handleUpdateCandidateBreakdown(c.id, c.email, { employeePfMonthly: val, employeePfYearly: val * 12 });
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { employeePfMonthly: val, employeePfYearly: round2(val * 12) });
                                               }}
                                               style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
                                             />
                                           ) : (
-                                            bEmployerPfMonthly.toLocaleString('en-IN')
+                                            formatINR(bEmployerPfMonthly)
                                           )}
                                         </td>
                                         <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                          {bEmployerPfYearly.toLocaleString('en-IN')}
+                                          {formatINR(bEmployerPfYearly)}
                                         </td>
                                       </tr>
 
@@ -10402,19 +10422,20 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                           {isEditingBreakdown ? (
                                             <input
                                               type="number"
+                                              step="0.01"
                                               value={bInsuranceMonthly}
                                               onChange={(e) => {
                                                 const val = Number(e.target.value) || 0;
-                                                handleUpdateCandidateBreakdown(c.id, c.email, { insuranceMonthly: val, insuranceYearly: val * 12 });
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { insuranceMonthly: val, insuranceYearly: round2(val * 12) });
                                               }}
                                               style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
                                             />
                                           ) : (
-                                            bInsuranceMonthly.toLocaleString('en-IN')
+                                            formatINR(bInsuranceMonthly)
                                           )}
                                         </td>
                                         <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                          {bInsuranceYearly.toLocaleString('en-IN')}
+                                          {formatINR(bInsuranceYearly)}
                                         </td>
                                       </tr>
 
@@ -10425,6 +10446,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                           {isEditingBreakdown && !withGross ? (
                                             <input
                                               type="number"
+                                              step="0.01"
                                               value={bCtcMonthly}
                                               onChange={(e) => {
                                                 const val = Number(e.target.value) || 0;
@@ -10433,11 +10455,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                               style={{ width: '100px', textAlign: 'right', padding: '2px 4px', fontWeight: 'bold', border: '1px solid #16a34a', borderRadius: '3px', fontSize: '0.78rem' }}
                                             />
                                           ) : (
-                                            bCtcMonthly.toLocaleString('en-IN')
+                                            formatINR(bCtcMonthly)
                                           )}
                                         </td>
                                         <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                          {bCtcYearly.toLocaleString('en-IN')}
+                                          {formatINR(bCtcYearly)}
                                         </td>
                                       </tr>
 
@@ -10455,19 +10477,20 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                           {isEditingBreakdown ? (
                                             <input
                                               type="number"
+                                              step="0.01"
                                               value={bPtMonthly}
                                               onChange={(e) => {
                                                 const val = Number(e.target.value) || 0;
-                                                handleUpdateCandidateBreakdown(c.id, c.email, { ptMonthly: val, ptYearly: val * 12 });
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { ptMonthly: val, ptYearly: round2(val * 12) });
                                               }}
                                               style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
                                             />
                                           ) : (
-                                            bPtMonthly.toLocaleString('en-IN')
+                                            formatINR(bPtMonthly)
                                           )}
                                         </td>
                                         <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                          {bPtYearly.toLocaleString('en-IN')}
+                                          {formatINR(bPtYearly)}
                                         </td>
                                       </tr>
 
@@ -10478,14 +10501,15 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                           {isEditingBreakdown ? (
                                             <input
                                               type="number"
+                                              step="0.01"
                                               value={bEpfMonthly}
                                               onChange={(e) => {
                                                 const val = Number(e.target.value) || 0;
                                                 handleUpdateCandidateBreakdown(c.id, c.email, { 
                                                   epfMonthly: val, 
-                                                  epfYearly: val * 12,
+                                                  epfYearly: round2(val * 12),
                                                   deductEmployeePfMonthly: val,
-                                                  deductEmployeePfYearly: val * 12,
+                                                  deductEmployeePfYearly: round2(val * 12),
                                                   employerPfMonthly: 0,
                                                   employerPfYearly: 0
                                                 });
@@ -10493,11 +10517,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                               style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
                                             />
                                           ) : (
-                                            bEpfMonthly.toLocaleString('en-IN')
+                                            formatINR(bEpfMonthly)
                                           )}
                                         </td>
                                         <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                          {bEpfYearly.toLocaleString('en-IN')}
+                                          {formatINR(bEpfYearly)}
                                         </td>
                                       </tr>
 
@@ -10508,19 +10532,20 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                           {isEditingBreakdown ? (
                                             <input
                                               type="number"
+                                              step="0.01"
                                               value={bDedInsuranceMonthly}
                                               onChange={(e) => {
                                                 const val = Number(e.target.value) || 0;
-                                                handleUpdateCandidateBreakdown(c.id, c.email, { deductInsuranceMonthly: val, deductInsuranceYearly: val * 12 });
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { deductInsuranceMonthly: val, deductInsuranceYearly: round2(val * 12) });
                                               }}
                                               style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
                                             />
                                           ) : (
-                                            bDedInsuranceMonthly.toLocaleString('en-IN')
+                                            formatINR(bDedInsuranceMonthly)
                                           )}
                                         </td>
                                         <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                          {bDedInsuranceYearly.toLocaleString('en-IN')}
+                                          {formatINR(bDedInsuranceYearly)}
                                         </td>
                                       </tr>
 
@@ -10531,19 +10556,20 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                           {isEditingBreakdown ? (
                                             <input
                                               type="number"
+                                              step="0.01"
                                               value={bOtherDedMonthly}
                                               onChange={(e) => {
                                                 const val = Number(e.target.value) || 0;
-                                                handleUpdateCandidateBreakdown(c.id, c.email, { otherDeductMonthly: val, otherDeductYearly: val * 12 });
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { otherDeductMonthly: val, otherDeductYearly: round2(val * 12) });
                                               }}
                                               style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
                                             />
                                           ) : (
-                                            bOtherDedMonthly.toLocaleString('en-IN')
+                                            formatINR(bOtherDedMonthly)
                                           )}
                                         </td>
                                         <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                          {bOtherDedYearly.toLocaleString('en-IN')}
+                                          {formatINR(bOtherDedYearly)}
                                         </td>
                                       </tr>
 
@@ -10551,10 +10577,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                       <tr style={{ fontWeight: 'bold' }}>
                                         <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Total Deductions</td>
                                         <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                          {bTotalDeductMonthly.toLocaleString('en-IN')}
+                                          {formatINR(bTotalDeductMonthly)}
                                         </td>
                                         <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                          {bTotalDeductYearly.toLocaleString('en-IN')}
+                                          {formatINR(bTotalDeductYearly)}
                                         </td>
                                       </tr>
 
@@ -10562,10 +10588,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                       <tr style={{ background: '#e0f2fe', fontWeight: 'bold', fontSize: '0.85rem' }}>
                                         <td style={{ padding: '8px 12px', border: '1.5px solid #000000', color: '#0f172a' }}>Net Take-Home Salary (In-Hand)</td>
                                         <td style={{ padding: '8px 12px', textAlign: 'right', border: '1.5px solid #000000', color: '#0f172a' }}>
-                                          ₹{bNetMonthly.toLocaleString('en-IN')}
+                                          ₹{formatINR(bNetMonthly)}
                                         </td>
                                         <td style={{ padding: '8px 12px', textAlign: 'right', border: '1.5px solid #000000', color: '#0f172a' }}>
-                                          ₹{bNetYearly.toLocaleString('en-IN')}
+                                          ₹{formatINR(bNetYearly)}
                                         </td>
                                       </tr>
                                     </tbody>
@@ -10582,7 +10608,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                                       </div>
                                     </div>
                                     <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#14532d' }}>
-                                      ₹{bNetMonthly.toLocaleString('en-IN')}
+                                      ₹{formatINR(bNetMonthly)}
                                     </div>
                                   </div>
                                 </div>
