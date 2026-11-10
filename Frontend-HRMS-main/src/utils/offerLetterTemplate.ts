@@ -65,50 +65,59 @@ const round2 = (n: number | string | null | undefined): number => {
   return Math.round((Number(n) || 0) * 100) / 100;
 };
 
+export const cleanYearly = (n: number | string | null | undefined): number => {
+  const num = round2(n);
+  const rounded = Math.round(num);
+  if (Math.abs(rounded - num) <= 0.12) {
+    return rounded;
+  }
+  return num;
+};
+
 export const formatINR = (val?: number | string | null): string => {
-  const n = Number(val) || 0;
+  const n = cleanYearly(val);
   return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
 export function calculateSalaryBreakdown(annualCtc: number): SalaryBreakdown {
-  const ctc = round2(Number(annualCtc) || 0);
+  const ctc = cleanYearly(Number(annualCtc) || 0);
   const monthlyGross = round2(ctc / 12);
 
   // Upper Box (Gross Salary Calculations)
   // Basic - 50%
-  const basicMonthly = round2(monthlyGross * 0.50);
-  const basicYearly = round2(ctc * 0.50);
+  const basicYearly = cleanYearly(ctc * 0.50);
+  const basicMonthly = round2(basicYearly / 12);
   // HRA - 18%
-  const hraMonthly = round2(monthlyGross * 0.18);
-  const hraYearly = round2(ctc * 0.18);
+  const hraYearly = cleanYearly(ctc * 0.18);
+  const hraMonthly = round2(hraYearly / 12);
   // LTA - 10%
-  const ltaMonthly = round2(monthlyGross * 0.10);
-  const ltaYearly = round2(ctc * 0.10);
+  const ltaYearly = cleanYearly(ctc * 0.10);
+  const ltaMonthly = round2(ltaYearly / 12);
   // Employee PF - 12%
-  const employeePfMonthly = round2(monthlyGross * 0.12);
-  const employeePfYearly = round2(ctc * 0.12);
+  const employeePfYearly = cleanYearly(ctc * 0.12);
+  const employeePfMonthly = round2(employeePfYearly / 12);
   // Insurance - 10%
-  const insuranceMonthly = round2(monthlyGross * 0.10);
-  const insuranceYearly = round2(ctc * 0.10);
+  const insuranceYearly = cleanYearly(ctc * 0.10);
+  const insuranceMonthly = round2(insuranceYearly / 12);
 
   // Deductions:
   // PT - ₹200
   const ptMonthly = 200;
   const ptYearly = 2400;
   // EPF - Basic salary * 12%
-  const epfMonthly = round2(basicMonthly * 0.12);
-  const epfYearly = round2(epfMonthly * 12);
+  const epfYearly = cleanYearly(basicYearly * 0.12);
+  const epfMonthly = round2(epfYearly / 12);
   // Insurance - 10%
+  const deductInsuranceYearly = cleanYearly(ctc * 0.10);
   const deductInsuranceMonthly = round2(monthlyGross * 0.10);
-  const deductInsuranceYearly = round2(ctc * 0.10);
   // Other deductions - ₹200
   const otherDeductMonthly = 200;
   const otherDeductYearly = 2400;
+  const totalDeductYearly = cleanYearly(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly);
   const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly);
-  const totalDeductYearly = round2(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly);
 
+  const netYearly = cleanYearly(Math.max(0, ctc - totalDeductYearly));
   const netMonthly = round2(Math.max(0, monthlyGross - totalDeductMonthly));
-  const netYearly = round2(Math.max(0, ctc - totalDeductYearly));
 
   return {
     annualCtc: ctc,
@@ -168,22 +177,22 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
 
   // Re-derive particulars from raw items
   const basicMonthly = round2(rawB.basicMonthly);
-  const basicYearly = round2(basicMonthly * 12);
+  const basicYearly = rawB.basicYearly !== undefined ? cleanYearly(rawB.basicYearly) : cleanYearly(basicMonthly * 12);
   const hraMonthly = round2(rawB.hraMonthly);
-  const hraYearly = round2(hraMonthly * 12);
+  const hraYearly = rawB.hraYearly !== undefined ? cleanYearly(rawB.hraYearly) : cleanYearly(hraMonthly * 12);
   const ltaMonthly = round2(rawB.ltaMonthly);
-  const ltaYearly = round2(ltaMonthly * 12);
+  const ltaYearly = rawB.ltaYearly !== undefined ? cleanYearly(rawB.ltaYearly) : cleanYearly(ltaMonthly * 12);
   const employeePfMonthly = round2(rawB.employeePfMonthly);
-  const employeePfYearly = round2(employeePfMonthly * 12);
+  const employeePfYearly = rawB.employeePfYearly !== undefined ? cleanYearly(rawB.employeePfYearly) : cleanYearly(employeePfMonthly * 12);
   const insuranceMonthly = round2(rawB.insuranceMonthly);
-  const insuranceYearly = round2(insuranceMonthly * 12);
+  const insuranceYearly = rawB.insuranceYearly !== undefined ? cleanYearly(rawB.insuranceYearly) : cleanYearly(insuranceMonthly * 12);
 
-  const monthlyGross = rawB.monthlyGross !== undefined ? round2(rawB.monthlyGross) : round2(basicMonthly + hraMonthly + ltaMonthly + employeePfMonthly + insuranceMonthly);
-  const annualCtc = round2(monthlyGross * 12);
+  const annualCtc = rawB.annualCtc !== undefined ? cleanYearly(rawB.annualCtc) : (d.annualCtc ? cleanYearly(d.annualCtc) : cleanYearly(basicYearly + hraYearly + ltaYearly + employeePfYearly + insuranceYearly));
+  const monthlyGross = rawB.monthlyGross !== undefined ? round2(rawB.monthlyGross) : round2(annualCtc / 12);
 
   // Re-derive deductions dynamically so Total Deductions always equals the exact sum of rows
   const ptMonthly = rawB.ptMonthly !== undefined ? round2(rawB.ptMonthly) : 200;
-  const ptYearly = round2(ptMonthly * 12);
+  const ptYearly = cleanYearly(ptMonthly * 12);
   const epfMonthly = rawB.epfMonthly !== undefined 
     ? round2(rawB.epfMonthly) 
     : (rawB.deductEmployeePfMonthly !== undefined 
@@ -191,21 +200,21 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
       : (rawB.employerPfMonthly !== undefined && Number(rawB.employerPfMonthly) > 0 && !rawB.deductEmployeePfMonthly 
         ? round2(rawB.employerPfMonthly) 
         : round2(basicMonthly * 0.12)));
-  const epfYearly = round2(epfMonthly * 12);
+  const epfYearly = rawB.epfYearly !== undefined ? cleanYearly(rawB.epfYearly) : cleanYearly(epfMonthly * 12);
   const deductInsuranceMonthly = rawB.deductInsuranceMonthly !== undefined ? round2(rawB.deductInsuranceMonthly) : round2(monthlyGross * 0.10);
-  const deductInsuranceYearly = round2(deductInsuranceMonthly * 12);
+  const deductInsuranceYearly = rawB.deductInsuranceYearly !== undefined ? cleanYearly(rawB.deductInsuranceYearly) : cleanYearly(annualCtc * 0.10);
   const otherDeductMonthly = rawB.otherDeductMonthly !== undefined ? round2(rawB.otherDeductMonthly) : 200;
-  const otherDeductYearly = round2(otherDeductMonthly * 12);
+  const otherDeductYearly = cleanYearly(otherDeductMonthly * 12);
 
+  const totalDeductYearly = cleanYearly(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly);
   const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly);
-  const totalDeductYearly = round2(totalDeductMonthly * 12);
 
   const isWithGross = d.withGross === true && !d.withoutGross;
   const baseForNetMonthly = isWithGross ? monthlyGross : basicMonthly;
   const baseForNetYearly = isWithGross ? annualCtc : basicYearly;
 
+  const netYearly = cleanYearly(Math.max(0, baseForNetYearly - totalDeductYearly));
   const netMonthly = round2(Math.max(0, baseForNetMonthly - totalDeductMonthly));
-  const netYearly = round2(Math.max(0, baseForNetYearly - totalDeductYearly));
 
   const b: SalaryBreakdown = {
     ...rawB,
@@ -645,7 +654,7 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
                   <tr class="table-row-white">
                     <td>EPF</td>
                     <td style="text-align: right;">${formatINR(b.epfMonthly !== undefined ? b.epfMonthly : (b.deductEmployeePfMonthly || 0))}</td>
-                    <td style="text-align: right;">${formatINR(((b.epfMonthly !== undefined ? b.epfMonthly : (b.deductEmployeePfMonthly || 0)) * 12))}</td>
+                    <td style="text-align: right;">${formatINR(b.epfYearly !== undefined ? b.epfYearly : ((b.epfMonthly !== undefined ? b.epfMonthly : (b.deductEmployeePfMonthly || 0)) * 12))}</td>
                   </tr>
                   <tr class="table-row-white">
                     <td>Insurance</td>

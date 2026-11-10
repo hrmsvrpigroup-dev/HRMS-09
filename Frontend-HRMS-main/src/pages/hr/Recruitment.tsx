@@ -1983,57 +1983,66 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     return Math.round((Number(n) || 0) * 100) / 100;
   };
 
+  const cleanYearly = (n: number | string | null | undefined): number => {
+    const num = round2(n);
+    const rounded = Math.round(num);
+    if (Math.abs(rounded - num) <= 0.12) {
+      return rounded;
+    }
+    return num;
+  };
+
   const formatINR = (val?: number | string | null): string => {
-    const n = Number(val) || 0;
+    const n = cleanYearly(val);
     return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
   // Salary & Deductions Calculator according to VR PI Offer Template & Percentage Rules
   const calculateSalaryBreakdown = (annualCtcNum: number) => {
-    const annualCtc = Math.max(0, Number(annualCtcNum) || 0);
+    const annualCtc = cleanYearly(Number(annualCtcNum) || 0);
     const monthlyGross = round2(annualCtc / 12);
 
     // Percentages:
     // Basic (50%)
-    const basicYearly = round2(annualCtc * 0.50);
-    const basicMonthly = round2(monthlyGross * 0.50);
+    const basicYearly = cleanYearly(annualCtc * 0.50);
+    const basicMonthly = round2(basicYearly / 12);
 
     // House Rent Allowance (HRA) (18%)
-    const hraYearly = round2(annualCtc * 0.18);
-    const hraMonthly = round2(monthlyGross * 0.18);
+    const hraYearly = cleanYearly(annualCtc * 0.18);
+    const hraMonthly = round2(hraYearly / 12);
 
     // Leave Travel Allowance (LTA) (10%)
-    const ltaYearly = round2(annualCtc * 0.10);
-    const ltaMonthly = round2(monthlyGross * 0.10);
+    const ltaYearly = cleanYearly(annualCtc * 0.10);
+    const ltaMonthly = round2(ltaYearly / 12);
 
     // Employee PF (12%)
-    const employeePfYearly = round2(annualCtc * 0.12);
-    const employeePfMonthly = round2(monthlyGross * 0.12);
+    const employeePfYearly = cleanYearly(annualCtc * 0.12);
+    const employeePfMonthly = round2(employeePfYearly / 12);
 
     // Insurance (10%)
-    const insuranceYearly = round2(annualCtc * 0.10);
-    const insuranceMonthly = round2(monthlyGross * 0.10);
+    const insuranceYearly = cleanYearly(annualCtc * 0.10);
+    const insuranceMonthly = round2(insuranceYearly / 12);
 
     // Deductions:
     const ptMonthly = 200;
     const ptYearly = 2400;
 
     // EPF - Basic salary * 12%
-    const epfMonthly = round2(basicMonthly * 0.12);
-    const epfYearly = round2(epfMonthly * 12);
+    const epfYearly = cleanYearly(basicYearly * 0.12);
+    const epfMonthly = round2(epfYearly / 12);
 
     // Insurance (10%)
-    const deductInsuranceYearly = round2(annualCtc * 0.10);
+    const deductInsuranceYearly = cleanYearly(annualCtc * 0.10);
     const deductInsuranceMonthly = round2(monthlyGross * 0.10);
 
     const otherDeductMonthly = 200;
     const otherDeductYearly = 2400;
 
+    const totalDeductYearly = cleanYearly(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly);
     const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly);
-    const totalDeductYearly = round2(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly);
 
+    const netYearly = cleanYearly(Math.max(0, annualCtc - totalDeductYearly));
     const netMonthly = round2(Math.max(0, monthlyGross - totalDeductMonthly));
-    const netYearly = round2(Math.max(0, annualCtc - totalDeductYearly));
 
     return {
       annualCtc,
@@ -2135,16 +2144,21 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       const merged = { ...currentBreakdown, ...updates };
 
       const basicM = merged.basicMonthly !== undefined ? round2(merged.basicMonthly) : 0;
-      const basicY = merged.basicYearly !== undefined ? round2(merged.basicYearly) : round2(basicM * 12);
+      const basicY = merged.basicYearly !== undefined ? cleanYearly(merged.basicYearly) : cleanYearly(basicM * 12);
       const hraM = merged.hraMonthly !== undefined ? round2(merged.hraMonthly) : 0;
+      const hraY = merged.hraYearly !== undefined ? cleanYearly(merged.hraYearly) : cleanYearly(hraM * 12);
       const ltaM = merged.ltaMonthly !== undefined ? round2(merged.ltaMonthly) : 0;
+      const ltaY = merged.ltaYearly !== undefined ? cleanYearly(merged.ltaYearly) : cleanYearly(ltaM * 12);
       const empPfM = merged.employeePfMonthly !== undefined ? round2(merged.employeePfMonthly) : 0;
+      const empPfY = merged.employeePfYearly !== undefined ? cleanYearly(merged.employeePfYearly) : cleanYearly(empPfM * 12);
       const insM = merged.insuranceMonthly !== undefined ? round2(merged.insuranceMonthly) : 0;
+      const insY = merged.insuranceYearly !== undefined ? cleanYearly(merged.insuranceYearly) : cleanYearly(insM * 12);
 
       const grossM = merged.monthlyGross !== undefined ? round2(merged.monthlyGross) : round2(basicM + hraM + ltaM + empPfM + insM);
-      const grossY = merged.annualCtc !== undefined ? round2(merged.annualCtc) : round2(grossM * 12);
+      const grossY = merged.annualCtc !== undefined ? cleanYearly(merged.annualCtc) : cleanYearly(basicY + hraY + ltaY + empPfY + insY);
 
       const ptM = merged.ptMonthly !== undefined ? round2(merged.ptMonthly) : 200;
+      const ptY = merged.ptYearly !== undefined ? cleanYearly(merged.ptYearly) : cleanYearly(ptM * 12);
       const epfM = merged.epfMonthly !== undefined 
         ? round2(merged.epfMonthly) 
         : (merged.deductEmployeePfMonthly !== undefined 
@@ -2152,170 +2166,282 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
           : (merged.employerPfMonthly !== undefined && Number(merged.employerPfMonthly) > 0 && !merged.deductEmployeePfMonthly 
             ? round2(merged.employerPfMonthly) 
             : round2(basicM * 0.12)));
-      const epfY = merged.epfYearly !== undefined ? round2(merged.epfYearly) : round2(epfM * 12);
+      const epfY = merged.epfYearly !== undefined ? cleanYearly(merged.epfYearly) : cleanYearly(epfM * 12);
       const dedInsM = merged.deductInsuranceMonthly !== undefined ? round2(merged.deductInsuranceMonthly) : 0;
+      const dedInsY = merged.deductInsuranceYearly !== undefined ? cleanYearly(merged.deductInsuranceYearly) : cleanYearly(dedInsM * 12);
       const otherM = merged.otherDeductMonthly !== undefined ? round2(merged.otherDeductMonthly) : 200;
+      const otherY = merged.otherDeductYearly !== undefined ? cleanYearly(merged.otherDeductYearly) : cleanYearly(otherM * 12);
 
       const totalDeductM = round2(ptM + epfM + dedInsM + otherM);
-      const totalDeductY = round2(totalDeductM * 12);
+      const totalDeductY = cleanYearly(ptY + epfY + dedInsY + otherY);
 
       const isWithGross = existing.withGross === true;
       const baseForNetM = isWithGross ? grossM : basicM;
       const baseForNetY = isWithGross ? grossY : basicY;
 
       const netM = round2(Math.max(0, baseForNetM - totalDeductM));
-      const netY = round2(Math.max(0, baseForNetY - totalDeductY));
+      const netY = cleanYearly(Math.max(0, baseForNetY - totalDeductY));
 
-    const updatedBreakdown = {
-      ...merged,
-      monthlyGross: grossM,
-      annualCtc: grossY,
-      totalDeductMonthly: totalDeductM,
-      totalDeductYearly: totalDeductY,
-      netMonthly: netM,
-      netYearly: netY
-    };
-    const updatedForm = { ...existing, customBreakdown: updatedBreakdown };
-
-    return {
-      ...prev,
-      [candId]: updatedForm,
-      ...(emailKey ? { [emailKey]: updatedForm } : {})
-    };
-  });
-};
-
-const handleToggleWithGross = (candId: string, candEmail: string | undefined, withGross: boolean) => {
-  const emailKey = candEmail ? candEmail.trim().toLowerCase() : undefined;
-  setCandidateOfferForms(prev => {
-    const existing = prev[candId] || (emailKey ? prev[emailKey] : undefined) || {};
-    const currentBreakdown = existing.customBreakdown;
-    let updatedBreakdown = currentBreakdown;
-    if (currentBreakdown) {
-      const basicM = currentBreakdown.basicMonthly !== undefined ? Number(currentBreakdown.basicMonthly) : 0;
-      const basicY = currentBreakdown.basicYearly !== undefined ? Number(currentBreakdown.basicYearly) : basicM * 12;
-      const grossM = currentBreakdown.monthlyGross !== undefined ? Number(currentBreakdown.monthlyGross) : Math.round(Number(existing.annualCtc || 720000) / 12);
-      const grossY = currentBreakdown.annualCtc !== undefined ? Number(currentBreakdown.annualCtc) : grossM * 12;
-
-      const baseMonthly = withGross ? grossM : basicM;
-      const baseYearly = withGross ? grossY : basicY;
-
-      const ptM = currentBreakdown.ptMonthly !== undefined ? Number(currentBreakdown.ptMonthly) : 200;
-      const epfM = currentBreakdown.epfMonthly !== undefined
-        ? Number(currentBreakdown.epfMonthly)
-        : (currentBreakdown.deductEmployeePfMonthly !== undefined
-          ? Number(currentBreakdown.deductEmployeePfMonthly)
-          : (currentBreakdown.employerPfMonthly !== undefined && Number(currentBreakdown.employerPfMonthly) > 0 && !currentBreakdown.deductEmployeePfMonthly
-            ? Number(currentBreakdown.employerPfMonthly)
-            : Math.round(basicM * 0.12)));
-      const dedInsM = currentBreakdown.deductInsuranceMonthly !== undefined ? Number(currentBreakdown.deductInsuranceMonthly) : 0;
-      const otherM = currentBreakdown.otherDeductMonthly !== undefined ? Number(currentBreakdown.otherDeductMonthly) : 200;
-
-      const totalDeductM = ptM + epfM + dedInsM + otherM;
-      const totalDeductY = totalDeductM * 12;
-
-      updatedBreakdown = {
-        ...currentBreakdown,
+      const updatedBreakdown = {
+        ...merged,
+        monthlyGross: grossM,
+        annualCtc: grossY,
+        basicMonthly: basicM,
+        basicYearly: basicY,
+        hraMonthly: hraM,
+        hraYearly: hraY,
+        ltaMonthly: ltaM,
+        ltaYearly: ltaY,
+        employeePfMonthly: empPfM,
+        employeePfYearly: empPfY,
+        insuranceMonthly: insM,
+        insuranceYearly: insY,
+        ptMonthly: ptM,
+        ptYearly: ptY,
+        employerPfMonthly: 0,
+        employerPfYearly: 0,
+        deductEmployeePfMonthly: epfM,
+        deductEmployeePfYearly: epfY,
+        epfMonthly: epfM,
+        epfYearly: epfY,
+        pfMonthly: epfM,
+        pfYearly: epfY,
+        deductInsuranceMonthly: dedInsM,
+        deductInsuranceYearly: dedInsY,
+        otherDeductMonthly: otherM,
+        otherDeductYearly: otherY,
         totalDeductMonthly: totalDeductM,
         totalDeductYearly: totalDeductY,
-        netMonthly: Math.max(0, baseMonthly - totalDeductM),
-        netYearly: Math.max(0, baseYearly - totalDeductY)
+        netMonthly: netM,
+        netYearly: netY
       };
-    }
-    const updatedForm = {
-      ...existing,
-      withGross,
-      customBreakdown: updatedBreakdown
-    };
-    return {
-      ...prev,
-      [candId]: updatedForm,
-      ...(emailKey ? { [emailKey]: updatedForm } : {})
-    };
-  });
-};
+      const updatedForm = { ...existing, annualCtc: String(grossY), customBreakdown: updatedBreakdown };
 
-const handleAutoCalculateCandidateBreakdown = (candId: string, candEmail: string | undefined, baseGrossMonthly: number, withGrossMode?: boolean) => {
-  const emailKey = candEmail ? candEmail.trim().toLowerCase() : undefined;
-  const grossMonthly = round2(baseGrossMonthly);
-  const grossYearly = round2(grossMonthly * 12);
-  const basicMonthly = round2(grossMonthly * 0.50);
-  const basicYearly = round2(basicMonthly * 12);
-  const hraMonthly = round2(grossMonthly * 0.18);
-  const hraYearly = round2(hraMonthly * 12);
-  const ltaMonthly = round2(grossMonthly * 0.10);
-  const ltaYearly = round2(ltaMonthly * 12);
-  const employerPfMonthly = round2(grossMonthly * 0.12);
-  const employerPfYearly = round2(employerPfMonthly * 12);
-  const insuranceMonthly = round2(grossMonthly * 0.10);
-  const insuranceYearly = round2(insuranceMonthly * 12);
-
-  const ptMonthly = 200;
-  const ptYearly = 2400;
-  // EPF - Basic salary * 12%
-  const epfMonthly = round2(basicMonthly * 0.12);
-  const epfYearly = round2(epfMonthly * 12);
-  const deductInsuranceMonthly = round2(grossMonthly * 0.10);
-  const deductInsuranceYearly = round2(deductInsuranceMonthly * 12);
-  const otherDeductMonthly = 200;
-  const otherDeductYearly = 2400;
-
-  const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly);
-  const totalDeductYearly = round2(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly);
-  const isWithGross = withGrossMode === true;
-  const netBaseMonthly = isWithGross ? grossMonthly : basicMonthly;
-  const netBaseYearly = isWithGross ? grossYearly : basicYearly;
-  const netMonthly = round2(Math.max(0, netBaseMonthly - totalDeductMonthly));
-  const netYearly = round2(Math.max(0, netBaseYearly - totalDeductYearly));
-
-  const newBreakdown = {
-    monthlyGross: grossMonthly,
-    annualCtc: grossYearly,
-    basicMonthly,
-    basicYearly,
-    hraMonthly,
-    hraYearly,
-    ltaMonthly,
-    ltaYearly,
-    employeePfMonthly: employerPfMonthly,
-    employeePfYearly: employerPfYearly,
-    insuranceMonthly,
-    insuranceYearly,
-    ptMonthly,
-    ptYearly,
-    employerPfMonthly: 0,
-    employerPfYearly: 0,
-    deductEmployeePfMonthly: epfMonthly,
-    deductEmployeePfYearly: epfYearly,
-    epfMonthly,
-    epfYearly,
-    pfMonthly: epfMonthly,
-    pfYearly: epfYearly,
-    deductInsuranceMonthly,
-    deductInsuranceYearly,
-    otherDeductMonthly,
-    otherDeductYearly,
-    totalDeductMonthly,
-    totalDeductYearly,
-    netMonthly,
-    netYearly
+      return {
+        ...prev,
+        [candId]: updatedForm,
+        ...(emailKey ? { [emailKey]: updatedForm } : {})
+      };
+    });
   };
 
-  setCandidateOfferForms(prev => {
-    const existing = prev[candId] || (emailKey ? prev[emailKey] : undefined) || {};
-    const updatedForm = {
-      ...existing,
-      annualCtc: String(grossYearly),
-      withGross: withGrossMode !== undefined ? withGrossMode : (existing.withGross === true),
-      customBreakdown: newBreakdown
+  const handleToggleWithGross = (candId: string, candEmail: string | undefined, withGross: boolean) => {
+    const emailKey = candEmail ? candEmail.trim().toLowerCase() : undefined;
+    setCandidateOfferForms(prev => {
+      const existing = prev[candId] || (emailKey ? prev[emailKey] : undefined) || {};
+      const currentBreakdown = existing.customBreakdown;
+      let updatedBreakdown = currentBreakdown;
+      if (currentBreakdown) {
+        const basicM = currentBreakdown.basicMonthly !== undefined ? Number(currentBreakdown.basicMonthly) : 0;
+        const basicY = currentBreakdown.basicYearly !== undefined ? cleanYearly(currentBreakdown.basicYearly) : cleanYearly(basicM * 12);
+        const grossM = currentBreakdown.monthlyGross !== undefined ? Number(currentBreakdown.monthlyGross) : Math.round(Number(existing.annualCtc || 720000) / 12);
+        const grossY = currentBreakdown.annualCtc !== undefined ? cleanYearly(currentBreakdown.annualCtc) : cleanYearly(grossM * 12);
+
+        const baseMonthly = withGross ? grossM : basicM;
+        const baseYearly = withGross ? grossY : basicY;
+
+        const ptM = currentBreakdown.ptMonthly !== undefined ? Number(currentBreakdown.ptMonthly) : 200;
+        const ptY = currentBreakdown.ptYearly !== undefined ? cleanYearly(currentBreakdown.ptYearly) : cleanYearly(ptM * 12);
+        const epfM = currentBreakdown.epfMonthly !== undefined
+          ? Number(currentBreakdown.epfMonthly)
+          : (currentBreakdown.deductEmployeePfMonthly !== undefined
+            ? Number(currentBreakdown.deductEmployeePfMonthly)
+            : (currentBreakdown.employerPfMonthly !== undefined && Number(currentBreakdown.employerPfMonthly) > 0 && !currentBreakdown.deductEmployeePfMonthly
+              ? Number(currentBreakdown.employerPfMonthly)
+              : Math.round(basicM * 0.12)));
+        const epfY = currentBreakdown.epfYearly !== undefined ? cleanYearly(currentBreakdown.epfYearly) : cleanYearly(epfM * 12);
+        const dedInsM = currentBreakdown.deductInsuranceMonthly !== undefined ? Number(currentBreakdown.deductInsuranceMonthly) : 0;
+        const dedInsY = currentBreakdown.deductInsuranceYearly !== undefined ? cleanYearly(currentBreakdown.deductInsuranceYearly) : cleanYearly(dedInsM * 12);
+        const otherM = currentBreakdown.otherDeductMonthly !== undefined ? Number(currentBreakdown.otherDeductMonthly) : 200;
+        const otherY = currentBreakdown.otherDeductYearly !== undefined ? cleanYearly(currentBreakdown.otherDeductYearly) : cleanYearly(otherM * 12);
+
+        const totalDeductM = round2(ptM + epfM + dedInsM + otherM);
+        const totalDeductY = cleanYearly(ptY + epfY + dedInsY + otherY);
+
+        updatedBreakdown = {
+          ...currentBreakdown,
+          totalDeductMonthly: totalDeductM,
+          totalDeductYearly: totalDeductY,
+          netMonthly: round2(Math.max(0, baseMonthly - totalDeductM)),
+          netYearly: cleanYearly(Math.max(0, baseYearly - totalDeductY))
+        };
+      }
+      const updatedForm = {
+        ...existing,
+        withGross,
+        customBreakdown: updatedBreakdown
+      };
+      return {
+        ...prev,
+        [candId]: updatedForm,
+        ...(emailKey ? { [emailKey]: updatedForm } : {})
+      };
+    });
+  };
+
+  const handleAutoCalculateCandidateBreakdown = (candId: string, candEmail: string | undefined, baseGrossMonthly: number, withGrossMode?: boolean) => {
+    const emailKey = candEmail ? candEmail.trim().toLowerCase() : undefined;
+    const grossMonthly = round2(baseGrossMonthly);
+    const grossYearly = cleanYearly(grossMonthly * 12);
+    const basicYearly = cleanYearly(grossYearly * 0.50);
+    const basicMonthly = round2(basicYearly / 12);
+    const hraYearly = cleanYearly(grossYearly * 0.18);
+    const hraMonthly = round2(hraYearly / 12);
+    const ltaYearly = cleanYearly(grossYearly * 0.10);
+    const ltaMonthly = round2(ltaYearly / 12);
+    const employerPfYearly = cleanYearly(grossYearly * 0.12);
+    const employerPfMonthly = round2(employerPfYearly / 12);
+    const insuranceYearly = cleanYearly(grossYearly * 0.10);
+    const insuranceMonthly = round2(insuranceYearly / 12);
+
+    const ptMonthly = 200;
+    const ptYearly = 2400;
+    // EPF - Basic salary * 12%
+    const epfYearly = cleanYearly(basicYearly * 0.12);
+    const epfMonthly = round2(epfYearly / 12);
+    const deductInsuranceYearly = cleanYearly(grossYearly * 0.10);
+    const deductInsuranceMonthly = round2(deductInsuranceYearly / 12);
+    const otherDeductMonthly = 200;
+    const otherDeductYearly = 2400;
+
+    const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly);
+    const totalDeductYearly = cleanYearly(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly);
+    const isWithGross = withGrossMode === true;
+    const netBaseMonthly = isWithGross ? grossMonthly : basicMonthly;
+    const netBaseYearly = isWithGross ? grossYearly : basicYearly;
+    const netMonthly = round2(Math.max(0, netBaseMonthly - totalDeductMonthly));
+    const netYearly = cleanYearly(Math.max(0, netBaseYearly - totalDeductYearly));
+
+    const newBreakdown = {
+      monthlyGross: grossMonthly,
+      annualCtc: grossYearly,
+      basicMonthly,
+      basicYearly,
+      hraMonthly,
+      hraYearly,
+      ltaMonthly,
+      ltaYearly,
+      employeePfMonthly: employerPfMonthly,
+      employeePfYearly: employerPfYearly,
+      insuranceMonthly,
+      insuranceYearly,
+      ptMonthly,
+      ptYearly,
+      employerPfMonthly: 0,
+      employerPfYearly: 0,
+      deductEmployeePfMonthly: epfMonthly,
+      deductEmployeePfYearly: epfYearly,
+      epfMonthly,
+      epfYearly,
+      pfMonthly: epfMonthly,
+      pfYearly: epfYearly,
+      deductInsuranceMonthly,
+      deductInsuranceYearly,
+      otherDeductMonthly,
+      otherDeductYearly,
+      totalDeductMonthly,
+      totalDeductYearly,
+      netMonthly,
+      netYearly
     };
-    return {
-      ...prev,
-      [candId]: updatedForm,
-      ...(emailKey ? { [emailKey]: updatedForm } : {})
+
+    setCandidateOfferForms(prev => {
+      const existing = prev[candId] || (emailKey ? prev[emailKey] : undefined) || {};
+      const updatedForm = {
+        ...existing,
+        annualCtc: String(grossYearly),
+        withGross: withGrossMode !== undefined ? withGrossMode : (existing.withGross === true),
+        customBreakdown: newBreakdown
+      };
+      return {
+        ...prev,
+        [candId]: updatedForm,
+        ...(emailKey ? { [emailKey]: updatedForm } : {})
+      };
+    });
+  };
+
+  const handleAutoCalculateFromYearly = (candId: string, candEmail: string | undefined, annualCtcNum: number, withGrossMode?: boolean) => {
+    const emailKey = candEmail ? candEmail.trim().toLowerCase() : undefined;
+    const grossYearly = cleanYearly(annualCtcNum);
+    const grossMonthly = round2(grossYearly / 12);
+    const basicYearly = cleanYearly(grossYearly * 0.50);
+    const basicMonthly = round2(basicYearly / 12);
+    const hraYearly = cleanYearly(grossYearly * 0.18);
+    const hraMonthly = round2(hraYearly / 12);
+    const ltaYearly = cleanYearly(grossYearly * 0.10);
+    const ltaMonthly = round2(ltaYearly / 12);
+    const employerPfYearly = cleanYearly(grossYearly * 0.12);
+    const employerPfMonthly = round2(employerPfYearly / 12);
+    const insuranceYearly = cleanYearly(grossYearly * 0.10);
+    const insuranceMonthly = round2(insuranceYearly / 12);
+
+    const ptMonthly = 200;
+    const ptYearly = 2400;
+    // EPF - Basic salary * 12%
+    const epfYearly = cleanYearly(basicYearly * 0.12);
+    const epfMonthly = round2(epfYearly / 12);
+    const deductInsuranceYearly = cleanYearly(grossYearly * 0.10);
+    const deductInsuranceMonthly = round2(deductInsuranceYearly / 12);
+    const otherDeductMonthly = 200;
+    const otherDeductYearly = 2400;
+
+    const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly);
+    const totalDeductYearly = cleanYearly(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly);
+    const isWithGross = withGrossMode === true;
+    const netBaseMonthly = isWithGross ? grossMonthly : basicMonthly;
+    const netBaseYearly = isWithGross ? grossYearly : basicYearly;
+    const netMonthly = round2(Math.max(0, netBaseMonthly - totalDeductMonthly));
+    const netYearly = cleanYearly(Math.max(0, netBaseYearly - totalDeductYearly));
+
+    const newBreakdown = {
+      monthlyGross: grossMonthly,
+      annualCtc: grossYearly,
+      basicMonthly,
+      basicYearly,
+      hraMonthly,
+      hraYearly,
+      ltaMonthly,
+      ltaYearly,
+      employeePfMonthly: employerPfMonthly,
+      employeePfYearly: employerPfYearly,
+      insuranceMonthly,
+      insuranceYearly,
+      ptMonthly,
+      ptYearly,
+      employerPfMonthly: 0,
+      employerPfYearly: 0,
+      deductEmployeePfMonthly: epfMonthly,
+      deductEmployeePfYearly: epfYearly,
+      epfMonthly,
+      epfYearly,
+      pfMonthly: epfMonthly,
+      pfYearly: epfYearly,
+      deductInsuranceMonthly,
+      deductInsuranceYearly,
+      otherDeductMonthly,
+      otherDeductYearly,
+      totalDeductMonthly,
+      totalDeductYearly,
+      netMonthly,
+      netYearly
     };
-  });
-};
+
+    setCandidateOfferForms(prev => {
+      const existing = prev[candId] || (emailKey ? prev[emailKey] : undefined) || {};
+      const updatedForm = {
+        ...existing,
+        annualCtc: String(grossYearly),
+        withGross: withGrossMode !== undefined ? withGrossMode : (existing.withGross === true),
+        customBreakdown: newBreakdown
+      };
+      return {
+        ...prev,
+        [candId]: updatedForm,
+        ...(emailKey ? { [emailKey]: updatedForm } : {})
+      };
+    });
+  };
 
 const handleUpdateCandidateOfferForm = (
   candidateId: string,
@@ -9879,28 +10005,28 @@ return (
                       const custom = candForm.customBreakdown;
 
                       const bGrossMonthly = custom?.monthlyGross !== undefined ? round2(custom.monthlyGross) : breakdown.monthlyGross;
-                      const bGrossYearly = custom?.annualCtc !== undefined ? round2(custom.annualCtc) : round2(bGrossMonthly * 12);
+                      const bGrossYearly = custom?.annualCtc !== undefined ? cleanYearly(custom.annualCtc) : cleanYearly(breakdown.annualCtc);
 
                       const bBasicMonthly = custom?.basicMonthly !== undefined ? round2(custom.basicMonthly) : breakdown.basicMonthly;
-                      const bBasicYearly = custom?.basicYearly !== undefined ? round2(custom.basicYearly) : round2(bBasicMonthly * 12);
+                      const bBasicYearly = custom?.basicYearly !== undefined ? cleanYearly(custom.basicYearly) : cleanYearly(breakdown.basicYearly);
 
                       const bHraMonthly = custom?.hraMonthly !== undefined ? round2(custom.hraMonthly) : breakdown.hraMonthly;
-                      const bHraYearly = custom?.hraYearly !== undefined ? round2(custom.hraYearly) : round2(bHraMonthly * 12);
+                      const bHraYearly = custom?.hraYearly !== undefined ? cleanYearly(custom.hraYearly) : cleanYearly(breakdown.hraYearly);
 
                       const bLtaMonthly = custom?.ltaMonthly !== undefined ? round2(custom.ltaMonthly) : breakdown.ltaMonthly;
-                      const bLtaYearly = custom?.ltaYearly !== undefined ? round2(custom.ltaYearly) : round2(bLtaMonthly * 12);
+                      const bLtaYearly = custom?.ltaYearly !== undefined ? cleanYearly(custom.ltaYearly) : cleanYearly(breakdown.ltaYearly);
 
                       const bEmployerPfMonthly = custom?.employeePfMonthly !== undefined ? round2(custom.employeePfMonthly) : breakdown.employeePfMonthly;
-                      const bEmployerPfYearly = custom?.employeePfYearly !== undefined ? round2(custom.employeePfYearly) : round2(bEmployerPfMonthly * 12);
+                      const bEmployerPfYearly = custom?.employeePfYearly !== undefined ? cleanYearly(custom.employeePfYearly) : cleanYearly(breakdown.employeePfYearly);
 
                       const bInsuranceMonthly = custom?.insuranceMonthly !== undefined ? round2(custom.insuranceMonthly) : breakdown.insuranceMonthly;
-                      const bInsuranceYearly = custom?.insuranceYearly !== undefined ? round2(custom.insuranceYearly) : round2(bInsuranceMonthly * 12);
+                      const bInsuranceYearly = custom?.insuranceYearly !== undefined ? cleanYearly(custom.insuranceYearly) : cleanYearly(breakdown.insuranceYearly);
 
                       const bCtcMonthly = bGrossMonthly;
                       const bCtcYearly = bGrossYearly;
 
                       const bPtMonthly = custom?.ptMonthly !== undefined ? round2(custom.ptMonthly) : breakdown.ptMonthly;
-                      const bPtYearly = custom?.ptYearly !== undefined ? round2(custom.ptYearly) : round2(bPtMonthly * 12);
+                      const bPtYearly = custom?.ptYearly !== undefined ? cleanYearly(custom.ptYearly) : cleanYearly(breakdown.ptYearly);
 
                       const bEpfMonthly = custom?.epfMonthly !== undefined
                         ? round2(custom.epfMonthly)
@@ -9909,22 +10035,26 @@ return (
                           : (custom?.employerPfMonthly !== undefined && Number(custom.employerPfMonthly) > 0 && !custom?.deductEmployeePfMonthly
                             ? round2(custom.employerPfMonthly)
                             : round2(bBasicMonthly * 0.12)));
-                      const bEpfYearly = round2(bEpfMonthly * 12);
+                      const bEpfYearly = custom?.epfYearly !== undefined
+                        ? cleanYearly(custom.epfYearly)
+                        : (custom?.deductEmployeePfYearly !== undefined
+                          ? cleanYearly(custom.deductEmployeePfYearly)
+                          : cleanYearly(breakdown.deductEmployeePfYearly || (bEpfMonthly * 12)));
 
                       const bDedInsuranceMonthly = custom?.deductInsuranceMonthly !== undefined ? round2(custom.deductInsuranceMonthly) : breakdown.deductInsuranceMonthly;
-                      const bDedInsuranceYearly = custom?.deductInsuranceYearly !== undefined ? round2(custom.deductInsuranceYearly) : round2(bDedInsuranceMonthly * 12);
+                      const bDedInsuranceYearly = custom?.deductInsuranceYearly !== undefined ? cleanYearly(custom.deductInsuranceYearly) : cleanYearly(breakdown.deductInsuranceYearly);
 
                       const bOtherDedMonthly = custom?.otherDeductMonthly !== undefined ? round2(custom.otherDeductMonthly) : breakdown.otherDeductMonthly;
-                      const bOtherDedYearly = custom?.otherDeductYearly !== undefined ? round2(custom.otherDeductYearly) : round2(bOtherDedMonthly * 12);
+                      const bOtherDedYearly = custom?.otherDeductYearly !== undefined ? cleanYearly(custom.otherDeductYearly) : cleanYearly(breakdown.otherDeductYearly);
 
                       const bTotalDeductMonthly = round2(bPtMonthly + bEpfMonthly + bDedInsuranceMonthly + bOtherDedMonthly);
-                      const bTotalDeductYearly = round2(bPtYearly + bEpfYearly + bDedInsuranceYearly + bOtherDedYearly);
+                      const bTotalDeductYearly = cleanYearly(bPtYearly + bEpfYearly + bDedInsuranceYearly + bOtherDedYearly);
 
                       const baseForNetMonthly = withGross ? bGrossMonthly : bBasicMonthly;
                       const baseForNetYearly = withGross ? bGrossYearly : bBasicYearly;
 
                       const bNetMonthly = round2(Math.max(0, baseForNetMonthly - bTotalDeductMonthly));
-                      const bNetYearly = round2(Math.max(0, baseForNetYearly - bTotalDeductYearly));
+                      const bNetYearly = cleanYearly(Math.max(0, baseForNetYearly - bTotalDeductYearly));
 
                       const activeBreakdown: SalaryBreakdown = {
                         monthlyGross: bGrossMonthly,
@@ -10300,8 +10430,21 @@ return (
                                         formatINR(bGrossMonthly)
                                       )}
                                     </td>
-                                    <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                      {formatINR(bGrossYearly)}
+                                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                      {isEditingBreakdown ? (
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          value={bGrossYearly}
+                                          onChange={(e) => {
+                                            const val = Number(e.target.value) || 0;
+                                            handleAutoCalculateFromYearly(c.id, c.email, val, withGross);
+                                          }}
+                                          style={{ width: '100px', textAlign: 'right', padding: '2px 4px', fontWeight: 'bold', border: '1px solid #16a34a', borderRadius: '3px', fontSize: '0.78rem' }}
+                                        />
+                                      ) : (
+                                        formatINR(bGrossYearly)
+                                      )}
                                     </td>
                                   </tr>
                                 )}
@@ -10317,7 +10460,7 @@ return (
                                         value={bBasicMonthly}
                                         onChange={(e) => {
                                           const val = Number(e.target.value) || 0;
-                                          handleUpdateCandidateBreakdown(c.id, c.email, { basicMonthly: val, basicYearly: round2(val * 12) });
+                                          handleUpdateCandidateBreakdown(c.id, c.email, { basicMonthly: val, basicYearly: cleanYearly(val * 12) });
                                         }}
                                         style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
                                       />
@@ -10325,8 +10468,21 @@ return (
                                       formatINR(bBasicMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                    {formatINR(bBasicYearly)}
+                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                    {isEditingBreakdown ? (
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={bBasicYearly}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value) || 0;
+                                          handleUpdateCandidateBreakdown(c.id, c.email, { basicYearly: val, basicMonthly: round2(val / 12) });
+                                        }}
+                                        style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
+                                      />
+                                    ) : (
+                                      formatINR(bBasicYearly)
+                                    )}
                                   </td>
                                 </tr>
 
@@ -10341,7 +10497,7 @@ return (
                                         value={bHraMonthly}
                                         onChange={(e) => {
                                           const val = Number(e.target.value) || 0;
-                                          handleUpdateCandidateBreakdown(c.id, c.email, { hraMonthly: val, hraYearly: round2(val * 12) });
+                                          handleUpdateCandidateBreakdown(c.id, c.email, { hraMonthly: val, hraYearly: cleanYearly(val * 12) });
                                         }}
                                         style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
                                       />
@@ -10349,8 +10505,21 @@ return (
                                       formatINR(bHraMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                    {formatINR(bHraYearly)}
+                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                    {isEditingBreakdown ? (
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={bHraYearly}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value) || 0;
+                                          handleUpdateCandidateBreakdown(c.id, c.email, { hraYearly: val, hraMonthly: round2(val / 12) });
+                                        }}
+                                        style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
+                                      />
+                                    ) : (
+                                      formatINR(bHraYearly)
+                                    )}
                                   </td>
                                 </tr>
 
@@ -10365,7 +10534,7 @@ return (
                                         value={bLtaMonthly}
                                         onChange={(e) => {
                                           const val = Number(e.target.value) || 0;
-                                          handleUpdateCandidateBreakdown(c.id, c.email, { ltaMonthly: val, ltaYearly: round2(val * 12) });
+                                          handleUpdateCandidateBreakdown(c.id, c.email, { ltaMonthly: val, ltaYearly: cleanYearly(val * 12) });
                                         }}
                                         style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
                                       />
@@ -10373,8 +10542,21 @@ return (
                                       formatINR(bLtaMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                    {formatINR(bLtaYearly)}
+                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                    {isEditingBreakdown ? (
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={bLtaYearly}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value) || 0;
+                                          handleUpdateCandidateBreakdown(c.id, c.email, { ltaYearly: val, ltaMonthly: round2(val / 12) });
+                                        }}
+                                        style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
+                                      />
+                                    ) : (
+                                      formatINR(bLtaYearly)
+                                    )}
                                   </td>
                                 </tr>
 
@@ -10389,7 +10571,7 @@ return (
                                         value={bEmployerPfMonthly}
                                         onChange={(e) => {
                                           const val = Number(e.target.value) || 0;
-                                          handleUpdateCandidateBreakdown(c.id, c.email, { employeePfMonthly: val, employeePfYearly: round2(val * 12) });
+                                          handleUpdateCandidateBreakdown(c.id, c.email, { employeePfMonthly: val, employeePfYearly: cleanYearly(val * 12) });
                                         }}
                                         style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
                                       />
@@ -10397,8 +10579,21 @@ return (
                                       formatINR(bEmployerPfMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                    {formatINR(bEmployerPfYearly)}
+                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                    {isEditingBreakdown ? (
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={bEmployerPfYearly}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value) || 0;
+                                          handleUpdateCandidateBreakdown(c.id, c.email, { employeePfYearly: val, employeePfMonthly: round2(val / 12) });
+                                        }}
+                                        style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
+                                      />
+                                    ) : (
+                                      formatINR(bEmployerPfYearly)
+                                    )}
                                   </td>
                                 </tr>
 
@@ -10413,7 +10608,7 @@ return (
                                         value={bInsuranceMonthly}
                                         onChange={(e) => {
                                           const val = Number(e.target.value) || 0;
-                                          handleUpdateCandidateBreakdown(c.id, c.email, { insuranceMonthly: val, insuranceYearly: round2(val * 12) });
+                                          handleUpdateCandidateBreakdown(c.id, c.email, { insuranceMonthly: val, insuranceYearly: cleanYearly(val * 12) });
                                         }}
                                         style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
                                       />
@@ -10421,8 +10616,21 @@ return (
                                       formatINR(bInsuranceMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                    {formatINR(bInsuranceYearly)}
+                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                    {isEditingBreakdown ? (
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={bInsuranceYearly}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value) || 0;
+                                          handleUpdateCandidateBreakdown(c.id, c.email, { insuranceYearly: val, insuranceMonthly: round2(val / 12) });
+                                        }}
+                                        style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
+                                      />
+                                    ) : (
+                                      formatINR(bInsuranceYearly)
+                                    )}
                                   </td>
                                 </tr>
 
@@ -10445,8 +10653,21 @@ return (
                                       formatINR(bCtcMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                    {formatINR(bCtcYearly)}
+                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                    {isEditingBreakdown && !withGross ? (
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={bCtcYearly}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value) || 0;
+                                          handleAutoCalculateFromYearly(c.id, c.email, val, false);
+                                        }}
+                                        style={{ width: '100px', textAlign: 'right', padding: '2px 4px', fontWeight: 'bold', border: '1px solid #16a34a', borderRadius: '3px', fontSize: '0.78rem' }}
+                                      />
+                                    ) : (
+                                      formatINR(bCtcYearly)
+                                    )}
                                   </td>
                                 </tr>
 
@@ -10468,7 +10689,7 @@ return (
                                         value={bPtMonthly}
                                         onChange={(e) => {
                                           const val = Number(e.target.value) || 0;
-                                          handleUpdateCandidateBreakdown(c.id, c.email, { ptMonthly: val, ptYearly: round2(val * 12) });
+                                          handleUpdateCandidateBreakdown(c.id, c.email, { ptMonthly: val, ptYearly: cleanYearly(val * 12) });
                                         }}
                                         style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
                                       />
@@ -10476,8 +10697,21 @@ return (
                                       formatINR(bPtMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                    {formatINR(bPtYearly)}
+                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                    {isEditingBreakdown ? (
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={bPtYearly}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value) || 0;
+                                          handleUpdateCandidateBreakdown(c.id, c.email, { ptYearly: val, ptMonthly: round2(val / 12) });
+                                        }}
+                                        style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
+                                      />
+                                    ) : (
+                                      formatINR(bPtYearly)
+                                    )}
                                   </td>
                                 </tr>
 
@@ -10494,9 +10728,9 @@ return (
                                           const val = Number(e.target.value) || 0;
                                           handleUpdateCandidateBreakdown(c.id, c.email, {
                                             epfMonthly: val,
-                                            epfYearly: round2(val * 12),
+                                            epfYearly: cleanYearly(val * 12),
                                             deductEmployeePfMonthly: val,
-                                            deductEmployeePfYearly: round2(val * 12),
+                                            deductEmployeePfYearly: cleanYearly(val * 12),
                                             employerPfMonthly: 0,
                                             employerPfYearly: 0
                                           });
@@ -10507,8 +10741,28 @@ return (
                                       formatINR(bEpfMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                    {formatINR(bEpfYearly)}
+                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                    {isEditingBreakdown ? (
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={bEpfYearly}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value) || 0;
+                                          handleUpdateCandidateBreakdown(c.id, c.email, {
+                                            epfYearly: val,
+                                            epfMonthly: round2(val / 12),
+                                            deductEmployeePfYearly: val,
+                                            deductEmployeePfMonthly: round2(val / 12),
+                                            employerPfMonthly: 0,
+                                            employerPfYearly: 0
+                                          });
+                                        }}
+                                        style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
+                                      />
+                                    ) : (
+                                      formatINR(bEpfYearly)
+                                    )}
                                   </td>
                                 </tr>
 
@@ -10523,7 +10777,7 @@ return (
                                         value={bDedInsuranceMonthly}
                                         onChange={(e) => {
                                           const val = Number(e.target.value) || 0;
-                                          handleUpdateCandidateBreakdown(c.id, c.email, { deductInsuranceMonthly: val, deductInsuranceYearly: round2(val * 12) });
+                                          handleUpdateCandidateBreakdown(c.id, c.email, { deductInsuranceMonthly: val, deductInsuranceYearly: cleanYearly(val * 12) });
                                         }}
                                         style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
                                       />
@@ -10531,8 +10785,21 @@ return (
                                       formatINR(bDedInsuranceMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                    {formatINR(bDedInsuranceYearly)}
+                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                    {isEditingBreakdown ? (
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={bDedInsuranceYearly}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value) || 0;
+                                          handleUpdateCandidateBreakdown(c.id, c.email, { deductInsuranceYearly: val, deductInsuranceMonthly: round2(val / 12) });
+                                        }}
+                                        style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
+                                      />
+                                    ) : (
+                                      formatINR(bDedInsuranceYearly)
+                                    )}
                                   </td>
                                 </tr>
 
@@ -10547,7 +10814,7 @@ return (
                                         value={bOtherDedMonthly}
                                         onChange={(e) => {
                                           const val = Number(e.target.value) || 0;
-                                          handleUpdateCandidateBreakdown(c.id, c.email, { otherDeductMonthly: val, otherDeductYearly: round2(val * 12) });
+                                          handleUpdateCandidateBreakdown(c.id, c.email, { otherDeductMonthly: val, otherDeductYearly: cleanYearly(val * 12) });
                                         }}
                                         style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
                                       />
@@ -10555,8 +10822,21 @@ return (
                                       formatINR(bOtherDedMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                                    {formatINR(bOtherDedYearly)}
+                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                    {isEditingBreakdown ? (
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={bOtherDedYearly}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value) || 0;
+                                          handleUpdateCandidateBreakdown(c.id, c.email, { otherDeductYearly: val, otherDeductMonthly: round2(val / 12) });
+                                        }}
+                                        style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
+                                      />
+                                    ) : (
+                                      formatINR(bOtherDedYearly)
+                                    )}
                                   </td>
                                 </tr>
 
