@@ -10359,6 +10359,36 @@ return (
                                     >
                                       ↺ Auto-Calculate (50/18/10/12/10)
                                     </button>
+
+                                    {/* Insurance Toggle Button */}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (bDedInsuranceMonthly > 0 || bDedInsuranceYearly > 0) {
+                                          handleUpdateCandidateBreakdown(c.id, c.email, { deductInsuranceMonthly: 0, deductInsuranceYearly: 0 });
+                                        } else {
+                                          const defaultYearly = cleanYearly(bCtcYearly * 0.10);
+                                          const defaultMonthly = round2(defaultYearly / 12);
+                                          handleUpdateCandidateBreakdown(c.id, c.email, { deductInsuranceMonthly: defaultMonthly, deductInsuranceYearly: defaultYearly });
+                                        }
+                                      }}
+                                      style={{
+                                        background: (bDedInsuranceMonthly > 0 || bDedInsuranceYearly > 0) ? '#fef2f2' : '#f0fdf4',
+                                        border: (bDedInsuranceMonthly > 0 || bDedInsuranceYearly > 0) ? '1px solid #fecaca' : '1px solid #bbf7d0',
+                                        color: (bDedInsuranceMonthly > 0 || bDedInsuranceYearly > 0) ? '#dc2626' : '#16a34a',
+                                        borderRadius: '4px',
+                                        padding: '4px 8px',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '3px'
+                                      }}
+                                      title={(bDedInsuranceMonthly > 0 || bDedInsuranceYearly > 0) ? "Delete Insurance deduction (adds money to Take-Home)" : "Add 10% Insurance deduction"}
+                                    >
+                                      {(bDedInsuranceMonthly > 0 || bDedInsuranceYearly > 0) ? '🗑️ Delete Insurance' : '+ Add Insurance (10%)'}
+                                    </button>
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -10767,8 +10797,70 @@ return (
                                 </tr>
 
                                 {/* Insurance (Deductions) */}
-                                <tr>
-                                  <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Insurance</td>
+                                <tr style={{ background: (bDedInsuranceMonthly === 0 && bDedInsuranceYearly === 0) ? '#fefce8' : 'transparent' }}>
+                                  <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <span>
+                                        Insurance
+                                        {(bDedInsuranceMonthly === 0 && bDedInsuranceYearly === 0) && (
+                                          <span style={{ marginLeft: '6px', fontSize: '0.68rem', color: '#16a34a', fontWeight: 700 }}>
+                                            (+₹ added to Take-Home)
+                                          </span>
+                                        )}
+                                      </span>
+                                      {isEditingBreakdown && (
+                                        (bDedInsuranceMonthly > 0 || bDedInsuranceYearly > 0) ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              handleUpdateCandidateBreakdown(c.id, c.email, { deductInsuranceMonthly: 0, deductInsuranceYearly: 0 });
+                                            }}
+                                            style={{
+                                              background: '#fee2e2',
+                                              border: '1px solid #fca5a5',
+                                              color: '#dc2626',
+                                              borderRadius: '3px',
+                                              padding: '1px 6px',
+                                              fontSize: '0.68rem',
+                                              fontWeight: 700,
+                                              cursor: 'pointer',
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '3px'
+                                            }}
+                                            title="Delete Insurance deduction (adds money to Take-Home)"
+                                          >
+                                            🗑️ Delete
+                                          </button>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const defaultYearly = cleanYearly(bCtcYearly * 0.10);
+                                              const defaultMonthly = round2(defaultYearly / 12);
+                                              handleUpdateCandidateBreakdown(c.id, c.email, { deductInsuranceMonthly: defaultMonthly, deductInsuranceYearly: defaultYearly });
+                                            }}
+                                            style={{
+                                              background: '#dcfce7',
+                                              border: '1px solid #86efac',
+                                              color: '#15803d',
+                                              borderRadius: '3px',
+                                              padding: '1px 6px',
+                                              fontSize: '0.68rem',
+                                              fontWeight: 700,
+                                              cursor: 'pointer',
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '3px'
+                                            }}
+                                            title="Add 10% Insurance deduction"
+                                          >
+                                            + Add
+                                          </button>
+                                        )
+                                      )}
+                                    </div>
+                                  </td>
                                   <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
