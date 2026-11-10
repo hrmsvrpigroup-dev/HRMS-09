@@ -1,9 +1,22 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import net from 'net'
 
-export default defineConfig(({ mode }) => {
+function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const s = net.createServer()
+    s.once('error', () => resolve(false))
+    s.once('listening', () => s.close(() => resolve(true)))
+    s.listen(port, '0.0.0.0')
+  })
+}
+
+export default defineConfig(async ({ mode }) => {
   // Load env file for the current mode (.env, .env.development, .env.production, etc.)
   const env = loadEnv(mode, process.cwd(), '')
+
+  const port3000Available = await isPortAvailable(3000)
+  const serverPort = port3000Available ? 3000 : 5173
 
   const getApiUrl = () => {
     let url = env.VITE_API_URL
@@ -44,7 +57,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     server: {
-      port: 3000,
+      port: serverPort,
       host: true,
       allowedHosts: true,
       proxy: {
