@@ -2027,9 +2027,9 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     const ptMonthly = 200;
     const ptYearly = 2400;
 
-    // EPF - Basic salary * 12%
-    const epfYearly = cleanYearly(basicYearly * 0.12);
-    const epfMonthly = round2(epfYearly / 12);
+    // EPF - Exact above EPF
+    const epfYearly = employeePfYearly;
+    const epfMonthly = employeePfMonthly;
 
     // Insurance (10%)
     const deductInsuranceYearly = cleanYearly(annualCtc * 0.10);
@@ -2163,10 +2163,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         ? round2(merged.epfMonthly) 
         : (merged.deductEmployeePfMonthly !== undefined 
           ? round2(merged.deductEmployeePfMonthly) 
-          : (merged.employerPfMonthly !== undefined && Number(merged.employerPfMonthly) > 0 && !merged.deductEmployeePfMonthly 
-            ? round2(merged.employerPfMonthly) 
-            : round2(basicM * 0.12)));
-      const epfY = merged.epfYearly !== undefined ? cleanYearly(merged.epfYearly) : cleanYearly(epfM * 12);
+          : empPfM);
+      const epfY = merged.epfYearly !== undefined ? cleanYearly(merged.epfYearly) : empPfY;
       const dedInsM = merged.deductInsuranceMonthly !== undefined ? round2(merged.deductInsuranceMonthly) : 0;
       const dedInsY = merged.deductInsuranceYearly !== undefined ? cleanYearly(merged.deductInsuranceYearly) : cleanYearly(dedInsM * 12);
       const otherM = merged.otherDeductMonthly !== undefined ? round2(merged.otherDeductMonthly) : 200;
@@ -2296,9 +2294,9 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
     const ptMonthly = 200;
     const ptYearly = 2400;
-    // EPF - Basic salary * 12%
-    const epfYearly = cleanYearly(basicYearly * 0.12);
-    const epfMonthly = round2(epfYearly / 12);
+    // EPF - Exact above EPF
+    const epfYearly = employerPfYearly;
+    const epfMonthly = employerPfMonthly;
     const deductInsuranceYearly = cleanYearly(grossYearly * 0.10);
     const deductInsuranceMonthly = round2(deductInsuranceYearly / 12);
     const otherDeductMonthly = 200;
@@ -2378,9 +2376,9 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
 
     const ptMonthly = 200;
     const ptYearly = 2400;
-    // EPF - Basic salary * 12%
-    const epfYearly = cleanYearly(basicYearly * 0.12);
-    const epfMonthly = round2(epfYearly / 12);
+    // EPF - Exact above EPF
+    const epfYearly = employerPfYearly;
+    const epfMonthly = employerPfMonthly;
     const deductInsuranceYearly = cleanYearly(grossYearly * 0.10);
     const deductInsuranceMonthly = round2(deductInsuranceYearly / 12);
     const otherDeductMonthly = 200;
@@ -9690,8 +9688,6 @@ return (
                                 </>
                               )}
                             </div>
-
-                            ... [truncated for diff preview]
                           </td>
                         </tr>
                       ) : (
@@ -10032,14 +10028,12 @@ return (
                         ? round2(custom.epfMonthly)
                         : (custom?.deductEmployeePfMonthly !== undefined
                           ? round2(custom.deductEmployeePfMonthly)
-                          : (custom?.employerPfMonthly !== undefined && Number(custom.employerPfMonthly) > 0 && !custom?.deductEmployeePfMonthly
-                            ? round2(custom.employerPfMonthly)
-                            : round2(bBasicMonthly * 0.12)));
+                          : bEmployerPfMonthly);
                       const bEpfYearly = custom?.epfYearly !== undefined
                         ? cleanYearly(custom.epfYearly)
                         : (custom?.deductEmployeePfYearly !== undefined
                           ? cleanYearly(custom.deductEmployeePfYearly)
-                          : cleanYearly(breakdown.deductEmployeePfYearly || (bEpfMonthly * 12)));
+                          : bEmployerPfYearly);
 
                       const bDedInsuranceMonthly = custom?.deductInsuranceMonthly !== undefined ? round2(custom.deductInsuranceMonthly) : breakdown.deductInsuranceMonthly;
                       const bDedInsuranceYearly = custom?.deductInsuranceYearly !== undefined ? cleanYearly(custom.deductInsuranceYearly) : cleanYearly(breakdown.deductInsuranceYearly);
@@ -10601,7 +10595,14 @@ return (
                                         value={bEmployerPfMonthly}
                                         onChange={(e) => {
                                           const val = Number(e.target.value) || 0;
-                                          handleUpdateCandidateBreakdown(c.id, c.email, { employeePfMonthly: val, employeePfYearly: cleanYearly(val * 12) });
+                                          handleUpdateCandidateBreakdown(c.id, c.email, {
+                                            employeePfMonthly: val,
+                                            employeePfYearly: cleanYearly(val * 12),
+                                            epfMonthly: val,
+                                            epfYearly: cleanYearly(val * 12),
+                                            deductEmployeePfMonthly: val,
+                                            deductEmployeePfYearly: cleanYearly(val * 12)
+                                          });
                                         }}
                                         style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
                                       />
@@ -10617,7 +10618,14 @@ return (
                                         value={bEmployerPfYearly}
                                         onChange={(e) => {
                                           const val = Number(e.target.value) || 0;
-                                          handleUpdateCandidateBreakdown(c.id, c.email, { employeePfYearly: val, employeePfMonthly: round2(val / 12) });
+                                          handleUpdateCandidateBreakdown(c.id, c.email, {
+                                            employeePfYearly: val,
+                                            employeePfMonthly: round2(val / 12),
+                                            epfYearly: val,
+                                            epfMonthly: round2(val / 12),
+                                            deductEmployeePfYearly: val,
+                                            deductEmployeePfMonthly: round2(val / 12)
+                                          });
                                         }}
                                         style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
                                       />
@@ -10760,9 +10768,7 @@ return (
                                             epfMonthly: val,
                                             epfYearly: cleanYearly(val * 12),
                                             deductEmployeePfMonthly: val,
-                                            deductEmployeePfYearly: cleanYearly(val * 12),
-                                            employerPfMonthly: 0,
-                                            employerPfYearly: 0
+                                            deductEmployeePfYearly: cleanYearly(val * 12)
                                           });
                                         }}
                                         style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
@@ -10783,9 +10789,7 @@ return (
                                             epfYearly: val,
                                             epfMonthly: round2(val / 12),
                                             deductEmployeePfYearly: val,
-                                            deductEmployeePfMonthly: round2(val / 12),
-                                            employerPfMonthly: 0,
-                                            employerPfYearly: 0
+                                            deductEmployeePfMonthly: round2(val / 12)
                                           });
                                         }}
                                         style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
