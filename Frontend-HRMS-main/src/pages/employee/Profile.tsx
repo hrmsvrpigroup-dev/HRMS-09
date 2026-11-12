@@ -73,7 +73,7 @@ export default function Profile() {
           bankName: emp.payrollDetails?.bankName || '',
           bankAccount: emp.payrollDetails?.accountNumber || '',
           bankIfsc: emp.payrollDetails?.ifscCode || '',
-          manualEmployeeId: emp.employeeCode || (user?.role === 'HR' ? (user.id ? `HR-${user.id.slice(0, 4).toUpperCase()}` : 'HR-1001') : 'EMP-1001'),
+          manualEmployeeId: emp.employeeCode || (user?.role === 'HR' ? 'HR-0001' : 'EMP-1001'),
           manualBloodGroup: emp.bloodGroup || '',
         }
 
@@ -83,9 +83,16 @@ export default function Profile() {
           if (saved) {
             try {
               const parsed = JSON.parse(saved)
+              if (user.role === 'HR' && parsed.manualEmployeeId && (parsed.manualEmployeeId.startsWith('HR-') || parsed.manualEmployeeId.includes('CMPW'))) {
+                parsed.manualEmployeeId = 'HR-0001'
+              }
               Object.assign(initialData, parsed)
             } catch (e) {}
           }
+        }
+
+        if (user?.role === 'HR' && (!initialData.manualEmployeeId || initialData.manualEmployeeId.includes('CMPW'))) {
+          initialData.manualEmployeeId = 'HR-0001'
         }
 
         setProfile(initialData)
@@ -93,7 +100,7 @@ export default function Profile() {
       } catch (err) {
         console.warn('Employee profile not found via API, applying account fallback', err)
         if (user) {
-          const empCode = (user as any).employeeCode || (user.role === 'HR' ? (user.id ? `HR-${user.id.slice(0, 4).toUpperCase()}` : 'HR-1001') : 'EMP-1001')
+          const empCode = (user as any).employeeCode || (user.role === 'HR' ? 'HR-0001' : 'EMP-1001')
           const localPhoto = localStorage.getItem(`hrms_photo_${user.id}`)
           const localSignature = localStorage.getItem(`hrms_signature_${user.id}`)
           
@@ -127,9 +134,16 @@ export default function Profile() {
             if (saved) {
               try {
                 const parsed = JSON.parse(saved)
+                if (user.role === 'HR' && parsed.manualEmployeeId && (parsed.manualEmployeeId.startsWith('HR-') || parsed.manualEmployeeId.includes('CMPW'))) {
+                  parsed.manualEmployeeId = 'HR-0001'
+                }
                 Object.assign(initialData, parsed)
               } catch (e) {}
             }
+          }
+
+          if (user.role === 'HR' && (!initialData.manualEmployeeId || initialData.manualEmployeeId.includes('CMPW'))) {
+            initialData.manualEmployeeId = 'HR-0001'
           }
 
           setProfile(initialData)
@@ -378,7 +392,7 @@ export default function Profile() {
                     <User size={16} className="input-icon" />
                     <input
                       type="text"
-                      value={profile.manualEmployeeId}
+                      value={user?.role === 'HR' ? (profile.manualEmployeeId || 'HR-0001') : profile.manualEmployeeId}
                       readOnly
                       style={{ background: '#f1f5f9', cursor: 'not-allowed', color: '#64748b' }}
                     />
@@ -451,7 +465,7 @@ export default function Profile() {
               <div className="form-grid">
                 <div className="form-group">
                   <label>Employee Identifier</label>
-                  <input type="text" value={employeeDetails?.employeeCode || profile.manualEmployeeId || ''} readOnly />
+                  <input type="text" value={user?.role === 'HR' ? (profile.manualEmployeeId || 'HR-0001') : (employeeDetails?.employeeCode || profile.manualEmployeeId || '')} readOnly />
                 </div>
                 <div className="form-group">
                   <label>Role Assignment</label>
@@ -556,7 +570,7 @@ export default function Profile() {
                       <div className="id-info-grid">
                         <div className="id-info-row">
                           <span className="id-label">EMP ID:</span>
-                          <span className="id-val">{profile.manualEmployeeId || 'N/A'}</span>
+                          <span className="id-val">{user?.role === 'HR' ? (profile.manualEmployeeId || 'HR-0001') : (profile.manualEmployeeId || 'N/A')}</span>
                         </div>
                         <div className="id-info-row">
                           <span className="id-label">Phone No.:</span>
