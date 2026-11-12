@@ -183,7 +183,12 @@ export default function AppShell({ title, navItems }: Props) {
           ))}
         </nav>
         <div className="sidebar-footer">
-          <div className="sidebar-profile">
+          <div 
+            className="sidebar-profile" 
+            style={{ cursor: 'pointer' }}
+            onClick={() => navigate(title === 'HR' ? '/hr/profile' : title === 'Employee' ? '/employee/profile' : '')}
+            title="View Profile"
+          >
             <div className="sidebar-avatar">{initials}</div>
             <div className="sidebar-user-info">
               <span className="sidebar-user-name">
@@ -313,6 +318,18 @@ export default function AppShell({ title, navItems }: Props) {
                     <div 
                       className="tray-item" 
                       style={{ cursor: 'pointer', padding: '12px 16px' }}
+                      onClick={() => {
+                        setShowProfileMenu(false)
+                        navigate(title === 'HR' ? '/hr/profile' : title === 'Employee' ? '/employee/profile' : title === 'Admin' ? '/admin/settings' : '/superadmin/settings')
+                      }}
+                    >
+                      <div className="tray-item-content">
+                        <strong>My Profile</strong>
+                      </div>
+                    </div>
+                    <div 
+                      className="tray-item" 
+                      style={{ cursor: 'pointer', padding: '12px 16px', borderTop: '1px solid #f1f5f9' }}
                       onClick={() => {
                         setShowProfileMenu(false)
                         navigate(title === 'Admin' ? '/admin/settings' : title === 'HR' ? '/hr/settings' : '/employee/settings')

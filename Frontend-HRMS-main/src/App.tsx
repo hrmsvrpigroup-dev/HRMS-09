@@ -173,6 +173,7 @@ export default function App() {
             <Route path="/hr/shifts" element={<Shifts />} />
             <Route path="/hr/documents" element={<HRDocuments />} />
             <Route path="/hr/wallet" element={<HRCredits />} />
+            <Route path="/hr/profile" element={<Profile />} />
             <Route path="/hr/settings" element={<Settings />} />
           </Route>
         </Route>

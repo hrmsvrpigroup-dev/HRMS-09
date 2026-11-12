@@ -19,6 +19,7 @@ export default function HRLayout() {
         { to: '/hr/salary', label: 'Salary' },
         { to: '/hr/documents', label: 'Documents' },
         { to: '/hr/wallet', label: 'Wallet' },
+        { to: '/hr/profile', label: 'Profile' },
       ]}
     />
   )
