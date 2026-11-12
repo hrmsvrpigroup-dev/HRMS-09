@@ -371,6 +371,7 @@ function PayslipPreviewModal({
 
   // Editable Gross Salary & Deductions Breakdown (Matching Reference Image)
   const [isEditingBreakdown, setIsEditingBreakdown] = useState(false)
+  const [isEditingDeductions, setIsEditingDeductions] = useState(false)
   const [dailyRateBasis, setDailyRateBasis] = useState<'GROSS' | 'BASIC'>(calcData.rateBasis || 'GROSS')
   const initialGross = calcData.grossSalary || (employee.salaryGross ? Math.round(employee.salaryGross / 12) : 50000)
   const initialBasic = calcData.basicSalary || Math.round(initialGross * 0.50)
@@ -525,6 +526,7 @@ function PayslipPreviewModal({
     setIsEditingBankPf(false)
     setIsEditingAttendance(false)
     setIsEditingBreakdown(false)
+    setIsEditingDeductions(false)
     const prevTitle = document.title
     document.title = ''
     const restore = () => {
@@ -1270,10 +1272,60 @@ function PayslipPreviewModal({
                     </td>
                   </tr>
 
-                  {/* Section 2: DEDUCTIONS */}
+                  {/* Section 2: DEDUCTIONS Header with Edit Button */}
                   <tr style={{ background: '#009a49', color: '#ffffff', textAlign: 'center', fontWeight: 'bold' }}>
-                    <td colSpan={3} style={{ padding: '8px 12px', fontSize: '0.88rem', letterSpacing: '0.5px', textTransform: 'uppercase', border: '1.5px solid #000000' }}>
-                      DEDUCTIONS
+                    <td colSpan={3} style={{ padding: '6px 12px', fontSize: '0.88rem', letterSpacing: '0.5px', textTransform: 'uppercase', border: '1.5px solid #000000', boxSizing: 'border-box' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ width: '80px' }} className="no-print"></div>
+                        <span style={{ flex: 1, textAlign: 'center', fontWeight: 'bold', fontSize: '0.88rem' }}>
+                          DEDUCTIONS
+                        </span>
+                        <div className="no-print" style={{ width: '80px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+                          {!isEditingDeductions ? (
+                            <button
+                              type="button"
+                              onClick={() => setIsEditingDeductions(true)}
+                              style={{
+                                background: '#ffffff',
+                                border: '1px solid #15803d',
+                                color: '#166534',
+                                borderRadius: '4px',
+                                padding: '3px 8px',
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                              }}
+                            >
+                              ✏️ Edit
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setIsEditingDeductions(false)}
+                              style={{
+                                background: '#dcfce7',
+                                border: '1px solid #86efac',
+                                color: '#14532d',
+                                borderRadius: '4px',
+                                padding: '3px 8px',
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                              }}
+                            >
+                              ✓ Done
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </td>
                   </tr>
 
@@ -1281,7 +1333,7 @@ function PayslipPreviewModal({
                   <tr>
                     <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Professional Tax</td>
                     <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                      {isEditingBreakdown ? (
+                      {(isEditingBreakdown || isEditingDeductions) ? (
                         <input
                           type="number"
                           value={itemPt}
@@ -1301,14 +1353,13 @@ function PayslipPreviewModal({
                   <tr>
                     <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>EPF</td>
                     <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                      {isEditingBreakdown ? (
+                      {(isEditingBreakdown || isEditingDeductions) ? (
                         <input
                           type="number"
                           value={itemDedEmployeePf}
                           onChange={(e) => {
                             const val = Number(e.target.value) || 0
                             setItemDedEmployeePf(val)
-                            setItemEmployerPf(val)
                             setItemDedEmployerPf(0)
                           }}
                           style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px' }}
@@ -1326,14 +1377,13 @@ function PayslipPreviewModal({
                   <tr>
                     <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Insurance</td>
                     <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                      {isEditingBreakdown ? (
+                      {(isEditingBreakdown || isEditingDeductions) ? (
                         <input
                           type="number"
                           value={itemDedInsurance}
                           onChange={(e) => {
                             const val = Number(e.target.value) || 0
                             setItemDedInsurance(val)
-                            setItemInsurance(val)
                           }}
                           style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px' }}
                         />
@@ -1350,7 +1400,7 @@ function PayslipPreviewModal({
                   <tr>
                     <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Other Deductions</td>
                     <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-                      {isEditingBreakdown ? (
+                      {(isEditingBreakdown || isEditingDeductions) ? (
                         <input
                           type="number"
                           value={itemOtherDed}
