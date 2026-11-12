@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth.store'
-import { User, Shield, Briefcase, Landmark, Save, Phone, MapPin, Mail, Award, CheckCircle, Download, Upload } from 'lucide-react'
+import { 
+  User, Shield, Briefcase, Landmark, Save, Phone, MapPin, Mail, Award, 
+  CheckCircle, Download, Upload, Sparkles, Printer, RefreshCw, Search, 
+  Eye, Check, SlidersHorizontal, Image as ImageIcon 
+} from 'lucide-react'
 import { employeeApi } from '../../api/employee.api'
 import html2canvas from 'html2canvas'
 import { triggerHrNotification } from '../../utils/notif'
@@ -47,6 +51,61 @@ export default function Profile() {
   })
 
   const [initialProfile, setInitialProfile] = useState<ProfileData | null>(null)
+
+  // HR ID Card Live Studio state
+  const [employees, setEmployees] = useState<any[]>([])
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('ME')
+  const [employeeSearch, setEmployeeSearch] = useState<string>('')
+  const [cardSaveSuccess, setCardSaveSuccess] = useState<boolean>(false)
+
+  const [liveCardData, setLiveCardData] = useState<{
+    fullName: string
+    designation: string
+    employeeCode: string
+    phone: string
+    bloodGroup: string
+    photo: string
+    signature: string
+    authorizedSignature: string
+    showAuthorizedSig: boolean
+  }>({
+    fullName: '',
+    designation: '',
+    employeeCode: 'HR-0001',
+    phone: '',
+    bloodGroup: 'O+',
+    photo: '',
+    signature: '',
+    authorizedSignature: '/authorized_signature.png',
+    showAuthorizedSig: true,
+  })
+
+  const getInitials = (name: string) => {
+    if (!name || !name.trim()) return 'ID'
+    const clean = name.trim().split(/\s+/)
+    if (clean.length >= 2) {
+      return `${clean[0][0]}${clean[1][0]}`.toUpperCase()
+    }
+    return clean[0].slice(0, 2).toUpperCase()
+  }
+
+  const getAvatarBg = (name: string) => {
+    const clean = (name || '').trim().toUpperCase()
+    if (clean.includes('PRIYANKA') || clean.includes('PA')) return '#8b264e'
+    if (clean.includes('SHIVA') || clean.includes('SP')) return '#93c5fd'
+    const palette = ['#8b264e', '#2563eb', '#059669', '#7c3aed', '#d97706', '#0284c7', '#db2777']
+    let hash = 0
+    for (let i = 0; i < clean.length; i++) {
+      hash = (hash << 5) - hash + clean.charCodeAt(i)
+    }
+    return palette[Math.abs(hash) % palette.length]
+  }
+
+  const getAvatarTextColor = (name: string) => {
+    const clean = (name || '').trim().toUpperCase()
+    if (clean.includes('SHIVA') || clean.includes('SP')) return '#0f172a'
+    return '#ffffff'
+  }
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -201,14 +260,247 @@ export default function Profile() {
     setTimeout(() => setSuccess(false), 3000)
   }
 
+  // Fetch workspace employees for HR ID card customizer
+  useEffect(() => {
+    if (user?.role === 'HR') {
+      employeeApi.list().then(res => {
+        if (res.data?.data) {
+          setEmployees(res.data.data)
+        }
+      }).catch(err => {
+        console.warn('Could not fetch employees for ID card studio', err)
+      })
+    }
+  }, [user?.role])
+
+  // Sync default card data for HR
+  useEffect(() => {
+    if (selectedEmployeeId === 'ME') {
+      const savedCustom = localStorage.getItem(`hrms_custom_idcard_ME`)
+      if (savedCustom) {
+        try {
+          const parsed = JSON.parse(savedCustom)
+          setLiveCardData(parsed)
+          return
+        } catch (e) {}
+      }
+
+      const hrEmpCode = user?.role === 'HR' ? 'HR-0001' : (profile.manualEmployeeId || 'EMP-1001')
+      const targetName = fullName || 'Priyanka Avula'
+      const targetDesig = employeeDetails?.designation?.title || (user?.role === 'HR' ? 'HR Manager' : roleName)
+      const targetPhone = profile.phone || (user as any)?.phone || '9949020175'
+      const targetBg = profile.manualBloodGroup || 'O+'
+      const targetPhoto = employeeDetails?.photo || (user?.id ? localStorage.getItem(`hrms_photo_${user.id}`) : '') || ''
+      const targetSig = employeeDetails?.signature || (user?.id ? localStorage.getItem(`hrms_signature_${user.id}`) : '') || ''
+
+      setLiveCardData({
+        fullName: targetName,
+        designation: targetDesig,
+        employeeCode: hrEmpCode,
+        phone: targetPhone,
+        bloodGroup: targetBg,
+        photo: targetPhoto,
+        signature: targetSig,
+        authorizedSignature: '/authorized_signature.png',
+        showAuthorizedSig: true,
+      })
+    }
+  }, [user, employeeDetails, profile.phone, profile.manualBloodGroup, profile.manualEmployeeId, selectedEmployeeId])
+
+  const handleSelectEmployee = (empId: string) => {
+    setSelectedEmployeeId(empId)
+    setCardSaveSuccess(false)
+
+    const savedCustom = localStorage.getItem(`hrms_custom_idcard_${empId}`)
+    if (savedCustom) {
+      try {
+        const parsed = JSON.parse(savedCustom)
+        setLiveCardData(parsed)
+        return
+      } catch (e) {}
+    }
+
+    if (empId === 'ME') {
+      const hrEmpCode = user?.role === 'HR' ? 'HR-0001' : (profile.manualEmployeeId || 'EMP-1001')
+      setLiveCardData({
+        fullName: fullName || 'Priyanka Avula',
+        designation: employeeDetails?.designation?.title || (user?.role === 'HR' ? 'HR Manager' : roleName),
+        employeeCode: hrEmpCode,
+        phone: profile.phone || (user as any)?.phone || '9949020175',
+        bloodGroup: profile.manualBloodGroup || 'O+',
+        photo: employeeDetails?.photo || (user?.id ? localStorage.getItem(`hrms_photo_${user.id}`) : '') || '',
+        signature: employeeDetails?.signature || (user?.id ? localStorage.getItem(`hrms_signature_${user.id}`) : '') || '',
+        authorizedSignature: '/authorized_signature.png',
+        showAuthorizedSig: true,
+      })
+    } else {
+      const target = employees.find(e => e.id === empId)
+      if (target) {
+        setLiveCardData({
+          fullName: `${target.firstName || ''} ${target.lastName || ''}`.trim() || 'Employee Name',
+          designation: target.designation?.title || 'Employee',
+          employeeCode: target.employeeCode || 'EMP-XXXX',
+          phone: target.phone || 'N/A',
+          bloodGroup: target.bloodGroup || 'N/A',
+          photo: target.photo || '',
+          signature: target.signature || '',
+          authorizedSignature: '/authorized_signature.png',
+          showAuthorizedSig: true,
+        })
+      }
+    }
+  }
+
+  const handleLivePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.readAsDataURL(file)
+    reader.onloadend = () => {
+      const base64String = reader.result as string
+      setLiveCardData(prev => ({ ...prev, photo: base64String }))
+    }
+  }
+
+  const handleLiveSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.readAsDataURL(file)
+    reader.onloadend = () => {
+      const base64String = reader.result as string
+      setLiveCardData(prev => ({ ...prev, signature: base64String }))
+    }
+  }
+
+  const handleSaveLiveCard = () => {
+    try {
+      localStorage.setItem(`hrms_custom_idcard_${selectedEmployeeId}`, JSON.stringify(liveCardData))
+      if (selectedEmployeeId === 'ME' && user?.id) {
+        setProfile(prev => ({
+          ...prev,
+          manualEmployeeId: liveCardData.employeeCode,
+          phone: liveCardData.phone,
+          manualBloodGroup: liveCardData.bloodGroup,
+        }))
+        localStorage.setItem(`hrms_profile_${user.id}`, JSON.stringify({
+          ...profile,
+          manualEmployeeId: liveCardData.employeeCode,
+          phone: liveCardData.phone,
+          manualBloodGroup: liveCardData.bloodGroup,
+        }))
+        if (liveCardData.photo) {
+          localStorage.setItem(`hrms_photo_${user.id}`, liveCardData.photo)
+        }
+        if (liveCardData.signature) {
+          localStorage.setItem(`hrms_signature_${user.id}`, liveCardData.signature)
+        }
+      }
+      setCardSaveSuccess(true)
+      triggerHrNotification(`ID Card for ${liveCardData.fullName} (${liveCardData.employeeCode}) was customized and saved.`)
+      setTimeout(() => setCardSaveSuccess(false), 3500)
+    } catch (err) {
+      console.error('Failed to save ID card customization', err)
+    }
+  }
+
+  const handleResetLiveCard = () => {
+    localStorage.removeItem(`hrms_custom_idcard_${selectedEmployeeId}`)
+    handleSelectEmployee(selectedEmployeeId)
+  }
+
+  const handlePrintCard = () => {
+    const cardElement = document.getElementById('employee-id-card')
+    if (!cardElement) return
+    const printWindow = window.open('', '_blank', 'width=800,height=900')
+    if (printWindow) {
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>ID Card - ${liveCardData.employeeCode || 'Badge'}</title>
+            <style>
+              @page { size: auto; margin: 15mm; }
+              body { 
+                margin: 0; 
+                padding: 20px; 
+                display: flex; 
+                justify-content: center; 
+                align-items: center; 
+                background: white; 
+                font-family: Arial, sans-serif; 
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+              .id-card { 
+                width: 330px; 
+                min-height: 520px; 
+                background: #f4f4f4; 
+                border-radius: 12px; 
+                box-shadow: none; 
+                border: 1px solid #ccc; 
+                display: flex; 
+                flex-direction: column; 
+                overflow: hidden; 
+              }
+              .id-header { padding: 10px; text-align: center; width: 100%; }
+              .id-header img { width: 100%; height: auto; border: 0; }
+              .id-photo-container { display: flex; justify-content: center; margin-top: 10px; }
+              .id-photo-container img { width: 140px; height: 140px; border-radius: 16px; object-fit: cover; border: 1px solid #222; }
+              .id-avatar-placeholder { 
+                width: 140px; 
+                height: 140px; 
+                border-radius: 16px; 
+                display: flex; 
+                align-items: center; 
+                justify-content: center; 
+                font-size: 46px; 
+                font-weight: bold; 
+                border: 1px solid #222; 
+              }
+              .id-details { padding: 10px 20px; text-align: center; flex-grow: 1; }
+              .id-name { color: #e3000f; font-weight: 700; font-size: 17px; margin-bottom: 2px; text-transform: uppercase; }
+              .id-designation { color: #e3000f; font-weight: 600; font-size: 13px; margin-bottom: 20px; }
+              .id-info-grid { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 0 15px 0 45px; }
+              .id-info-row { display: flex; font-size: 15px; }
+              .id-label { font-weight: 700; width: 125px; color: #000; }
+              .id-val { font-weight: 700; color: #000; flex: 1; }
+              .id-signatures-row { display: flex; justify-content: space-between; padding: 8px 20px 0; gap: 10px; }
+              .id-signature-col { display: flex; flex-direction: column; align-items: center; width: 48%; }
+              .id-signature-col.left { align-items: flex-start; padding-left: 10px; }
+              .id-signature-col.right { align-items: flex-end; padding-right: 10px; }
+              .sig-image-container { height: 35px; margin-bottom: 2px; display: flex; align-items: center; width: 100%; }
+              .id-signature-col.left .sig-image-container { justify-content: flex-start; }
+              .id-signature-col.right .sig-image-container { justify-content: flex-end; }
+              .sig-image-container img { max-height: 35px; max-width: 110px; object-fit: contain; }
+              .sig-label-text { font-size: 9px; color: #000; font-weight: 700; }
+              .id-footer { width: 100%; }
+              .id-footer img { width: 100%; display: block; border: 0; }
+            </style>
+          </head>
+          <body>
+            ${cardElement.outerHTML}
+            <script>
+              window.onload = function() {
+                window.print();
+              };
+            </script>
+          </body>
+        </html>
+      `)
+      printWindow.document.close()
+    }
+  }
+
   const downloadIdCard = async () => {
     const cardElement = document.getElementById('employee-id-card')
     if (cardElement) {
       try {
-        const canvas = await html2canvas(cardElement, { scale: 3, useCORS: true })
+        const canvas = await html2canvas(cardElement, { scale: 3, useCORS: true, logging: false })
         const url = canvas.toDataURL('image/png')
         const link = document.createElement('a')
-        link.download = `ID-Card-${user?.firstName || 'Employee'}.png`
+        const empCode = user?.role === 'HR' ? (liveCardData.employeeCode || 'HR-0001') : (profile.manualEmployeeId || 'Employee')
+        link.download = `ID-Card-${empCode}.png`
         link.href = url
         link.click()
       } catch (err) {
@@ -305,6 +597,15 @@ export default function Profile() {
   const fullName = user ? `${user.firstName} ${user.lastName}` : 'Employee'
   const email = user?.email || ''
   const roleName = user?.role === 'HR' ? 'HR' : user?.role?.replace('_', ' ') || 'EMPLOYEE'
+
+  const filteredEmployeesList = employees.filter((emp) => {
+    if (!employeeSearch.trim()) return true
+    const q = employeeSearch.toLowerCase()
+    const name = `${emp.firstName || ''} ${emp.lastName || ''}`.toLowerCase()
+    const code = (emp.employeeCode || '').toLowerCase()
+    const dept = (emp.department?.name || '').toLowerCase()
+    return name.includes(q) || code.includes(q) || dept.includes(q)
+  })
 
   return (
     <div className="profile-page">
@@ -545,113 +846,493 @@ export default function Profile() {
 
           {activeTab === 'IDCARD' && (
             <div className="tab-pane">
-              <div className="id-card-container">
-                <div className="id-card-wrapper">
-                  <div id="employee-id-card" className="id-card">
-                    {/* Header Image */}
-                    <div className="id-header">
-                      <a href="https://ibb.co/CK25RNxV">
-                        <img 
-                          src="https://i.ibb.co/gZVMkHst/Whats-App-Image-2026-05-30-at-11-03-55-AM-1.jpg" 
-                          alt="Whats-App-Image-2026-05-30-at-11-03-55-AM-1" 
-                          style={{ width: '100%', height: 'auto', border: 0 }} 
-                        />
-                      </a>
-                    </div>
-                    {/* Middle Section: Photo & Details */}
-                    <div className="id-photo-container">
-                      <img src={employeeDetails?.photo || `https://ui-avatars.com/api/?name=${fullName}&background=random&color=fff&size=200`} alt="Employee" />
-                    </div>
-                    
-                    <div className="id-details">
-                      <div className="id-name">{fullName.toUpperCase()}</div>
-                      <div className="id-designation">{employeeDetails?.designation?.title || (user?.role === 'HR' ? 'HR' : roleName)}</div>
-                      
-                      <div className="id-info-grid">
-                        <div className="id-info-row">
-                          <span className="id-label">EMP ID:</span>
-                          <span className="id-val">{user?.role === 'HR' ? (profile.manualEmployeeId || 'HR-0001') : (profile.manualEmployeeId || 'N/A')}</span>
-                        </div>
-                        <div className="id-info-row">
-                          <span className="id-label">Phone No.:</span>
-                          <span className="id-val">{profile.phone || (user as any)?.phone || 'N/A'}</span>
-                        </div>
-                        <div className="id-info-row">
-                          <span className="id-label">Blood Group:</span>
-                          <span className="id-val">{profile.manualBloodGroup || 'N/A'}</span>
-                        </div>
+              {user?.role === 'HR' ? (
+                <div className="idcard-studio-layout">
+                  {/* Left Column: ID Card Customizer & Controls */}
+                  <div className="idcard-controls-panel">
+                    <div className="studio-banner">
+                      <div className="studio-banner-title">
+                        <Sparkles size={18} color="#f59e0b" />
+                        <h3>HR ID Card Studio & Batch Customizer</h3>
+                        <span className="studio-superpower-badge">⚡ Full Access</span>
                       </div>
+                      <p>
+                        Live design & management console. Select any personnel across the company to customize their badge details, upload custom photos or signatures, and download or print badges in real time.
+                      </p>
                     </div>
 
-                    <div className="id-signatures-row">
-                      <div className="id-signature-col left">
-                        <div className="sig-image-container">
-                          {employeeDetails?.signature ? (
-                            <img src={employeeDetails.signature} alt="Employee Signature" />
-                          ) : (
-                            <span className="no-sig-placeholder">No Signature</span>
-                          )}
-                        </div>
-                        <div className="sig-label-text">Employee Signature</div>
+                    {cardSaveSuccess && (
+                      <div className="success-toast" style={{ margin: 0 }}>
+                        <CheckCircle size={18} />
+                        <span>ID Card credentials saved successfully for <strong>{liveCardData.fullName}</strong>! Overrides are securely persisted.</span>
                       </div>
-
-                      <div className="id-signature-col right">
-                        <div className="sig-image-container">
-                          <img src="/authorized_signature.png" alt="Authorized Signature" />
-                        </div>
-                        <div className="sig-label-text">Authorized Signature</div>
-                      </div>
-                    </div>
-
-                    {/* Footer - Restored to show full image since dynamic text is removed */}
-                    <div className="id-footer">
-                      <a href="https://ibb.co/1YNRQFpP">
-                        <img 
-                          src="https://i.ibb.co/nqyQmxVY/Whats-App-Image-2026-05-30-at-11-29-15-AM.jpg" 
-                          alt="Whats-App-Image-2026-05-30-at-11-29-15-AM" 
-                          style={{ width: '100%', display: 'block', border: 0 }} 
-                        />
-                      </a>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="id-card-actions">
-                  <p className="id-help-text">Please ensure all your personal details are accurate. Download your digital ID card to keep on your mobile device or print a physical copy.</p>
-                  
-                  <div className="action-buttons-row">
-                    {canUploadSignature ? (
-                      <label className="btn-secondary" style={{ cursor: 'pointer' }}>
-                        <Upload size={16} />
-                        <span>
-                          {isUploading 
-                            ? 'Uploading...' 
-                            : signatureUploadsUsed === 0 
-                              ? 'Upload Signature (2 left)' 
-                              : 'Update Signature (1 left)'}
-                        </span>
-                        <input 
-                          type="file" 
-                          accept="image/png, image/jpeg" 
-                          style={{ display: 'none' }} 
-                          onChange={handleSignatureUpload}
-                          disabled={isUploading}
-                        />
-                      </label>
-                    ) : (
-                      <button type="button" className="btn-secondary" style={{ cursor: 'not-allowed', opacity: 0.8 }} disabled title="Signature upload limit reached (2/2)">
-                        <CheckCircle size={16} color="#10b981" />
-                        <span>Signature Uploaded (2/2)</span>
-                      </button>
                     )}
 
-                    <button type="button" className="btn-primary" onClick={downloadIdCard}>
-                      <Download size={16} />
-                      <span>Download ID Card</span>
-                    </button>
+                    {/* Employee Selector Card */}
+                    <div className="studio-card">
+                      <div className="studio-card-title">
+                        <span>Select Member / Target Personnel</span>
+                        <span className="badge-count">{employees.length + 1} Available</span>
+                      </div>
+
+                      <div className="employee-search-bar" style={{ marginBottom: '12px', position: 'relative' }}>
+                        <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+                        <input
+                          type="text"
+                          value={employeeSearch}
+                          onChange={(e) => setEmployeeSearch(e.target.value)}
+                          placeholder="Filter personnel by name, EMP ID, or department..."
+                          style={{ paddingLeft: '36px', width: '100%' }}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>Target Personnel Badge</label>
+                        <select 
+                          className="studio-select"
+                          value={selectedEmployeeId}
+                          onChange={(e) => handleSelectEmployee(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '11px 14px',
+                            border: '1.5px solid #cbd5e1',
+                            borderRadius: '8px',
+                            background: '#f8fafc',
+                            fontWeight: 600,
+                            color: '#1e293b',
+                            fontSize: '0.88rem',
+                            outline: 'none',
+                          }}
+                        >
+                          <option value="ME">⭐ Current HR Profile: {fullName} (HR-0001)</option>
+                          <optgroup label={`Workspace Employees (${employees.length})`}>
+                            {filteredEmployeesList.map(emp => (
+                              <option key={emp.id} value={emp.id}>
+                                {emp.employeeCode} — {emp.firstName} {emp.lastName} ({emp.department?.name || 'General'})
+                              </option>
+                            ))}
+                          </optgroup>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Editable Credentials Card */}
+                    <div className="studio-card">
+                      <div className="studio-card-title">
+                        <span>Badge Identity & Details</span>
+                        <span style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 600 }}>● Instant Sync</span>
+                      </div>
+
+                      <div className="form-grid">
+                        <div className="form-group">
+                          <label>Full Name</label>
+                          <input
+                            type="text"
+                            value={liveCardData.fullName}
+                            onChange={(e) => setLiveCardData(prev => ({ ...prev, fullName: e.target.value }))}
+                            placeholder="e.g. PRIYANKA AVULA"
+                          />
+                        </div>
+
+                        <div className="form-group">
+                          <label>Designation / Role</label>
+                          <input
+                            type="text"
+                            value={liveCardData.designation}
+                            onChange={(e) => setLiveCardData(prev => ({ ...prev, designation: e.target.value }))}
+                            placeholder="e.g. HR Manager / EMPLOYEE"
+                          />
+                        </div>
+
+                        <div className="form-group">
+                          <label>Employee ID (EMP ID)</label>
+                          <input
+                            type="text"
+                            value={liveCardData.employeeCode}
+                            onChange={(e) => setLiveCardData(prev => ({ ...prev, employeeCode: e.target.value }))}
+                            placeholder="e.g. HR-0001 / EMP-1070"
+                          />
+                        </div>
+
+                        <div className="form-group">
+                          <label>Phone Number</label>
+                          <input
+                            type="text"
+                            value={liveCardData.phone}
+                            onChange={(e) => setLiveCardData(prev => ({ ...prev, phone: e.target.value }))}
+                            placeholder="e.g. 9949020175"
+                          />
+                        </div>
+
+                        <div className="form-group">
+                          <label>Blood Group</label>
+                          <select
+                            value={liveCardData.bloodGroup}
+                            onChange={(e) => setLiveCardData(prev => ({ ...prev, bloodGroup: e.target.value }))}
+                            style={{
+                              width: '100%',
+                              padding: '10px 14px',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '8px',
+                              background: '#f8fafc',
+                              fontSize: '0.88rem',
+                              color: '#334155',
+                              outline: 'none',
+                            }}
+                          >
+                            <option value="N/A">N/A</option>
+                            <option value="O+">O+</option>
+                            <option value="O-">O-</option>
+                            <option value="A+">A+</option>
+                            <option value="A-">A-</option>
+                            <option value="B+">B+</option>
+                            <option value="B-">B-</option>
+                            <option value="AB+">AB+</option>
+                            <option value="AB-">AB-</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Media, Photos & Signatures */}
+                    <div className="studio-card">
+                      <div className="studio-card-title">
+                        <span>Card Media & Signatures</span>
+                      </div>
+
+                      <div className="media-controls-grid">
+                        {/* Photo Customizer */}
+                        <div className="media-box">
+                          <div className="media-box-label">Profile Photo</div>
+                          <div className="media-box-body">
+                            <div className="media-preview-mini">
+                              {liveCardData.photo ? (
+                                <img src={liveCardData.photo} alt="Photo" />
+                              ) : (
+                                <div 
+                                  className="mini-avatar-initials" 
+                                  style={{ 
+                                    background: getAvatarBg(liveCardData.fullName),
+                                    color: getAvatarTextColor(liveCardData.fullName)
+                                  }}
+                                >
+                                  {getInitials(liveCardData.fullName)}
+                                </div>
+                              )}
+                            </div>
+                            <div className="media-box-actions">
+                              <label className="btn-mini-upload">
+                                <Upload size={13} />
+                                <span>Upload Photo</span>
+                                <input 
+                                  type="file" 
+                                  accept="image/png, image/jpeg" 
+                                  style={{ display: 'none' }} 
+                                  onChange={handleLivePhotoUpload} 
+                                />
+                              </label>
+                              {liveCardData.photo && (
+                                <button 
+                                  type="button" 
+                                  className="btn-mini-clear"
+                                  onClick={() => setLiveCardData(prev => ({ ...prev, photo: '' }))}
+                                  title="Reset to Initials Avatar"
+                                >
+                                  Use Initials
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Signature Customizer */}
+                        <div className="media-box">
+                          <div className="media-box-label">Employee Signature</div>
+                          <div className="media-box-body">
+                            <div className="media-preview-mini sig-box">
+                              {liveCardData.signature ? (
+                                <img src={liveCardData.signature} alt="Sig" />
+                              ) : (
+                                <span className="no-sig-text">None</span>
+                              )}
+                            </div>
+                            <div className="media-box-actions">
+                              <label className="btn-mini-upload">
+                                <Upload size={13} />
+                                <span>Upload Sig</span>
+                                <input 
+                                  type="file" 
+                                  accept="image/png, image/jpeg" 
+                                  style={{ display: 'none' }} 
+                                  onChange={handleLiveSignatureUpload} 
+                                />
+                              </label>
+                              {liveCardData.signature && (
+                                <button 
+                                  type="button" 
+                                  className="btn-mini-clear"
+                                  onClick={() => setLiveCardData(prev => ({ ...prev, signature: '' }))}
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons Toolbar */}
+                    <div className="studio-actions-toolbar">
+                      <button 
+                        type="button" 
+                        className="btn-save-primary"
+                        onClick={handleSaveLiveCard}
+                      >
+                        <Save size={16} />
+                        <span>Save ID Card Changes</span>
+                      </button>
+
+                      <button 
+                        type="button" 
+                        className="btn-reset-secondary"
+                        onClick={handleResetLiveCard}
+                        title="Revert customizations back to original database profile"
+                      >
+                        <RefreshCw size={15} />
+                        <span>Reset</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Sticky Live ID Card Preview */}
+                  <div className="idcard-preview-panel">
+                    <div className="preview-sticky-wrapper">
+                      <div className="preview-header-bar">
+                        <span className="live-dot-indicator"></span>
+                        <h4>Live ID Card Preview</h4>
+                        <span className="live-tag">Real-Time Sync</span>
+                      </div>
+
+                      <div className="id-card-wrapper">
+                        <div id="employee-id-card" className="id-card">
+                          {/* Header Image */}
+                          <div className="id-header">
+                            <a href="https://ibb.co/CK25RNxV" target="_blank" rel="noopener noreferrer">
+                              <img 
+                                src="https://i.ibb.co/gZVMkHst/Whats-App-Image-2026-05-30-at-11-03-55-AM-1.jpg" 
+                                alt="VR Pi GROUP OF COMPANIES" 
+                                style={{ width: '100%', height: 'auto', border: 0 }} 
+                              />
+                            </a>
+                          </div>
+
+                          {/* Middle Section: Photo or Stylized Initials Avatar */}
+                          <div className="id-photo-container">
+                            {liveCardData.photo ? (
+                              <img src={liveCardData.photo} alt={liveCardData.fullName} />
+                            ) : (
+                              <div 
+                                className="id-avatar-placeholder"
+                                style={{ 
+                                  backgroundColor: getAvatarBg(liveCardData.fullName),
+                                  color: getAvatarTextColor(liveCardData.fullName)
+                                }}
+                              >
+                                {getInitials(liveCardData.fullName)}
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Live Name & Designation */}
+                          <div className="id-details">
+                            <div className="id-name">{(liveCardData.fullName || 'EMPLOYEE NAME').toUpperCase()}</div>
+                            <div className="id-designation">{(liveCardData.designation || 'EMPLOYEE').toUpperCase()}</div>
+                            
+                            <div className="id-info-grid">
+                              <div className="id-info-row">
+                                <span className="id-label">EMP ID:</span>
+                                <span className="id-val">{liveCardData.employeeCode || 'N/A'}</span>
+                              </div>
+                              <div className="id-info-row">
+                                <span className="id-label">Phone No.:</span>
+                                <span className="id-val">{liveCardData.phone || 'N/A'}</span>
+                              </div>
+                              <div className="id-info-row">
+                                <span className="id-label">Blood Group:</span>
+                                <span className="id-val">{liveCardData.bloodGroup || 'N/A'}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Signatures */}
+                          <div className="id-signatures-row">
+                            <div className="id-signature-col left">
+                              <div className="sig-image-container">
+                                {liveCardData.signature ? (
+                                  <img src={liveCardData.signature} alt="Employee Signature" />
+                                ) : (
+                                  <span className="no-sig-placeholder">No Signature</span>
+                                )}
+                              </div>
+                              <div className="sig-label-text">Employee Signature</div>
+                            </div>
+
+                            <div className="id-signature-col right">
+                              <div className="sig-image-container">
+                                {liveCardData.showAuthorizedSig && (
+                                  <img src={liveCardData.authorizedSignature || '/authorized_signature.png'} alt="Authorized Signature" />
+                                )}
+                              </div>
+                              <div className="sig-label-text">Authorized Signature</div>
+                            </div>
+                          </div>
+
+                          {/* Footer Image */}
+                          <div className="id-footer">
+                            <a href="https://ibb.co/1YNRQFpP" target="_blank" rel="noopener noreferrer">
+                              <img 
+                                src="https://i.ibb.co/nqyQmxVY/Whats-App-Image-2026-05-30-at-11-29-15-AM.jpg" 
+                                alt="Corporate Address: India & USA" 
+                                style={{ width: '100%', display: 'block', border: 0 }} 
+                              />
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Quick Download & Print Toolbar */}
+                      <div className="preview-quick-actions">
+                        <button type="button" className="btn-primary" onClick={downloadIdCard}>
+                          <Download size={16} />
+                          <span>Download HD PNG</span>
+                        </button>
+                        <button type="button" className="btn-secondary" onClick={handlePrintCard}>
+                          <Printer size={16} />
+                          <span>Print Badge</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                /* Regular Employee View */
+                <div className="id-card-container">
+                  <div className="id-card-wrapper">
+                    <div id="employee-id-card" className="id-card">
+                      <div className="id-header">
+                        <a href="https://ibb.co/CK25RNxV">
+                          <img 
+                            src="https://i.ibb.co/gZVMkHst/Whats-App-Image-2026-05-30-at-11-03-55-AM-1.jpg" 
+                            alt="Whats-App-Image-2026-05-30-at-11-03-55-AM-1" 
+                            style={{ width: '100%', height: 'auto', border: 0 }} 
+                          />
+                        </a>
+                      </div>
+                      <div className="id-photo-container">
+                        {employeeDetails?.photo ? (
+                          <img src={employeeDetails.photo} alt="Employee" />
+                        ) : (
+                          <div 
+                            className="id-avatar-placeholder"
+                            style={{ 
+                              backgroundColor: getAvatarBg(fullName),
+                              color: getAvatarTextColor(fullName)
+                            }}
+                          >
+                            {getInitials(fullName)}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="id-details">
+                        <div className="id-name">{fullName.toUpperCase()}</div>
+                        <div className="id-designation">{employeeDetails?.designation?.title || roleName}</div>
+                        
+                        <div className="id-info-grid">
+                          <div className="id-info-row">
+                            <span className="id-label">EMP ID:</span>
+                            <span className="id-val">{profile.manualEmployeeId || 'N/A'}</span>
+                          </div>
+                          <div className="id-info-row">
+                            <span className="id-label">Phone No.:</span>
+                            <span className="id-val">{profile.phone || (user as any)?.phone || 'N/A'}</span>
+                          </div>
+                          <div className="id-info-row">
+                            <span className="id-label">Blood Group:</span>
+                            <span className="id-val">{profile.manualBloodGroup || 'N/A'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="id-signatures-row">
+                        <div className="id-signature-col left">
+                          <div className="sig-image-container">
+                            {employeeDetails?.signature ? (
+                              <img src={employeeDetails.signature} alt="Employee Signature" />
+                            ) : (
+                              <span className="no-sig-placeholder">No Signature</span>
+                            )}
+                          </div>
+                          <div className="sig-label-text">Employee Signature</div>
+                        </div>
+
+                        <div className="id-signature-col right">
+                          <div className="sig-image-container">
+                            <img src="/authorized_signature.png" alt="Authorized Signature" />
+                          </div>
+                          <div className="sig-label-text">Authorized Signature</div>
+                        </div>
+                      </div>
+
+                      <div className="id-footer">
+                        <a href="https://ibb.co/1YNRQFpP">
+                          <img 
+                            src="https://i.ibb.co/nqyQmxVY/Whats-App-Image-2026-05-30-at-11-29-15-AM.jpg" 
+                            alt="Corporate Address" 
+                            style={{ width: '100%', display: 'block', border: 0 }} 
+                          />
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="id-card-actions">
+                    <p className="id-help-text">Please ensure all your personal details are accurate. Download your digital ID card to keep on your mobile device or print a physical copy.</p>
+                    <div className="action-buttons-row">
+                      {canUploadSignature ? (
+                        <label className="btn-secondary" style={{ cursor: 'pointer' }}>
+                          <Upload size={16} />
+                          <span>
+                            {isUploading 
+                              ? 'Uploading...' 
+                              : signatureUploadsUsed === 0 
+                                ? 'Upload Signature (2 left)' 
+                                : 'Update Signature (1 left)'}
+                          </span>
+                          <input 
+                            type="file" 
+                            accept="image/png, image/jpeg" 
+                            style={{ display: 'none' }} 
+                            onChange={handleSignatureUpload}
+                            disabled={isUploading}
+                          />
+                        </label>
+                      ) : (
+                        <button type="button" className="btn-secondary" style={{ cursor: 'not-allowed', opacity: 0.8 }} disabled title="Signature upload limit reached (2/2)">
+                          <CheckCircle size={16} color="#10b981" />
+                          <span>Signature Uploaded (2/2)</span>
+                        </button>
+                      )}
+
+                      <button type="button" className="btn-primary" onClick={downloadIdCard}>
+                        <Download size={16} />
+                        <span>Download ID Card</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -979,6 +1660,335 @@ export default function Profile() {
         @keyframes toastSlide {
           from { transform: translateY(-10px); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* HR ID Card Studio Layout & Controls */
+        .idcard-studio-layout {
+          display: grid;
+          grid-template-columns: minmax(0, 1.25fr) minmax(350px, 0.75fr);
+          gap: 32px;
+          align-items: flex-start;
+          margin-top: 8px;
+        }
+
+        @media (max-width: 1080px) {
+          .idcard-studio-layout {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        .idcard-controls-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+
+        .studio-banner {
+          background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+          border: 1px solid #e0e7ff;
+          border-radius: 12px;
+          padding: 18px 20px;
+        }
+
+        .studio-banner-title {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 6px;
+        }
+
+        .studio-banner-title h3 {
+          margin: 0;
+          font-size: 1.05rem;
+          font-weight: 800;
+          color: #1e1b4b;
+        }
+
+        .studio-superpower-badge {
+          background: #fef3c7;
+          color: #b45309;
+          font-size: 0.72rem;
+          font-weight: 800;
+          padding: 2px 8px;
+          border-radius: 100px;
+          border: 1px solid #fde68a;
+        }
+
+        .studio-banner p {
+          margin: 0;
+          font-size: 0.84rem;
+          color: #475569;
+          line-height: 1.5;
+        }
+
+        .studio-card {
+          background: white;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 22px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+        }
+
+        .studio-card-title {
+          font-size: 0.92rem;
+          font-weight: 700;
+          color: #0f172a;
+          margin: 0 0 16px 0;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .badge-count {
+          background: #f1f5f9;
+          color: #475569;
+          font-size: 0.75rem;
+          font-weight: 700;
+          padding: 3px 8px;
+          border-radius: 6px;
+        }
+
+        .media-controls-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+        }
+
+        .media-box {
+          border: 1px solid #e2e8f0;
+          border-radius: 10px;
+          padding: 14px;
+          background: #f8fafc;
+        }
+
+        .media-box-label {
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: #64748b;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          margin-bottom: 10px;
+        }
+
+        .media-box-body {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .media-preview-mini {
+          width: 52px;
+          height: 52px;
+          border-radius: 8px;
+          overflow: hidden;
+          background: white;
+          border: 1px solid #cbd5e1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .media-preview-mini img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .media-preview-mini.sig-box img {
+          object-fit: contain;
+          padding: 4px;
+        }
+
+        .mini-avatar-initials {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 800;
+          font-size: 18px;
+        }
+
+        .no-sig-text {
+          font-size: 0.72rem;
+          color: #94a3b8;
+          font-weight: 600;
+        }
+
+        .media-box-actions {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          flex: 1;
+        }
+
+        .btn-mini-upload {
+          background: #2563eb;
+          color: white;
+          border-radius: 6px;
+          padding: 6px 12px;
+          font-size: 0.78rem;
+          font-weight: 600;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          cursor: pointer;
+          transition: background 0.2s;
+        }
+
+        .btn-mini-upload:hover { background: #1d4ed8; }
+
+        .btn-mini-clear {
+          background: none;
+          border: 1px solid #cbd5e1;
+          color: #64748b;
+          border-radius: 6px;
+          padding: 4px 8px;
+          font-size: 0.72rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .btn-mini-clear:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+
+        .studio-actions-toolbar {
+          display: flex;
+          gap: 12px;
+          align-items: center;
+          padding-top: 8px;
+        }
+
+        .btn-save-primary {
+          background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+          color: white;
+          border: none;
+          border-radius: 8px;
+          padding: 12px 24px;
+          font-size: 0.9rem;
+          font-weight: 700;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+          transition: all 0.2s;
+        }
+
+        .btn-save-primary:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+        }
+
+        .btn-reset-secondary {
+          background: #f1f5f9;
+          color: #475569;
+          border: 1px solid #cbd5e1;
+          border-radius: 8px;
+          padding: 12px 18px;
+          font-size: 0.88rem;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          transition: all 0.2s;
+        }
+
+        .btn-reset-secondary:hover {
+          background: #e2e8f0;
+          color: #1e293b;
+        }
+
+        .preview-sticky-wrapper {
+          position: sticky;
+          top: 24px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 16px;
+        }
+
+        .preview-header-bar {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          width: 100%;
+          max-width: 350px;
+          background: #0f172a;
+          color: white;
+          padding: 10px 16px;
+          border-radius: 10px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+
+        .preview-header-bar h4 {
+          margin: 0;
+          font-size: 0.88rem;
+          font-weight: 700;
+          flex: 1;
+        }
+
+        .live-dot-indicator {
+          width: 9px;
+          height: 9px;
+          background: #22c55e;
+          border-radius: 50%;
+          box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.35);
+          animation: pulseLive 2s infinite;
+        }
+
+        @keyframes pulseLive {
+          0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+          70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+          100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+        }
+
+        .live-tag {
+          font-size: 0.7rem;
+          background: rgba(34, 197, 94, 0.2);
+          color: #4ade80;
+          padding: 2px 8px;
+          border-radius: 100px;
+          font-weight: 700;
+          letter-spacing: 0.03em;
+        }
+
+        .preview-quick-actions {
+          display: flex;
+          gap: 12px;
+          width: 100%;
+          max-width: 350px;
+        }
+
+        .preview-quick-actions button {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 10px 14px;
+          border-radius: 8px;
+          font-size: 0.85rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .id-avatar-placeholder {
+          width: 140px;
+          height: 140px;
+          border-radius: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 46px;
+          font-weight: 800;
+          border: 1px solid #111;
+          letter-spacing: 1px;
+          box-shadow: inset 0 2px 4px rgba(255,255,255,0.2), 0 4px 10px rgba(0,0,0,0.15);
         }
 
         .id-card-container {

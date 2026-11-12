@@ -9,6 +9,9 @@ export type Employee = {
   personalEmail?: string
   phone?: string
   gender?: string
+  bloodGroup?: string
+  photo?: string
+  signature?: string
   joiningDate: string
   salaryGross: number
   status: 'ACTIVE' | 'INACTIVE' | 'ON_LEAVE' | 'TERMINATED'
