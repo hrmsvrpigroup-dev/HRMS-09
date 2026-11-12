@@ -10421,6 +10421,11 @@ return (
 
                             {/* Exact Reference Table (Gross Salary Calculations & Deductions) */}
                             <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', border: '1.5px solid #000000', marginBottom: '12px', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' }}>
+                              <colgroup>
+                                <col style={{ width: '50%' }} />
+                                <col style={{ width: '25%' }} />
+                                <col style={{ width: '25%' }} />
+                              </colgroup>
                               <thead>
                                 <tr style={{ background: '#009a49', color: '#ffffff', textAlign: 'center', fontWeight: 'bold' }}>
                                   <th colSpan={3} style={{ padding: '8px 12px', fontSize: '0.85rem', letterSpacing: '0.5px', textTransform: 'uppercase', border: '1.5px solid #000000', boxSizing: 'border-box' }}>

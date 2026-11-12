@@ -1104,6 +1104,11 @@ function PayslipPreviewModal({
 
               {/* Exact Reference Table (Gross / Basic Salary Calculations & Deductions) */}
               <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', border: '1.5px solid #000000', marginBottom: '20px', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' }}>
+                <colgroup>
+                  <col style={{ width: '50%' }} />
+                  <col style={{ width: '25%' }} />
+                  <col style={{ width: '25%' }} />
+                </colgroup>
                 <thead>
                   <tr style={{ background: '#009a49', color: '#ffffff', textAlign: 'center', fontWeight: 'bold' }}>
                     <th colSpan={3} style={{ padding: '8px 12px', fontSize: '0.88rem', letterSpacing: '0.5px', textTransform: 'uppercase', border: '1.5px solid #000000', boxSizing: 'border-box' }}>
@@ -4875,12 +4880,18 @@ export default function Salary() {
             border-radius: 0 !important;
             box-shadow: none !important;
             padding: 0 !important;
-            padding: 12mm 15mm !important;
             margin: 0 auto !important;
             max-width: 100% !important;
             width: 100% !important;
             box-sizing: border-box !important;
             overflow: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+
+          .payslip-preview-sheet * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
@@ -4893,7 +4904,12 @@ export default function Salary() {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
             page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
+
+          .payslip-preview-sheet col:nth-child(1) { width: 50% !important; }
+          .payslip-preview-sheet col:nth-child(2) { width: 25% !important; }
+          .payslip-preview-sheet col:nth-child(3) { width: 25% !important; }
 
           .payslip-preview-sheet th,
           .payslip-preview-sheet td {
@@ -4935,8 +4951,7 @@ export default function Salary() {
 
           @page {
             size: A4 portrait;
-            margin: 12mm 15mm;
-            margin: 0 !important;
+            margin: 8mm 10mm;
           }
         }
       `}</style>

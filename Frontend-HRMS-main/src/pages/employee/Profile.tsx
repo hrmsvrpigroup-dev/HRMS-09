@@ -288,7 +288,7 @@ export default function Profile() {
       const hrEmpCode = user?.role === 'HR' ? 'HR-0001' : (profile.manualEmployeeId || 'EMP-1001')
       const targetName = fullName || 'Priyanka Avula'
       const targetDesig = employeeDetails?.designation?.title || (user?.role === 'HR' ? 'HR Manager' : roleName)
-      const targetPhone = profile.phone || (user as any)?.phone || '9949020175'
+      const targetPhone = profile.phone || (user as any)?.phone || ''
       const targetBg = profile.manualBloodGroup || 'O+'
       const targetPhoto = employeeDetails?.photo || (user?.id ? localStorage.getItem(`hrms_photo_${user.id}`) : '') || ''
       const targetSig = employeeDetails?.signature || (user?.id ? localStorage.getItem(`hrms_signature_${user.id}`) : '') || ''
@@ -326,7 +326,7 @@ export default function Profile() {
         fullName: fullName || 'Priyanka Avula',
         designation: employeeDetails?.designation?.title || (user?.role === 'HR' ? 'HR Manager' : roleName),
         employeeCode: hrEmpCode,
-        phone: profile.phone || (user as any)?.phone || '9949020175',
+        phone: profile.phone || (user as any)?.phone || '',
         bloodGroup: profile.manualBloodGroup || 'O+',
         photo: employeeDetails?.photo || (user?.id ? localStorage.getItem(`hrms_photo_${user.id}`) : '') || '',
         signature: employeeDetails?.signature || (user?.id ? localStorage.getItem(`hrms_signature_${user.id}`) : '') || '',
@@ -930,7 +930,6 @@ export default function Profile() {
                             type="text"
                             value={liveCardData.fullName}
                             onChange={(e) => setLiveCardData(prev => ({ ...prev, fullName: e.target.value }))}
-                            placeholder="e.g. PRIYANKA AVULA"
                           />
                         </div>
 
@@ -940,7 +939,6 @@ export default function Profile() {
                             type="text"
                             value={liveCardData.designation}
                             onChange={(e) => setLiveCardData(prev => ({ ...prev, designation: e.target.value }))}
-                            placeholder="e.g. HR Manager / EMPLOYEE"
                           />
                         </div>
 
@@ -950,7 +948,6 @@ export default function Profile() {
                             type="text"
                             value={liveCardData.employeeCode}
                             onChange={(e) => setLiveCardData(prev => ({ ...prev, employeeCode: e.target.value }))}
-                            placeholder="e.g. HR-0001 / EMP-1070"
                           />
                         </div>
 
@@ -960,7 +957,6 @@ export default function Profile() {
                             type="text"
                             value={liveCardData.phone}
                             onChange={(e) => setLiveCardData(prev => ({ ...prev, phone: e.target.value }))}
-                            placeholder="e.g. 9949020175"
                           />
                         </div>
 
