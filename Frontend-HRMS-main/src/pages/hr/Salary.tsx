@@ -397,14 +397,15 @@ function PayslipPreviewModal({
       setItemBasic(Math.round(baseAmount * 0.50))
       setItemHra(Math.round(baseAmount * 0.18))
       setItemLta(Math.round(baseAmount * 0.10))
-      setItemEmployerPf(Math.round(baseAmount * 0.12))
-      setItemInsurance(Math.round(baseAmount * 0.10))
+      const epf = Math.round(baseAmount * 0.12)
+      setItemEmployerPf(epf)
+      const ins = Math.round(baseAmount * 0.10)
+      setItemInsurance(ins)
 
-      const epf = Math.round(Math.round(baseAmount * 0.50) * 0.12)
       setItemPt(200)
       setItemDedEmployerPf(0)
       setItemDedEmployeePf(epf)
-      setItemDedInsurance(Math.round(baseAmount * 0.10))
+      setItemDedInsurance(ins)
       setItemOtherDed(200)
     } else {
       // Basic Salary Basis: Calculations are derived using Basic Salary as the foundation
@@ -1211,7 +1212,11 @@ function PayslipPreviewModal({
                         <input
                           type="number"
                           value={itemEmployerPf}
-                          onChange={(e) => setItemEmployerPf(Number(e.target.value) || 0)}
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0
+                            setItemEmployerPf(val)
+                            setItemDedEmployeePf(val)
+                          }}
                           style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px' }}
                         />
                       ) : (
@@ -1231,7 +1236,11 @@ function PayslipPreviewModal({
                         <input
                           type="number"
                           value={itemInsurance}
-                          onChange={(e) => setItemInsurance(Number(e.target.value) || 0)}
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0
+                            setItemInsurance(val)
+                            setItemDedInsurance(val)
+                          }}
                           style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px' }}
                         />
                       ) : (
@@ -1294,6 +1303,7 @@ function PayslipPreviewModal({
                           onChange={(e) => {
                             const val = Number(e.target.value) || 0
                             setItemDedEmployeePf(val)
+                            setItemEmployerPf(val)
                             setItemDedEmployerPf(0)
                           }}
                           style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px' }}
@@ -1315,7 +1325,11 @@ function PayslipPreviewModal({
                         <input
                           type="number"
                           value={itemDedInsurance}
-                          onChange={(e) => setItemDedInsurance(Number(e.target.value) || 0)}
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0
+                            setItemDedInsurance(val)
+                            setItemInsurance(val)
+                          }}
                           style={{ width: '110px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px' }}
                         />
                       ) : (
