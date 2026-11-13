@@ -2,6 +2,28 @@ import { google } from 'googleapis'
 import { prisma } from '../config/database'
 
 /**
+ * Validates whether the given string represents a valid PEM private key.
+ */
+function isValidPrivateKey(key: string | undefined): boolean {
+  if (!key || typeof key !== 'string') return false
+  const trimmed = key.trim()
+  if (trimmed === 'value' || trimmed === '""' || trimmed === "''" || trimmed.length < 50) return false
+  return trimmed.includes('BEGIN PRIVATE KEY') || trimmed.includes('BEGIN RSA PRIVATE KEY')
+}
+
+/**
+ * Normalizes PEM private keys from env vars (removes outer quotes and handles escaped newlines).
+ */
+function normalizePrivateKey(key: string): string {
+  let cleaned = key.trim()
+  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+    cleaned = cleaned.slice(1, -1).trim()
+  }
+  cleaned = cleaned.replace(/\\n/g, '\n').replace(/\\r/g, '')
+  return cleaned
+}
+
+/**
  * Helper to fetch with retry and exponential backoff.
  */
 async function fetchWithRetry(url: string, options: any, retries = 3, backoffMs = 500): Promise<Response> {
@@ -109,17 +131,19 @@ export async function syncAttendanceToGoogleSheet(attendanceId: string): Promise
       }
     }
 
-    // 2. Google Sheets API Service Account Sync (if GOOGLE_SHEET_ID, EMAIL, and KEY are provided)
-    if (spreadsheetId && clientEmail && privateKey) {
+    // 2. Google Sheets API Service Account Sync (if GOOGLE_SHEET_ID, valid EMAIL, and valid PEM KEY are provided)
+    const hasValidKey = isValidPrivateKey(privateKey)
+    const hasValidEmail = Boolean(clientEmail && clientEmail.trim() !== 'value' && clientEmail.includes('@'))
+    const hasValidSheetId = Boolean(spreadsheetId && spreadsheetId.trim() !== 'value')
+
+    if (hasValidSheetId && hasValidEmail && hasValidKey) {
       try {
-        if (privateKey.includes('\\n')) {
-          privateKey = privateKey.replace(/\\n/g, '\n')
-        }
+        const formattedKey = normalizePrivateKey(privateKey!)
 
         const auth = new google.auth.JWT(
           clientEmail,
           undefined,
-          privateKey,
+          formattedKey,
           ['https://www.googleapis.com/auth/spreadsheets']
         )
 
@@ -230,8 +254,32 @@ export async function syncAttendanceToGoogleSheet(attendanceId: string): Promise
  */
 export async function syncAllAttendanceToGoogleSheet(tenantId?: string): Promise<{ total: number; synced: number }> {
   try {
+    const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL
+    const spreadsheetId = process.env.GOOGLE_SHEET_ID
+    const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
+    const privateKey = process.env.GOOGLE_PRIVATE_KEY
+
+    const hasWebhook = Boolean(webhookUrl && webhookUrl.trim().length > 0 && webhookUrl.trim() !== 'value')
+    const hasServiceAccount = Boolean(
+      spreadsheetId && spreadsheetId.trim() !== 'value' &&
+      clientEmail && clientEmail.trim() !== 'value' &&
+      isValidPrivateKey(privateKey)
+    )
+
+    if (!hasWebhook && !hasServiceAccount) {
+      console.log('[GOOGLE_SHEETS_BACKFILL] Google Sheets credentials not configured; skipping backfill.')
+      return { total: 0, synced: 0 }
+    }
+
     const whereClause: any = {}
     if (tenantId) whereClause.tenantId = tenantId
+
+    // When running general sync without specific tenantId, sync recent records (last 7 days)
+    // to prevent memory exhaustion and rate limiting on 6,800+ historical records.
+    if (!tenantId) {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+      whereClause.date = { gte: sevenDaysAgo }
+    }
 
     const records = await prisma.attendance.findMany({
       where: whereClause,
@@ -241,12 +289,22 @@ export async function syncAllAttendanceToGoogleSheet(tenantId?: string): Promise
 
     console.log(`[GOOGLE_SHEETS_BACKFILL] Found ${records.length} attendance records to sync to Google Sheets...`)
     let synced = 0
+    let consecutiveErrors = 0
+
     for (const rec of records) {
       try {
         await syncAttendanceToGoogleSheet(rec.id)
         synced++
+        consecutiveErrors = 0
+        // Small delay to prevent hitting Google API quotas
+        await new Promise((resolve) => setTimeout(resolve, 50))
       } catch (err: any) {
+        consecutiveErrors++
         console.error(`[GOOGLE_SHEETS_BACKFILL_ERROR] Failed for record ID ${rec.id}: ${err.message}`)
+        if (consecutiveErrors >= 5) {
+          console.warn('[GOOGLE_SHEETS_BACKFILL] Aborting backfill loop after 5 consecutive errors to maintain service health.')
+          break
+        }
       }
     }
     console.log(`[GOOGLE_SHEETS_BACKFILL] Successfully backfilled ${synced}/${records.length} records to Google Sheets.`)

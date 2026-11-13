@@ -17,10 +17,34 @@ import { setSocketServer } from './config/socket'
 import { runAttendanceJob } from './jobs/attendance.job'
 import { syncAllAttendanceToGoogleSheet } from './services/googleSheets.service'
 
+// Safety handlers for uncaught exceptions and unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  // eslint-disable-next-line no-console
+  console.error('[UNHANDLED_REJECTION]', reason)
+})
+
+process.on('uncaughtException', (err) => {
+  // eslint-disable-next-line no-console
+  console.error('[UNCAUGHT_EXCEPTION]', err)
+})
+
 const PORT = Number(process.env.PORT ?? 5000)
 
 const bootstrap = async () => {
-  await prisma.$connect()
+  // Resilient connection with retries for cloud postgres wake-up
+  let retries = 5
+  while (retries > 0) {
+    try {
+      await prisma.$connect()
+      break
+    } catch (err) {
+      retries--
+      // eslint-disable-next-line no-console
+      console.warn(`[BOOTSTRAP] Prisma connect failed, retrying in 3s... (${retries} retries left)`)
+      if (retries === 0) throw err
+      await new Promise((res) => setTimeout(res, 3000))
+    }
+  }
   if (redis) {
     try {
       await redis.connect()
