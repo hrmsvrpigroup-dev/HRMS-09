@@ -4,7 +4,8 @@ import { useAuthStore } from '../../store/auth.store'
 import { 
   User, Shield, Briefcase, Landmark, Save, Phone, MapPin, Mail, Award, 
   CheckCircle, Download, Upload, Sparkles, Printer, RefreshCw, Search, 
-  Eye, Check, SlidersHorizontal, Image as ImageIcon 
+  Eye, Check, SlidersHorizontal, Image as ImageIcon,
+  ZoomIn, ZoomOut, Move, RotateCw, MoveHorizontal, MoveVertical
 } from 'lucide-react'
 import { employeeApi } from '../../api/employee.api'
 import html2canvas from 'html2canvas'
@@ -57,6 +58,7 @@ export default function Profile() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('ME')
   const [employeeSearch, setEmployeeSearch] = useState<string>('')
   const [cardSaveSuccess, setCardSaveSuccess] = useState<boolean>(false)
+  const [showPhotoAdjust, setShowPhotoAdjust] = useState<boolean>(true)
 
   const [liveCardData, setLiveCardData] = useState<{
     fullName: string
@@ -68,6 +70,10 @@ export default function Profile() {
     signature: string
     authorizedSignature: string
     showAuthorizedSig: boolean
+    photoScale?: number
+    photoOffsetX?: number
+    photoOffsetY?: number
+    photoRotate?: number
   }>({
     fullName: '',
     designation: '',
@@ -78,6 +84,10 @@ export default function Profile() {
     signature: '',
     authorizedSignature: '/authorized_signature.png',
     showAuthorizedSig: true,
+    photoScale: 1,
+    photoOffsetX: 0,
+    photoOffsetY: 0,
+    photoRotate: 0,
   })
 
   const getInitials = (name: string) => {
@@ -315,7 +325,13 @@ export default function Profile() {
     if (savedCustom) {
       try {
         const parsed = JSON.parse(savedCustom)
-        setLiveCardData(parsed)
+        setLiveCardData({
+          photoScale: 1,
+          photoOffsetX: 0,
+          photoOffsetY: 0,
+          photoRotate: 0,
+          ...parsed
+        })
         return
       } catch (e) {}
     }
@@ -332,6 +348,10 @@ export default function Profile() {
         signature: employeeDetails?.signature || (user?.id ? localStorage.getItem(`hrms_signature_${user.id}`) : '') || '',
         authorizedSignature: '/authorized_signature.png',
         showAuthorizedSig: true,
+        photoScale: 1,
+        photoOffsetX: 0,
+        photoOffsetY: 0,
+        photoRotate: 0,
       })
     } else {
       const target = employees.find(e => e.id === empId)
@@ -346,6 +366,10 @@ export default function Profile() {
           signature: target.signature || '',
           authorizedSignature: '/authorized_signature.png',
           showAuthorizedSig: true,
+          photoScale: 1,
+          photoOffsetX: 0,
+          photoOffsetY: 0,
+          photoRotate: 0,
         })
       }
     }
@@ -358,8 +382,49 @@ export default function Profile() {
     reader.readAsDataURL(file)
     reader.onloadend = () => {
       const base64String = reader.result as string
-      setLiveCardData(prev => ({ ...prev, photo: base64String }))
+      setLiveCardData(prev => ({ 
+        ...prev, 
+        photo: base64String,
+        photoScale: 1,
+        photoOffsetX: 0,
+        photoOffsetY: 0,
+        photoRotate: 0,
+      }))
     }
+  }
+
+  const [isDraggingPhoto, setIsDraggingPhoto] = useState<boolean>(false)
+
+  const handlePhotoMouseDown = (e: React.MouseEvent) => {
+    if (user?.role !== 'HR' || !liveCardData.photo) return
+    e.preventDefault()
+    setIsDraggingPhoto(true)
+    const startX = e.clientX
+    const startY = e.clientY
+    const initialOffsetX = liveCardData.photoOffsetX || 0
+    const initialOffsetY = liveCardData.photoOffsetY || 0
+    const scale = liveCardData.photoScale || 1
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX
+      const deltaY = moveEvent.clientY - startY
+      const newX = Math.round(initialOffsetX + deltaX / scale)
+      const newY = Math.round(initialOffsetY + deltaY / scale)
+      setLiveCardData(prev => ({
+        ...prev,
+        photoOffsetX: Math.max(-100, Math.min(100, newX)),
+        photoOffsetY: Math.max(-100, Math.min(100, newY)),
+      }))
+    }
+
+    const handleMouseUp = () => {
+      setIsDraggingPhoto(false)
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
   }
 
   const handleLiveSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -446,7 +511,9 @@ export default function Profile() {
               .id-header { padding: 10px; text-align: center; width: 100%; }
               .id-header img { width: 100%; height: auto; border: 0; }
               .id-photo-container { display: flex; justify-content: center; margin-top: 10px; }
-              .id-photo-container img { width: 140px; height: 140px; border-radius: 16px; object-fit: cover; border: 1px solid #222; }
+              .id-photo-frame { width: 140px; height: 140px; border-radius: 16px; border: 1px solid #222; overflow: hidden; position: relative; background: white; display: flex; align-items: center; justify-content: center; }
+              .id-photo-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+              .id-photo-badge-hint { display: none !important; }
               .id-avatar-placeholder { 
                 width: 140px; 
                 height: 140px; 
@@ -1028,14 +1095,25 @@ export default function Profile() {
                                 />
                               </label>
                               {liveCardData.photo && (
-                                <button 
-                                  type="button" 
-                                  className="btn-mini-clear"
-                                  onClick={() => setLiveCardData(prev => ({ ...prev, photo: '' }))}
-                                  title="Reset to Initials Avatar"
-                                >
-                                  Use Initials
-                                </button>
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn-mini-adjust"
+                                    onClick={() => setShowPhotoAdjust(true)}
+                                    title="Adjust zoom and position in live preview"
+                                  >
+                                    <SlidersHorizontal size={13} />
+                                    <span>Adjust</span>
+                                  </button>
+                                  <button 
+                                    type="button" 
+                                    className="btn-mini-clear"
+                                    onClick={() => setLiveCardData(prev => ({ ...prev, photo: '' }))}
+                                    title="Reset to Initials Avatar"
+                                  >
+                                    Use Initials
+                                  </button>
+                                </>
                               )}
                             </div>
                           </div>
@@ -1105,10 +1183,188 @@ export default function Profile() {
                   <div className="idcard-preview-panel">
                     <div className="preview-sticky-wrapper">
                       <div className="preview-header-bar">
-                        <span className="live-dot-indicator"></span>
-                        <h4>Live ID Card Preview</h4>
-                        <span className="live-tag">Real-Time Sync</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span className="live-dot-indicator"></span>
+                          <h4>Live ID Card Preview</h4>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {user?.role === 'HR' && (
+                            <button
+                              type="button"
+                              className="btn-toggle-adjust-toolbar"
+                              onClick={() => setShowPhotoAdjust(prev => !prev)}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                padding: '4px 10px',
+                                borderRadius: '6px',
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                background: showPhotoAdjust ? '#eff6ff' : '#f8fafc',
+                                color: showPhotoAdjust ? '#2563eb' : '#475569',
+                                border: showPhotoAdjust ? '1.5px solid #bfdbfe' : '1px solid #e2e8f0',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
+                              }}
+                              title="Toggle Photo Adjust Controls"
+                            >
+                              <SlidersHorizontal size={13} />
+                              <span>Photo Adjust</span>
+                              {((liveCardData.photoScale && liveCardData.photoScale !== 1) || liveCardData.photoOffsetX || liveCardData.photoOffsetY || liveCardData.photoRotate) ? (
+                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2563eb' }}></span>
+                              ) : null}
+                            </button>
+                          )}
+                          <span className="live-tag">Real-Time Sync</span>
+                        </div>
                       </div>
+
+                      {/* Photo Adjust Controls Box (HR Portal Only) */}
+                      {user?.role === 'HR' && showPhotoAdjust && (
+                        <div className="preview-photo-adjust-box">
+                          <div className="adjust-box-header">
+                            <div className="adjust-box-title">
+                              <SlidersHorizontal size={14} color="#2563eb" />
+                              <span>Photo Adjust (Fit & Position)</span>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn-adjust-reset"
+                              onClick={() => setLiveCardData(prev => ({ ...prev, photoScale: 1, photoOffsetX: 0, photoOffsetY: 0, photoRotate: 0 }))}
+                              title="Reset photo position and zoom"
+                            >
+                              <RefreshCw size={11} />
+                              <span>Reset</span>
+                            </button>
+                          </div>
+
+                          {liveCardData.photo ? (
+                            <div className="adjust-controls-container">
+                              {/* Zoom Slider & Buttons */}
+                              <div className="adjust-control-row">
+                                <span className="adjust-label">
+                                  <ZoomIn size={12} /> Zoom: <strong>{Math.round((liveCardData.photoScale || 1) * 100)}%</strong>
+                                </span>
+                                <div className="adjust-input-group">
+                                  <button 
+                                    type="button" 
+                                    className="adjust-step-btn"
+                                    onClick={() => setLiveCardData(prev => ({ ...prev, photoScale: Math.max(0.5, Math.round(((prev.photoScale || 1) - 0.05) * 100) / 100) }))}
+                                    title="Zoom Out"
+                                  >
+                                    <ZoomOut size={12} />
+                                  </button>
+                                  <input
+                                    type="range"
+                                    min="0.5"
+                                    max="2.5"
+                                    step="0.05"
+                                    value={liveCardData.photoScale || 1}
+                                    onChange={(e) => setLiveCardData(prev => ({ ...prev, photoScale: parseFloat(e.target.value) }))}
+                                    className="adjust-slider"
+                                  />
+                                  <button 
+                                    type="button" 
+                                    className="adjust-step-btn"
+                                    onClick={() => setLiveCardData(prev => ({ ...prev, photoScale: Math.min(2.5, Math.round(((prev.photoScale || 1) + 0.05) * 100) / 100) }))}
+                                    title="Zoom In"
+                                  >
+                                    <ZoomIn size={12} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Pan X Slider & Buttons */}
+                              <div className="adjust-control-row">
+                                <span className="adjust-label">
+                                  <MoveHorizontal size={12} /> Move Left / Right: <strong>{liveCardData.photoOffsetX || 0}px</strong>
+                                </span>
+                                <div className="adjust-input-group">
+                                  <button 
+                                    type="button" 
+                                    className="adjust-step-btn"
+                                    onClick={() => setLiveCardData(prev => ({ ...prev, photoOffsetX: (prev.photoOffsetX || 0) - 4 }))}
+                                    title="Move Left"
+                                  >
+                                    ◀
+                                  </button>
+                                  <input
+                                    type="range"
+                                    min="-80"
+                                    max="80"
+                                    step="1"
+                                    value={liveCardData.photoOffsetX || 0}
+                                    onChange={(e) => setLiveCardData(prev => ({ ...prev, photoOffsetX: parseInt(e.target.value, 10) }))}
+                                    className="adjust-slider"
+                                  />
+                                  <button 
+                                    type="button" 
+                                    className="adjust-step-btn"
+                                    onClick={() => setLiveCardData(prev => ({ ...prev, photoOffsetX: (prev.photoOffsetX || 0) + 4 }))}
+                                    title="Move Right"
+                                  >
+                                    ▶
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Pan Y Slider & Buttons */}
+                              <div className="adjust-control-row">
+                                <span className="adjust-label">
+                                  <MoveVertical size={12} /> Move Up / Down: <strong>{liveCardData.photoOffsetY || 0}px</strong>
+                                </span>
+                                <div className="adjust-input-group">
+                                  <button 
+                                    type="button" 
+                                    className="adjust-step-btn"
+                                    onClick={() => setLiveCardData(prev => ({ ...prev, photoOffsetY: (prev.photoOffsetY || 0) - 4 }))}
+                                    title="Move Up"
+                                  >
+                                    ▲
+                                  </button>
+                                  <input
+                                    type="range"
+                                    min="-80"
+                                    max="80"
+                                    step="1"
+                                    value={liveCardData.photoOffsetY || 0}
+                                    onChange={(e) => setLiveCardData(prev => ({ ...prev, photoOffsetY: parseInt(e.target.value, 10) }))}
+                                    className="adjust-slider"
+                                  />
+                                  <button 
+                                    type="button" 
+                                    className="adjust-step-btn"
+                                    onClick={() => setLiveCardData(prev => ({ ...prev, photoOffsetY: (prev.photoOffsetY || 0) + 4 }))}
+                                    title="Move Down"
+                                  >
+                                    ▼
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Bottom Actions: Rotate & Hint */}
+                              <div className="adjust-bottom-tools">
+                                <button
+                                  type="button"
+                                  className="btn-rotate-adjust"
+                                  onClick={() => setLiveCardData(prev => ({ ...prev, photoRotate: ((prev.photoRotate || 0) + 90) % 360 }))}
+                                >
+                                  <RotateCw size={12} />
+                                  <span>Rotate 90° ({liveCardData.photoRotate || 0}°)</span>
+                                </button>
+                                <span className="adjust-drag-hint">
+                                  <Move size={11} /> Drag photo on ID card
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="adjust-empty-hint">
+                              <span>No photo uploaded. Upload a photo or select an employee to adjust framing.</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       <div className="id-card-wrapper">
                         <div id="employee-id-card" className="id-card">
@@ -1126,7 +1382,38 @@ export default function Profile() {
                           {/* Middle Section: Photo or Stylized Initials Avatar */}
                           <div className="id-photo-container">
                             {liveCardData.photo ? (
-                              <img src={liveCardData.photo} alt={liveCardData.fullName} />
+                              <div 
+                                className="id-photo-frame"
+                                onMouseDown={handlePhotoMouseDown}
+                                style={{
+                                  cursor: user?.role === 'HR' ? 'grab' : 'default',
+                                  position: 'relative',
+                                  userSelect: 'none'
+                                }}
+                                title={user?.role === 'HR' ? 'Drag with mouse to adjust photo position' : undefined}
+                              >
+                                <img 
+                                  src={liveCardData.photo} 
+                                  alt={liveCardData.fullName}
+                                  style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'cover',
+                                    transform: `scale(${liveCardData.photoScale || 1}) translate(${liveCardData.photoOffsetX || 0}px, ${liveCardData.photoOffsetY || 0}px) rotate(${liveCardData.photoRotate || 0}deg)`,
+                                    transformOrigin: 'center center',
+                                    pointerEvents: 'none',
+                                    display: 'block',
+                                    transition: isDraggingPhoto ? 'none' : 'transform 0.08s ease-out'
+                                  }}
+                                  draggable={false}
+                                />
+                                {user?.role === 'HR' && (
+                                  <div className="id-photo-badge-hint">
+                                    <Move size={10} />
+                                    <span>Drag</span>
+                                  </div>
+                                )}
+                              </div>
                             ) : (
                               <div 
                                 className="id-avatar-placeholder"
@@ -1907,10 +2194,257 @@ export default function Profile() {
           gap: 16px;
         }
 
+        /* Photo Adjuster Widget inside ID Card Preview */
+        .preview-photo-adjust-box {
+          width: 100%;
+          max-width: 350px;
+          background: #ffffff;
+          border: 1.5px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 12px 14px;
+          box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.05);
+          animation: fadeInDown 0.2s ease-out;
+        }
+
+        @keyframes fadeInDown {
+          from { opacity: 0; transform: translateY(-6px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        .adjust-box-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 10px;
+          padding-bottom: 8px;
+          border-bottom: 1px solid #f1f5f9;
+        }
+
+        .adjust-box-title {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          font-size: 0.82rem;
+          font-weight: 700;
+          color: #1e293b;
+        }
+
+        .btn-adjust-reset {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 3px 8px;
+          border-radius: 6px;
+          font-size: 0.72rem;
+          font-weight: 600;
+          background: #f8fafc;
+          color: #64748b;
+          border: 1px solid #e2e8f0;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .btn-adjust-reset:hover {
+          background: #fee2e2;
+          color: #ef4444;
+          border-color: #fca5a5;
+        }
+
+        .adjust-controls-container {
+          display: flex;
+          flex-direction: column;
+          gap: 9px;
+        }
+
+        .adjust-control-row {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .adjust-label {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.74rem;
+          font-weight: 600;
+          color: #475569;
+        }
+
+        .adjust-label strong {
+          color: #2563eb;
+          margin-left: auto;
+        }
+
+        .adjust-input-group {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .adjust-step-btn {
+          width: 24px;
+          height: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 6px;
+          border: 1px solid #cbd5e1;
+          background: #f8fafc;
+          color: #334155;
+          font-size: 0.75rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          user-select: none;
+          flex-shrink: 0;
+        }
+
+        .adjust-step-btn:hover {
+          background: #e2e8f0;
+          border-color: #94a3b8;
+          color: #0f172a;
+        }
+
+        .adjust-slider {
+          flex: 1;
+          height: 6px;
+          -webkit-appearance: none;
+          appearance: none;
+          background: #e2e8f0;
+          border-radius: 4px;
+          outline: none;
+          cursor: pointer;
+        }
+
+        .adjust-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          background: #2563eb;
+          cursor: pointer;
+          border: 2px solid #ffffff;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+          transition: transform 0.1s ease;
+        }
+
+        .adjust-slider::-webkit-slider-thumb:hover {
+          transform: scale(1.15);
+        }
+
+        .adjust-bottom-tools {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-top: 4px;
+          padding-top: 6px;
+          border-top: 1px dashed #e2e8f0;
+        }
+
+        .btn-rotate-adjust {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 4px 10px;
+          border-radius: 6px;
+          font-size: 0.72rem;
+          font-weight: 600;
+          background: #eff6ff;
+          color: #1d4ed8;
+          border: 1px solid #bfdbfe;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .btn-rotate-adjust:hover {
+          background: #dbeafe;
+        }
+
+        .adjust-drag-hint {
+          font-size: 0.7rem;
+          color: #64748b;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .adjust-empty-hint {
+          padding: 10px;
+          text-align: center;
+          font-size: 0.75rem;
+          color: #94a3b8;
+          font-style: italic;
+        }
+
+        .btn-mini-adjust {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 4px 8px;
+          background: #eff6ff;
+          border: 1px solid #bfdbfe;
+          color: #1d4ed8;
+          border-radius: 6px;
+          font-size: 0.74rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .btn-mini-adjust:hover {
+          background: #dbeafe;
+        }
+
+        .id-photo-frame {
+          width: 140px;
+          height: 140px;
+          border-radius: 16px;
+          border: 1px solid #222;
+          overflow: hidden;
+          position: relative;
+          background: white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .id-photo-frame img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+
+        .id-photo-badge-hint {
+          position: absolute;
+          bottom: 6px;
+          right: 6px;
+          background: rgba(15, 23, 42, 0.75);
+          backdrop-filter: blur(4px);
+          color: #ffffff;
+          font-size: 9px;
+          font-weight: 600;
+          padding: 2px 5px;
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          gap: 3px;
+          pointer-events: none;
+          opacity: 0.85;
+          transition: opacity 0.2s ease;
+        }
+
+        .id-photo-frame:hover .id-photo-badge-hint {
+          opacity: 1;
+          background: rgba(37, 99, 235, 0.9);
+        }
+
         .preview-header-bar {
           display: flex;
           align-items: center;
-          gap: 10px;
+          justify-content: space-between;
           width: 100%;
           max-width: 350px;
           background: #0f172a;
