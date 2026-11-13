@@ -412,8 +412,8 @@ export default function Profile() {
       const newY = Math.round(initialOffsetY + deltaY / scale)
       setLiveCardData(prev => ({
         ...prev,
-        photoOffsetX: Math.max(-100, Math.min(100, newX)),
-        photoOffsetY: Math.max(-100, Math.min(100, newY)),
+        photoOffsetX: Math.max(-150, Math.min(150, newX)),
+        photoOffsetY: Math.max(-150, Math.min(150, newY)),
       }))
     }
 
@@ -512,7 +512,7 @@ export default function Profile() {
               .id-header img { width: 100%; height: auto; border: 0; }
               .id-photo-container { display: flex; justify-content: center; margin-top: 10px; }
               .id-photo-frame { width: 140px; height: 140px; border-radius: 16px; border: 1px solid #222; overflow: hidden; position: relative; background: white; display: flex; align-items: center; justify-content: center; }
-              .id-photo-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+              .id-photo-frame img { position: absolute; top: 50%; left: 50%; min-width: 100%; min-height: 100%; width: auto !important; height: auto !important; max-width: none !important; max-height: none !important; border: none !important; border-radius: 0 !important; outline: none !important; display: block; }
               .id-photo-badge-hint { display: none !important; }
               .id-avatar-placeholder { 
                 width: 140px; 
@@ -1291,8 +1291,8 @@ export default function Profile() {
                                   </button>
                                   <input
                                     type="range"
-                                    min="-80"
-                                    max="80"
+                                    min="-150"
+                                    max="150"
                                     step="1"
                                     value={liveCardData.photoOffsetX || 0}
                                     onChange={(e) => setLiveCardData(prev => ({ ...prev, photoOffsetX: parseInt(e.target.value, 10) }))}
@@ -1325,8 +1325,8 @@ export default function Profile() {
                                   </button>
                                   <input
                                     type="range"
-                                    min="-80"
-                                    max="80"
+                                    min="-150"
+                                    max="150"
                                     step="1"
                                     value={liveCardData.photoOffsetY || 0}
                                     onChange={(e) => setLiveCardData(prev => ({ ...prev, photoOffsetY: parseInt(e.target.value, 10) }))}
@@ -1396,18 +1396,28 @@ export default function Profile() {
                                   src={liveCardData.photo} 
                                   alt={liveCardData.fullName}
                                   style={{
-                                    width: '100%',
-                                    height: '100%',
-                                    objectFit: 'cover',
-                                    transform: `scale(${liveCardData.photoScale || 1}) translate(${liveCardData.photoOffsetX || 0}px, ${liveCardData.photoOffsetY || 0}px) rotate(${liveCardData.photoRotate || 0}deg)`,
+                                    position: 'absolute',
+                                    top: '50%',
+                                    left: '50%',
+                                    minWidth: '100%',
+                                    minHeight: '100%',
+                                    width: 'auto',
+                                    height: 'auto',
+                                    maxWidth: 'none',
+                                    maxHeight: 'none',
+                                    transform: `translate(-50%, -50%) translate(${liveCardData.photoOffsetX || 0}px, ${liveCardData.photoOffsetY || 0}px) scale(${liveCardData.photoScale || 1}) rotate(${liveCardData.photoRotate || 0}deg)`,
                                     transformOrigin: 'center center',
                                     pointerEvents: 'none',
                                     display: 'block',
+                                    border: 'none',
+                                    borderRadius: 0,
+                                    outline: 'none',
+                                    boxShadow: 'none',
                                     transition: isDraggingPhoto ? 'none' : 'transform 0.08s ease-out'
                                   }}
                                   draggable={false}
                                 />
-                                {user?.role === 'HR' && (
+                                {user?.role === 'HR' && !isDraggingPhoto && (
                                   <div className="id-photo-badge-hint">
                                     <Move size={10} />
                                     <span>Drag</span>
@@ -2404,24 +2414,37 @@ export default function Profile() {
           border: 1px solid #222;
           overflow: hidden;
           position: relative;
-          background: white;
+          background: #ffffff;
           display: flex;
           align-items: center;
           justify-content: center;
         }
 
         .id-photo-frame img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          min-width: 100%;
+          min-height: 100%;
+          width: auto !important;
+          height: auto !important;
+          max-width: none !important;
+          max-height: none !important;
+          border: none !important;
+          border-radius: 0 !important;
+          outline: none !important;
+          box-shadow: none !important;
+          background: transparent !important;
           display: block;
+          user-select: none;
+          -webkit-user-drag: none;
         }
 
         .id-photo-badge-hint {
           position: absolute;
           bottom: 6px;
           right: 6px;
-          background: rgba(15, 23, 42, 0.75);
+          background: rgba(15, 23, 42, 0.7);
           backdrop-filter: blur(4px);
           color: #ffffff;
           font-size: 9px;
@@ -2432,7 +2455,7 @@ export default function Profile() {
           align-items: center;
           gap: 3px;
           pointer-events: none;
-          opacity: 0.85;
+          opacity: 0.7;
           transition: opacity 0.2s ease;
         }
 
@@ -2564,7 +2587,7 @@ export default function Profile() {
           z-index: 2;
         }
 
-        .id-photo-container img {
+        .id-photo-container > img {
           width: 140px;
           height: 140px;
           border-radius: 16px;
