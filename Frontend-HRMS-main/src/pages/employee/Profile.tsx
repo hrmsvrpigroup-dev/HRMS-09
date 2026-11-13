@@ -5,7 +5,8 @@ import {
   User, Shield, Briefcase, Landmark, Save, Phone, MapPin, Mail, Award, 
   CheckCircle, Download, Upload, Sparkles, Printer, RefreshCw, Search, 
   Eye, Check, SlidersHorizontal, Image as ImageIcon,
-  ZoomIn, ZoomOut, Move, RotateCw, MoveHorizontal, MoveVertical
+  ZoomIn, ZoomOut, Move, RotateCw, MoveHorizontal, MoveVertical,
+  Crop, X
 } from 'lucide-react'
 import { employeeApi } from '../../api/employee.api'
 import html2canvas from 'html2canvas'
@@ -59,6 +60,13 @@ export default function Profile() {
   const [employeeSearch, setEmployeeSearch] = useState<string>('')
   const [cardSaveSuccess, setCardSaveSuccess] = useState<boolean>(false)
   const [showPhotoAdjust, setShowPhotoAdjust] = useState<boolean>(true)
+
+  // Interactive Photo Cropper Modal states
+  const [isCropModalOpen, setIsCropModalOpen] = useState<boolean>(false)
+  const [rawCropImage, setRawCropImage] = useState<string | null>(null)
+  const [cropZoom, setCropZoom] = useState<number>(1)
+  const [cropPan, setCropPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [isPanningCrop, setIsPanningCrop] = useState<boolean>(false)
 
   const [liveCardData, setLiveCardData] = useState<{
     fullName: string
@@ -382,14 +390,97 @@ export default function Profile() {
     reader.readAsDataURL(file)
     reader.onloadend = () => {
       const base64String = reader.result as string
-      setLiveCardData(prev => ({ 
-        ...prev, 
-        photo: base64String,
+      setRawCropImage(base64String)
+      setCropZoom(1)
+      setCropPan({ x: 0, y: 0 })
+      setIsCropModalOpen(true)
+    }
+    e.target.value = ''
+  }
+
+  const handleCropMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsPanningCrop(true)
+    const startX = e.clientX
+    const startY = e.clientY
+    const initialX = cropPan.x
+    const initialY = cropPan.y
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX
+      const deltaY = moveEvent.clientY - startY
+      setCropPan({
+        x: initialX + deltaX,
+        y: initialY + deltaY,
+      })
+    }
+
+    const handleMouseUp = () => {
+      setIsPanningCrop(false)
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+  }
+
+  const handleCropWheel = (e: React.WheelEvent) => {
+    e.preventDefault()
+    const delta = e.deltaY < 0 ? 0.08 : -0.08
+    setCropZoom(prev => Math.max(1, Math.min(3.5, Math.round((prev + delta) * 100) / 100)))
+  }
+
+  const applyCrop = () => {
+    if (!rawCropImage) return
+    const img = new Image()
+    img.src = rawCropImage
+    img.onload = () => {
+      const size = 400
+      const canvas = document.createElement('canvas')
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+
+      const vpSize = 280
+      const ratio = size / vpSize
+      const imgAspect = img.width / img.height
+
+      let baseW = vpSize
+      let baseH = vpSize
+      if (imgAspect > 1) {
+        baseH = vpSize
+        baseW = vpSize * imgAspect
+      } else {
+        baseW = vpSize
+        baseH = vpSize / imgAspect
+      }
+
+      const drawW = baseW * ratio
+      const drawH = baseH * ratio
+
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, size, size)
+
+      ctx.save()
+      ctx.translate(size / 2, size / 2)
+      ctx.translate(cropPan.x * ratio, cropPan.y * ratio)
+      ctx.scale(cropZoom, cropZoom)
+      ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH)
+      ctx.restore()
+
+      const croppedBase64 = canvas.toDataURL('image/jpeg', 0.95)
+      setLiveCardData(prev => ({
+        ...prev,
+        photo: croppedBase64,
         photoScale: 1,
         photoOffsetX: 0,
         photoOffsetY: 0,
         photoRotate: 0,
       }))
+      setIsCropModalOpen(false)
+      setRawCropImage(null)
     }
   }
 
@@ -1099,6 +1190,22 @@ export default function Profile() {
                                   <button
                                     type="button"
                                     className="btn-mini-adjust"
+                                    onClick={() => {
+                                      if (liveCardData.photo) {
+                                        setRawCropImage(liveCardData.photo)
+                                        setCropZoom(1)
+                                        setCropPan({ x: 0, y: 0 })
+                                        setIsCropModalOpen(true)
+                                      }
+                                    }}
+                                    title="Crop and frame photo"
+                                  >
+                                    <Crop size={13} />
+                                    <span>Crop</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-mini-adjust"
                                     onClick={() => setShowPhotoAdjust(true)}
                                     title="Adjust zoom and position in live preview"
                                   >
@@ -1638,9 +1745,394 @@ export default function Profile() {
             </div>
           )}
         </form>
+
+        {/* Interactive Photo Crop Modal */}
+        {isCropModalOpen && rawCropImage && (
+          <div className="crop-modal-overlay" onClick={() => setIsCropModalOpen(false)}>
+            <div className="crop-modal-card" onClick={(e) => e.stopPropagation()}>
+              <div className="crop-modal-header">
+                <div className="crop-modal-title">
+                  <Crop size={18} color="#2563eb" />
+                  <span>Crop & Position Photo</span>
+                </div>
+                <button
+                  type="button"
+                  className="crop-modal-close"
+                  onClick={() => {
+                    setIsCropModalOpen(false)
+                    setRawCropImage(null)
+                  }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="crop-modal-body">
+                <p className="crop-modal-instruction">
+                  Drag the photo to center the face, adjust zoom with the slider, and click <strong>Crop & Apply</strong>.
+                </p>
+
+                {/* Viewport Box */}
+                <div 
+                  className="crop-viewport"
+                  onMouseDown={handleCropMouseDown}
+                  onWheel={handleCropWheel}
+                  style={{ cursor: isPanningCrop ? 'grabbing' : 'grab' }}
+                  title="Drag to position photo / Scroll to zoom"
+                >
+                  <img
+                    src={rawCropImage}
+                    alt="Crop Preview"
+                    style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      minWidth: '100%',
+                      minHeight: '100%',
+                      width: 'auto',
+                      height: 'auto',
+                      maxWidth: 'none',
+                      maxHeight: 'none',
+                      transform: `translate(-50%, -50%) translate(${cropPan.x}px, ${cropPan.y}px) scale(${cropZoom})`,
+                      transformOrigin: 'center center',
+                      userSelect: 'none',
+                      pointerEvents: 'none',
+                      display: 'block'
+                    }}
+                    draggable={false}
+                  />
+                  {/* Badge Frame Silhouette / Guide */}
+                  <div className="crop-frame-guide"></div>
+                </div>
+
+                {/* Zoom & Reset Toolbar */}
+                <div className="crop-controls-strip">
+                  <div className="crop-zoom-control">
+                    <span className="crop-zoom-label">
+                      <ZoomIn size={14} /> Zoom: <strong>{Math.round(cropZoom * 100)}%</strong>
+                    </span>
+                    <div className="crop-slider-row">
+                      <button
+                        type="button"
+                        className="crop-step-btn"
+                        onClick={() => setCropZoom(prev => Math.max(1, Math.round((prev - 0.1) * 10) / 10))}
+                      >
+                        <ZoomOut size={13} />
+                      </button>
+                      <input
+                        type="range"
+                        min="1"
+                        max="3.5"
+                        step="0.05"
+                        value={cropZoom}
+                        onChange={(e) => setCropZoom(parseFloat(e.target.value))}
+                        className="crop-range-slider"
+                      />
+                      <button
+                        type="button"
+                        className="crop-step-btn"
+                        onClick={() => setCropZoom(prev => Math.min(3.5, Math.round((prev + 0.1) * 10) / 10))}
+                      >
+                        <ZoomIn size={13} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="crop-reset-btn"
+                    onClick={() => {
+                      setCropZoom(1)
+                      setCropPan({ x: 0, y: 0 })
+                    }}
+                    title="Reset position and zoom"
+                  >
+                    <RefreshCw size={12} />
+                    <span>Reset Centering</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="crop-modal-footer">
+                <button
+                  type="button"
+                  className="crop-btn-cancel"
+                  onClick={() => {
+                    setIsCropModalOpen(false)
+                    setRawCropImage(null)
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="crop-btn-apply"
+                  onClick={applyCrop}
+                >
+                  <Check size={16} />
+                  <span>Crop & Apply Photo</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <style>{`
+        /* Crop Modal Styles */
+        .crop-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(15, 23, 42, 0.7);
+          backdrop-filter: blur(6px);
+          z-index: 9999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+          animation: fadeIn 0.15s ease-out;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        .crop-modal-card {
+          background: #ffffff;
+          border-radius: 16px;
+          width: 100%;
+          max-width: 420px;
+          box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.3);
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          animation: scaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes scaleUp {
+          from { transform: scale(0.95); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+
+        .crop-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 16px 20px;
+          border-bottom: 1px solid #e2e8f0;
+        }
+
+        .crop-modal-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 1.05rem;
+          font-weight: 700;
+          color: #0f172a;
+        }
+
+        .crop-modal-close {
+          background: transparent;
+          border: none;
+          color: #64748b;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.15s ease;
+        }
+
+        .crop-modal-close:hover {
+          background: #f1f5f9;
+          color: #0f172a;
+        }
+
+        .crop-modal-body {
+          padding: 20px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 16px;
+        }
+
+        .crop-modal-instruction {
+          margin: 0;
+          font-size: 0.8rem;
+          color: #475569;
+          text-align: center;
+          line-height: 1.4;
+        }
+
+        .crop-viewport {
+          width: 280px;
+          height: 280px;
+          border-radius: 18px;
+          position: relative;
+          overflow: hidden;
+          background: #0f172a;
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1), 0 8px 24px rgba(0,0,0,0.15);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          user-select: none;
+        }
+
+        .crop-frame-guide {
+          position: absolute;
+          inset: 0;
+          border: 2px dashed rgba(255, 255, 255, 0.7);
+          border-radius: 18px;
+          pointer-events: none;
+          box-shadow: inset 0 0 0 9999px rgba(0, 0, 0, 0.2);
+        }
+
+        .crop-controls-strip {
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .crop-zoom-control {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .crop-zoom-label {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.78rem;
+          font-weight: 600;
+          color: #334155;
+        }
+
+        .crop-zoom-label strong {
+          color: #2563eb;
+          margin-left: auto;
+        }
+
+        .crop-slider-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .crop-step-btn {
+          width: 28px;
+          height: 28px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #f8fafc;
+          border: 1px solid #cbd5e1;
+          border-radius: 6px;
+          color: #334155;
+          cursor: pointer;
+          flex-shrink: 0;
+          transition: all 0.15s ease;
+        }
+
+        .crop-step-btn:hover {
+          background: #e2e8f0;
+          color: #0f172a;
+        }
+
+        .crop-range-slider {
+          flex: 1;
+          height: 6px;
+          -webkit-appearance: none;
+          appearance: none;
+          background: #e2e8f0;
+          border-radius: 4px;
+          outline: none;
+          cursor: pointer;
+        }
+
+        .crop-range-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: #2563eb;
+          cursor: pointer;
+          border: 2px solid #ffffff;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+
+        .crop-reset-btn {
+          align-self: center;
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 5px 12px;
+          background: #f1f5f9;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: #475569;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .crop-reset-btn:hover {
+          background: #e2e8f0;
+          color: #0f172a;
+        }
+
+        .crop-modal-footer {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 10px;
+          padding: 14px 20px;
+          border-top: 1px solid #e2e8f0;
+          background: #f8fafc;
+        }
+
+        .crop-btn-cancel {
+          padding: 8px 16px;
+          background: #ffffff;
+          border: 1px solid #cbd5e1;
+          border-radius: 8px;
+          font-size: 0.84rem;
+          font-weight: 600;
+          color: #475569;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .crop-btn-cancel:hover {
+          background: #f1f5f9;
+          color: #0f172a;
+        }
+
+        .crop-btn-apply {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 18px;
+          background: #2563eb;
+          border: 1px solid #1d4ed8;
+          border-radius: 8px;
+          font-size: 0.84rem;
+          font-weight: 700;
+          color: #ffffff;
+          cursor: pointer;
+          box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+          transition: all 0.15s ease;
+        }
+
+        .crop-btn-apply:hover {
+          background: #1d4ed8;
+          box-shadow: 0 4px 10px rgba(37, 99, 235, 0.35);
+        }
         .profile-page {
           padding: 24px 32px;
           max-width: 1200px;
