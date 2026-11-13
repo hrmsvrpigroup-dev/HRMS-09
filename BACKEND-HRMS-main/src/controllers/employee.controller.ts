@@ -258,8 +258,9 @@ export const employeeController = {
           phone: true,
           gender: true,
           bloodGroup: true,
-          photo: true,
-          signature: true,
+          // Exclude large base64 strings (photo & signature exceed 85MB combined) from bulk roster
+          // to prevent Node.js Out-Of-Memory and 502 Bad Gateway crashes on server.
+          // Single employee details/cards fetch on-demand via GET /employees/:id or /employees/me.
           joiningDate: true,
           salaryGross: true,
           status: true,

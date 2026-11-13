@@ -380,6 +380,22 @@ export default function Profile() {
           photoOffsetY: 0,
           photoRotate: 0,
         })
+
+        // Fetch detailed profile for this employee (including photo & signature)
+        employeeApi.getById(empId).then(res => {
+          const detail = res.data?.data
+          if (detail) {
+            setLiveCardData(prev => ({
+              ...prev,
+              photo: detail.photo || prev.photo,
+              signature: detail.signature || prev.signature,
+              phone: detail.phone || prev.phone,
+              bloodGroup: detail.bloodGroup || prev.bloodGroup,
+            }))
+          }
+        }).catch(err => {
+          console.warn('Could not fetch single employee details for ID card', err)
+        })
       }
     }
   }
