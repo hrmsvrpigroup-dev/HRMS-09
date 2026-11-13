@@ -712,8 +712,17 @@ export default function Profile() {
   const downloadIdCard = async () => {
     const cardElement = document.getElementById('employee-id-card')
     if (cardElement) {
+      // Temporarily hide any editor badge/hint before screenshot
+      const badgeHints = cardElement.querySelectorAll<HTMLElement>('.id-photo-badge-hint')
+      badgeHints.forEach(el => el.style.setProperty('display', 'none', 'important'))
+
       try {
-        const canvas = await html2canvas(cardElement, { scale: 3, useCORS: true, logging: false })
+        const canvas = await html2canvas(cardElement, { 
+          scale: 3, 
+          useCORS: true, 
+          logging: false,
+          ignoreElements: (element) => element.classList?.contains('id-photo-badge-hint') || element.hasAttribute('data-html2canvas-ignore')
+        })
         const url = canvas.toDataURL('image/png')
         const link = document.createElement('a')
         const empCode = user?.role === 'HR' ? (liveCardData.employeeCode || 'HR-0001') : (profile.manualEmployeeId || 'Employee')
@@ -722,6 +731,8 @@ export default function Profile() {
         link.click()
       } catch (err) {
         console.error('Failed to generate ID card', err)
+      } finally {
+        badgeHints.forEach(el => el.style.removeProperty('display'))
       }
     }
   }
@@ -1584,7 +1595,7 @@ export default function Profile() {
                                   draggable={false}
                                 />
                                 {user?.role === 'HR' && !isDraggingPhoto && (
-                                  <div className="id-photo-badge-hint">
+                                  <div className="id-photo-badge-hint" data-html2canvas-ignore="true">
                                     <Move size={10} />
                                     <span>Drag</span>
                                   </div>
@@ -3070,7 +3081,7 @@ export default function Profile() {
           align-items: center;
           gap: 3px;
           pointer-events: none;
-          opacity: 0.7;
+          opacity: 0;
           transition: opacity 0.2s ease;
         }
 
