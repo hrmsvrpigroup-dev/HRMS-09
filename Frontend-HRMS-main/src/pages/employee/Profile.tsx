@@ -64,6 +64,7 @@ export default function Profile() {
   // Interactive Photo Cropper Modal states
   const [isCropModalOpen, setIsCropModalOpen] = useState<boolean>(false)
   const [rawCropImage, setRawCropImage] = useState<string | null>(null)
+  const [cropImgMeta, setCropImgMeta] = useState<{ width: number; height: number; aspect: number }>({ width: 280, height: 280, aspect: 1 })
   const [cropZoom, setCropZoom] = useState<number>(1)
   const [cropPan, setCropPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [isPanningCrop, setIsPanningCrop] = useState<boolean>(false)
@@ -90,7 +91,7 @@ export default function Profile() {
     bloodGroup: 'O+',
     photo: '',
     signature: '',
-    authorizedSignature: '/authorized_signature.png',
+    authorizedSignature: '/authorized_signature.png?v=2',
     showAuthorizedSig: true,
     photoScale: 1,
     photoOffsetX: 0,
@@ -319,7 +320,7 @@ export default function Profile() {
         bloodGroup: targetBg,
         photo: targetPhoto,
         signature: targetSig,
-        authorizedSignature: '/authorized_signature.png',
+        authorizedSignature: '/authorized_signature.png?v=2',
         showAuthorizedSig: true,
       })
     }
@@ -354,7 +355,7 @@ export default function Profile() {
         bloodGroup: profile.manualBloodGroup || 'O+',
         photo: employeeDetails?.photo || (user?.id ? localStorage.getItem(`hrms_photo_${user.id}`) : '') || '',
         signature: employeeDetails?.signature || (user?.id ? localStorage.getItem(`hrms_signature_${user.id}`) : '') || '',
-        authorizedSignature: '/authorized_signature.png',
+        authorizedSignature: '/authorized_signature.png?v=2',
         showAuthorizedSig: true,
         photoScale: 1,
         photoOffsetX: 0,
@@ -372,7 +373,7 @@ export default function Profile() {
           bloodGroup: target.bloodGroup || 'N/A',
           photo: target.photo || '',
           signature: target.signature || '',
-          authorizedSignature: '/authorized_signature.png',
+          authorizedSignature: '/authorized_signature.png?v=2',
           showAuthorizedSig: true,
           photoScale: 1,
           photoOffsetX: 0,
@@ -383,6 +384,15 @@ export default function Profile() {
     }
   }
 
+  const measureCropImage = (src: string) => {
+    const img = new Image()
+    img.onload = () => {
+      const aspect = img.width / img.height
+      setCropImgMeta({ width: img.width, height: img.height, aspect })
+    }
+    img.src = src
+  }
+
   const handleLivePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -391,6 +401,7 @@ export default function Profile() {
     reader.onloadend = () => {
       const base64String = reader.result as string
       setRawCropImage(base64String)
+      measureCropImage(base64String)
       setCropZoom(1)
       setCropPan({ x: 0, y: 0 })
       setIsCropModalOpen(true)
@@ -427,8 +438,8 @@ export default function Profile() {
 
   const handleCropWheel = (e: React.WheelEvent) => {
     e.preventDefault()
-    const delta = e.deltaY < 0 ? 0.08 : -0.08
-    setCropZoom(prev => Math.max(1, Math.min(3.5, Math.round((prev + delta) * 100) / 100)))
+    const delta = e.deltaY < 0 ? 0.05 : -0.05
+    setCropZoom(prev => Math.max(0.1, Math.min(3.5, Math.round((prev + delta) * 100) / 100)))
   }
 
   const applyCrop = () => {
@@ -518,15 +529,63 @@ export default function Profile() {
     window.addEventListener('mouseup', handleMouseUp)
   }
 
+  const removeSignatureBackground = (base64Image: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width = img.width
+          canvas.height = img.height
+          const ctx = canvas.getContext('2d')
+          if (!ctx) {
+            resolve(base64Image)
+            return
+          }
+          ctx.drawImage(img, 0, 0)
+          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+          const d = imgData.data
+          const thresholdLow = 90
+          const thresholdHigh = 225
+
+          for (let i = 0; i < d.length; i += 4) {
+            const r = d[i]
+            const g = d[i + 1]
+            const b = d[i + 2]
+            const lum = 0.299 * r + 0.587 * g + 0.114 * b
+
+            if (lum >= thresholdHigh) {
+              d[i + 3] = 0 // Transparent background
+            } else if (lum > thresholdLow) {
+              // Smooth anti-aliased edge
+              const alphaFactor = 1 - (lum - thresholdLow) / (thresholdHigh - thresholdLow)
+              d[i + 3] = Math.max(0, Math.min(255, Math.round(d[i + 3] * alphaFactor)))
+            }
+          }
+
+          ctx.putImageData(imgData, 0, 0)
+          resolve(canvas.toDataURL('image/png'))
+        } catch {
+          resolve(base64Image)
+        }
+      }
+      img.onerror = () => resolve(base64Image)
+      img.src = base64Image
+    })
+  }
+
   const handleLiveSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
     reader.readAsDataURL(file)
-    reader.onloadend = () => {
+    reader.onloadend = async () => {
       const base64String = reader.result as string
-      setLiveCardData(prev => ({ ...prev, signature: base64String }))
+      const cleanSig = await removeSignatureBackground(base64String)
+      setLiveCardData(prev => ({ ...prev, signature: cleanSig }))
     }
+    e.target.value = ''
   }
 
   const handleSaveLiveCard = () => {
@@ -603,7 +662,7 @@ export default function Profile() {
               .id-header img { width: 100%; height: auto; border: 0; }
               .id-photo-container { display: flex; justify-content: center; margin-top: 10px; }
               .id-photo-frame { width: 140px; height: 140px; border-radius: 16px; border: 1px solid #222; overflow: hidden; position: relative; background: white; display: flex; align-items: center; justify-content: center; }
-              .id-photo-frame img { position: absolute; top: 50%; left: 50%; min-width: 100%; min-height: 100%; width: auto !important; height: auto !important; max-width: none !important; max-height: none !important; border: none !important; border-radius: 0 !important; outline: none !important; display: block; }
+              .id-photo-frame img { position: absolute; top: 50%; left: 50%; width: 100% !important; height: 100% !important; object-fit: cover !important; border: none !important; border-radius: 0 !important; outline: none !important; display: block; }
               .id-photo-badge-hint { display: none !important; }
               .id-avatar-placeholder { 
                 width: 140px; 
@@ -630,7 +689,7 @@ export default function Profile() {
               .sig-image-container { height: 35px; margin-bottom: 2px; display: flex; align-items: center; width: 100%; }
               .id-signature-col.left .sig-image-container { justify-content: flex-start; }
               .id-signature-col.right .sig-image-container { justify-content: flex-end; }
-              .sig-image-container img { max-height: 35px; max-width: 110px; object-fit: contain; }
+              .sig-image-container img { max-height: 35px; max-width: 110px; object-fit: contain; mix-blend-mode: multiply; filter: contrast(1.15); }
               .sig-label-text { font-size: 9px; color: #000; font-weight: 700; }
               .id-footer { width: 100%; }
               .id-footer img { width: 100%; display: block; border: 0; }
@@ -681,7 +740,8 @@ export default function Profile() {
     const reader = new FileReader()
     reader.readAsDataURL(file)
     reader.onloadend = async () => {
-      const base64String = reader.result as string
+      const rawBase64 = reader.result as string
+      const base64String = await removeSignatureBackground(rawBase64)
       try {
         setIsUploading(true)
         const res = await employeeApi.updateSignature(base64String)
@@ -720,7 +780,8 @@ export default function Profile() {
     const reader = new FileReader()
     reader.readAsDataURL(file)
     reader.onloadend = async () => {
-      const base64String = reader.result as string
+      const rawBase64 = reader.result as string
+      const base64String = await removeSignatureBackground(rawBase64)
       try {
         setIsUploading(true)
         const res = await employeeApi.updatePhoto(base64String)
@@ -1193,6 +1254,7 @@ export default function Profile() {
                                     onClick={() => {
                                       if (liveCardData.photo) {
                                         setRawCropImage(liveCardData.photo)
+                                        measureCropImage(liveCardData.photo)
                                         setCropZoom(1)
                                         setCropPan({ x: 0, y: 0 })
                                         setIsCropModalOpen(true)
@@ -1357,16 +1419,16 @@ export default function Profile() {
                                   <button 
                                     type="button" 
                                     className="adjust-step-btn"
-                                    onClick={() => setLiveCardData(prev => ({ ...prev, photoScale: Math.max(0.5, Math.round(((prev.photoScale || 1) - 0.05) * 100) / 100) }))}
+                                    onClick={() => setLiveCardData(prev => ({ ...prev, photoScale: Math.max(0.15, Math.round(((prev.photoScale || 1) - 0.05) * 100) / 100) }))}
                                     title="Zoom Out"
                                   >
                                     <ZoomOut size={12} />
                                   </button>
                                   <input
                                     type="range"
-                                    min="0.5"
-                                    max="2.5"
-                                    step="0.05"
+                                    min="0.15"
+                                    max="3.0"
+                                    step="0.02"
                                     value={liveCardData.photoScale || 1}
                                     onChange={(e) => setLiveCardData(prev => ({ ...prev, photoScale: parseFloat(e.target.value) }))}
                                     className="adjust-slider"
@@ -1374,7 +1436,7 @@ export default function Profile() {
                                   <button 
                                     type="button" 
                                     className="adjust-step-btn"
-                                    onClick={() => setLiveCardData(prev => ({ ...prev, photoScale: Math.min(2.5, Math.round(((prev.photoScale || 1) + 0.05) * 100) / 100) }))}
+                                    onClick={() => setLiveCardData(prev => ({ ...prev, photoScale: Math.min(3.0, Math.round(((prev.photoScale || 1) + 0.05) * 100) / 100) }))}
                                     title="Zoom In"
                                   >
                                     <ZoomIn size={12} />
@@ -1506,12 +1568,9 @@ export default function Profile() {
                                     position: 'absolute',
                                     top: '50%',
                                     left: '50%',
-                                    minWidth: '100%',
-                                    minHeight: '100%',
-                                    width: 'auto',
-                                    height: 'auto',
-                                    maxWidth: 'none',
-                                    maxHeight: 'none',
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'cover',
                                     transform: `translate(-50%, -50%) translate(${liveCardData.photoOffsetX || 0}px, ${liveCardData.photoOffsetY || 0}px) scale(${liveCardData.photoScale || 1}) rotate(${liveCardData.photoRotate || 0}deg)`,
                                     transformOrigin: 'center center',
                                     pointerEvents: 'none',
@@ -1581,7 +1640,7 @@ export default function Profile() {
                             <div className="id-signature-col right">
                               <div className="sig-image-container">
                                 {liveCardData.showAuthorizedSig && (
-                                  <img src={liveCardData.authorizedSignature || '/authorized_signature.png'} alt="Authorized Signature" />
+                                  <img src={liveCardData.authorizedSignature || '/authorized_signature.png?v=2'} alt="Authorized Signature" />
                                 )}
                               </div>
                               <div className="sig-label-text">Authorized Signature</div>
@@ -1679,7 +1738,7 @@ export default function Profile() {
 
                         <div className="id-signature-col right">
                           <div className="sig-image-container">
-                            <img src="/authorized_signature.png" alt="Authorized Signature" />
+                            <img src="/authorized_signature.png?v=2" alt="Authorized Signature" />
                           </div>
                           <div className="sig-label-text">Authorized Signature</div>
                         </div>
@@ -1787,10 +1846,8 @@ export default function Profile() {
                       position: 'absolute',
                       top: '50%',
                       left: '50%',
-                      minWidth: '100%',
-                      minHeight: '100%',
-                      width: 'auto',
-                      height: 'auto',
+                      width: cropImgMeta.aspect > 1 ? `${280 * cropImgMeta.aspect}px` : '280px',
+                      height: cropImgMeta.aspect > 1 ? '280px' : `${280 / cropImgMeta.aspect}px`,
                       maxWidth: 'none',
                       maxHeight: 'none',
                       transform: `translate(-50%, -50%) translate(${cropPan.x}px, ${cropPan.y}px) scale(${cropZoom})`,
@@ -1808,22 +1865,59 @@ export default function Profile() {
                 {/* Zoom & Reset Toolbar */}
                 <div className="crop-controls-strip">
                   <div className="crop-zoom-control">
-                    <span className="crop-zoom-label">
-                      <ZoomIn size={14} /> Zoom: <strong>{Math.round(cropZoom * 100)}%</strong>
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <span className="crop-zoom-label">
+                        <ZoomIn size={14} /> Zoom: <strong>{Math.round(cropZoom * 100)}%</strong>
+                      </span>
+                      <div style={{ display: 'flex', gap: '5px' }}>
+                        <button
+                          type="button"
+                          className="crop-preset-btn"
+                          onClick={() => setCropZoom(0.15)}
+                          title="Max zoom out to 15%"
+                        >
+                          Max Out (15%)
+                        </button>
+                        <button
+                          type="button"
+                          className="crop-preset-btn"
+                          onClick={() => setCropZoom(0.3)}
+                          title="Zoom to 30%"
+                        >
+                          30%
+                        </button>
+                        <button
+                          type="button"
+                          className="crop-preset-btn"
+                          onClick={() => setCropZoom(0.5)}
+                          title="Zoom to 50%"
+                        >
+                          50%
+                        </button>
+                        <button
+                          type="button"
+                          className="crop-preset-btn"
+                          onClick={() => setCropZoom(1)}
+                          title="Fit to frame (100%)"
+                        >
+                          100% (Fit)
+                        </button>
+                      </div>
+                    </div>
                     <div className="crop-slider-row">
                       <button
                         type="button"
                         className="crop-step-btn"
-                        onClick={() => setCropZoom(prev => Math.max(1, Math.round((prev - 0.1) * 10) / 10))}
+                        onClick={() => setCropZoom(prev => Math.max(0.1, Math.round((prev - 0.05) * 100) / 100))}
+                        title="Zoom Out"
                       >
                         <ZoomOut size={13} />
                       </button>
                       <input
                         type="range"
-                        min="1"
+                        min="0.10"
                         max="3.5"
-                        step="0.05"
+                        step="0.01"
                         value={cropZoom}
                         onChange={(e) => setCropZoom(parseFloat(e.target.value))}
                         className="crop-range-slider"
@@ -1831,25 +1925,40 @@ export default function Profile() {
                       <button
                         type="button"
                         className="crop-step-btn"
-                        onClick={() => setCropZoom(prev => Math.min(3.5, Math.round((prev + 0.1) * 10) / 10))}
+                        onClick={() => setCropZoom(prev => Math.min(3.5, Math.round((prev + 0.05) * 100) / 100))}
+                        title="Zoom In"
                       >
                         <ZoomIn size={13} />
                       </button>
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    className="crop-reset-btn"
-                    onClick={() => {
-                      setCropZoom(1)
-                      setCropPan({ x: 0, y: 0 })
-                    }}
-                    title="Reset position and zoom"
-                  >
-                    <RefreshCw size={12} />
-                    <span>Reset Centering</span>
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+                    <button
+                      type="button"
+                      className="crop-reset-btn"
+                      onClick={() => {
+                        setCropZoom(0.15)
+                        setCropPan({ x: 0, y: 0 })
+                      }}
+                      title="Max zoom out and center"
+                    >
+                      <ZoomOut size={12} />
+                      <span>Max Zoom Out (15%)</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="crop-reset-btn"
+                      onClick={() => {
+                        setCropZoom(1)
+                        setCropPan({ x: 0, y: 0 })
+                      }}
+                      title="Fit to frame and center"
+                    >
+                      <RefreshCw size={12} />
+                      <span>Fit & Center (100%)</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -2020,6 +2129,23 @@ export default function Profile() {
           display: flex;
           align-items: center;
           gap: 8px;
+        }
+
+        .crop-preset-btn {
+          padding: 2px 7px;
+          background: #eff6ff;
+          border: 1px solid #bfdbfe;
+          border-radius: 4px;
+          font-size: 0.7rem;
+          font-weight: 600;
+          color: #1d4ed8;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .crop-preset-btn:hover {
+          background: #dbeafe;
+          border-color: #93c5fd;
         }
 
         .crop-step-btn {
@@ -2916,12 +3042,9 @@ export default function Profile() {
           position: absolute;
           top: 50%;
           left: 50%;
-          min-width: 100%;
-          min-height: 100%;
-          width: auto !important;
-          height: auto !important;
-          max-width: none !important;
-          max-height: none !important;
+          width: 100% !important;
+          height: 100% !important;
+          object-fit: cover !important;
           border: none !important;
           border-radius: 0 !important;
           outline: none !important;
