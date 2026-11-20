@@ -34,6 +34,7 @@ import { employeeRequestController } from '../controllers/employeeRequest.contro
 
 // Endpoint accessible to any authenticated user (like EMPLOYEE)
 router.get('/me', authenticate, tenantIsolation, employeeController.getProfile)
+router.put('/me/profile', authenticate, tenantIsolation, employeeController.updateProfile)
 router.put('/me/signature', authenticate, tenantIsolation, employeeController.uploadSignature)
 router.put('/me/photo', authenticate, tenantIsolation, employeeController.uploadPhoto)
 router.post('/me/documents', authenticate, tenantIsolation, upload.single('file'), employeeController.uploadDocumentSelf)

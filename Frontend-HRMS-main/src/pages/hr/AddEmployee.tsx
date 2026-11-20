@@ -154,7 +154,7 @@ export default function AddEmployee() {
     }
   }
 
-  const renderInput = ({ label, type = 'text', name, required = false, fullWidth = false, placeholder = '' }: any) => {
+  const renderInput = ({ label, type = 'text', name, required = false, fullWidth = false, placeholder = '', autoComplete = 'off' }: any) => {
     const isMissing = fieldErrors.includes(name)
     return (
       <div className={`onboard-field ${fullWidth ? 'full-width' : ''} ${isMissing ? 'has-field-error' : ''}`} key={name}>
@@ -169,6 +169,9 @@ export default function AddEmployee() {
           placeholder={placeholder} 
           value={formData[name as keyof typeof formData] || ''} 
           onChange={handleChange}
+          autoComplete={autoComplete}
+          autoCorrect="off"
+          spellCheck={false}
           className={isMissing ? 'input-error-highlight' : ''}
         />
         {isMissing && <div className="field-error-subtext">Please fill in this column (your other data is safely preserved).</div>}
@@ -321,8 +324,8 @@ export default function AddEmployee() {
                         {renderInput({ label: "Employee ID", name: "employeeCode", placeholder: "e.g., EMP-1001" })}
                         {renderInput({ label: "First Name", name: "firstName", required: true })}
                         {renderInput({ label: "Last Name", name: "lastName", required: true })}
-                        {renderInput({ label: "Work Email", name: "workEmail", type: "email", required: true })}
-                        {renderInput({ label: "Personal Email", name: "personalEmail", type: "email", required: true })}
+                        {renderInput({ label: "Work Email", name: "workEmail", type: "email", required: true, autoComplete: "off" })}
+                        {renderInput({ label: "Personal Email", name: "personalEmail", type: "email", required: true, autoComplete: "new-password" })}
                         {renderInput({ label: "Mobile Number", name: "mobileNumber", required: true })}
                         {renderInput({ label: "Date of Birth", name: "dateOfBirth", type: "date" })}
                         {renderSelect({ label: "Gender", name: "gender", options: ['Male', 'Female', 'Other'] })}

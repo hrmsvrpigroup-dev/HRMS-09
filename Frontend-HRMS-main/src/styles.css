@@ -67,6 +67,29 @@ h1, h2, h3, h4, h5, h6 {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
   background-color: transparent;
+  transition: grid-template-columns 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 0px minmax(0, 1fr) !important;
+}
+
+.app-shell.sidebar-collapsed .sidebar {
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-right: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  overflow: hidden !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-shell.sidebar-collapsed .content {
+  max-width: 100% !important;
 }
 
 /* Mobile Header (Hidden on Desktop) */
@@ -146,15 +169,19 @@ h1, h2, h3, h4, h5, h6 {
 .sidebar-logo {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.75rem;
   font-family: var(--font-heading);
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-glass);
+}
+
+.sidebar-logo span {
   font-size: 1.35rem;
   font-weight: 800;
   background: linear-gradient(135deg, var(--text-primary) 30%, var(--primary) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--border-glass);
 }
 
 .sidebar nav {

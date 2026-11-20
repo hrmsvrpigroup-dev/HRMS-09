@@ -219,10 +219,20 @@ export default function EditEmployee() {
     }
   }
 
-  const renderInput = ({ label, type = 'text', name, required = false, fullWidth = false }: any) => (
+  const renderInput = ({ label, type = 'text', name, required = false, fullWidth = false, autoComplete = 'off', placeholder = '' }: any) => (
     <div className={`onboard-field ${fullWidth ? 'full-width' : ''}`} key={name}>
       <label>{label} {required && <span>*</span>}</label>
-      <input required={required} type={type} name={name} value={formData[name as keyof typeof formData]} onChange={handleChange} />
+      <input
+        required={required}
+        type={type}
+        name={name}
+        placeholder={placeholder}
+        value={formData[name as keyof typeof formData]}
+        onChange={handleChange}
+        autoComplete={autoComplete}
+        autoCorrect="off"
+        spellCheck={false}
+      />
     </div>
   )
 
@@ -417,8 +427,8 @@ export default function EditEmployee() {
                         {renderInput({ label: "Employee ID", name: "employeeCode", required: true })}
                         {renderInput({ label: "First Name", name: "firstName", required: true })}
                         {renderInput({ label: "Last Name", name: "lastName", required: true })}
-                        {renderInput({ label: "Work Email", name: "workEmail", type: "email", required: true })}
-                        {renderInput({ label: "Personal Email", name: "personalEmail", type: "email" })}
+                        {renderInput({ label: "Work Email", name: "workEmail", type: "email", required: true, autoComplete: "off" })}
+                        {renderInput({ label: "Personal Email", name: "personalEmail", type: "email", placeholder: "Registered personal email", autoComplete: "new-password" })}
                         {renderInput({ label: "Mobile Number", name: "mobileNumber", required: true })}
                         {renderInput({ label: "Date of Birth", name: "dateOfBirth", type: "date" })}
                         {renderSelect({ label: "Gender", name: "gender", options: ['Male', 'Female', 'Other'] })}
@@ -466,9 +476,9 @@ export default function EditEmployee() {
                         {renderInput({ label: "Monthly Salary (₹)", name: "monthlySalary", type: "number" })}
                         {renderInput({ label: "PF Amount (₹)", name: "pfAmount", type: "number" })}
                         {renderSelect({ label: "Payment Method", name: "paymentType", options: ['Bank Transfer', 'Cash', 'Cheque'] })}
-                        {renderInput({ label: "Bank Name", name: "bankName" })}
-                        {renderInput({ label: "Account Number", name: "accountNumber" })}
-                        {renderInput({ label: "IFSC Code", name: "ifscCode" })}
+                        {renderInput({ label: "Bank Name", name: "bankName", placeholder: "e.g. HDFC Bank", autoComplete: "off" })}
+                        {renderInput({ label: "Account Number", name: "accountNumber", placeholder: "e.g. 50100234567890", autoComplete: "off" })}
+                        {renderInput({ label: "IFSC Code", name: "ifscCode", placeholder: "e.g. HDFC0001234", autoComplete: "off" })}
                         {renderInput({ label: "PAN Number", name: "panNumber" })}
                         {renderInput({ label: "UAN Number", name: "uanNumber" })}
                         {renderSelect({ label: "PF Enabled", name: "pfEnabled", options: [{label: 'Yes', value: 'true'}, {label: 'No', value: 'false'}] })}

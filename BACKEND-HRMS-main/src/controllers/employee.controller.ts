@@ -39,6 +39,137 @@ export const employeeController = {
     }
   },
 
+  async updateProfile(req: AuthRequest, res: Response) {
+    const tenantId = req.tenantId ?? req.user?.tenantId
+    const userId = req.user?.id
+    if (!tenantId || !userId) {
+      return sendError(res, 'Context not found', 400)
+    }
+
+    try {
+      const employee = await prisma.employee.findUnique({
+        where: { userId },
+        include: { payrollDetails: true, addressInfo: true, emergencyContact: true }
+      })
+
+      if (!employee || employee.tenantId !== tenantId) {
+        return sendError(res, 'Employee profile not found', 404)
+      }
+
+      const {
+        phone,
+        address,
+        emergencyName,
+        emergencyRelation,
+        emergencyPhone,
+        bankName,
+        bankAccount,
+        accountNumber,
+        bankIfsc,
+        ifscCode,
+        bloodGroup,
+        manualBloodGroup
+      } = req.body
+
+      const resolvedBankAccount = accountNumber !== undefined ? accountNumber : bankAccount
+      const resolvedIfsc = ifscCode !== undefined ? ifscCode : bankIfsc
+      const resolvedBankName = bankName
+      const resolvedBloodGroup = bloodGroup || manualBloodGroup
+
+      const updated = await prisma.$transaction(async (tx) => {
+        // 1. Update Employee details (phone, bloodGroup)
+        await tx.employee.update({
+          where: { id: employee.id },
+          data: {
+            phone: phone !== undefined ? (phone ? String(phone).trim() : null) : employee.phone,
+            bloodGroup: resolvedBloodGroup !== undefined ? (resolvedBloodGroup ? String(resolvedBloodGroup).trim() : null) : employee.bloodGroup,
+          }
+        })
+
+        if (phone !== undefined && phone) {
+          await tx.user.update({
+            where: { id: userId },
+            data: { phone: String(phone).trim() }
+          }).catch(() => {})
+        }
+
+        // 2. Upsert Payroll Details (bankName, accountNumber, ifscCode)
+        const updatedBankName = resolvedBankName !== undefined ? (resolvedBankName ? String(resolvedBankName).trim() : null) : employee.payrollDetails?.bankName
+        const updatedAccountNo = resolvedBankAccount !== undefined ? (resolvedBankAccount ? String(resolvedBankAccount).trim() : null) : employee.payrollDetails?.accountNumber
+        const updatedIfsc = resolvedIfsc !== undefined ? (resolvedIfsc ? String(resolvedIfsc).trim() : null) : employee.payrollDetails?.ifscCode
+
+        await tx.employeePayrollDetails.upsert({
+          where: { employeeId: employee.id },
+          update: {
+            bankName: updatedBankName,
+            accountNumber: updatedAccountNo,
+            ifscCode: updatedIfsc,
+          },
+          create: {
+            employeeId: employee.id,
+            bankName: updatedBankName,
+            accountNumber: updatedAccountNo,
+            ifscCode: updatedIfsc,
+            basicSalary: employee.salaryGross ? employee.salaryGross * 0.5 : 0,
+            paymentType: 'Bank Transfer',
+          }
+        })
+
+        // 3. Upsert Address
+        if (address !== undefined) {
+          await tx.employeeAddress.upsert({
+            where: { employeeId: employee.id },
+            update: {
+              addressLine1: address ? String(address).trim() : null
+            },
+            create: {
+              employeeId: employee.id,
+              addressLine1: address ? String(address).trim() : null
+            }
+          })
+        }
+
+        // 4. Upsert Emergency Contact
+        if (emergencyName !== undefined || emergencyRelation !== undefined || emergencyPhone !== undefined) {
+          await tx.employeeEmergencyContact.upsert({
+            where: { employeeId: employee.id },
+            update: {
+              name: emergencyName ? String(emergencyName).trim() : (employee.emergencyContact?.name || 'Emergency Contact'),
+              relationship: emergencyRelation ? String(emergencyRelation).trim() : (employee.emergencyContact?.relationship || 'Contact'),
+              mobile: emergencyPhone ? String(emergencyPhone).trim() : (employee.emergencyContact?.mobile || ''),
+            },
+            create: {
+              employeeId: employee.id,
+              name: emergencyName ? String(emergencyName).trim() : 'Emergency Contact',
+              relationship: emergencyRelation ? String(emergencyRelation).trim() : 'Contact',
+              mobile: emergencyPhone ? String(emergencyPhone).trim() : '',
+            }
+          })
+        }
+
+        // Return refreshed employee with relations
+        return tx.employee.findUnique({
+          where: { id: employee.id },
+          include: {
+            department: true,
+            designation: true,
+            manager: { select: { firstName: true, lastName: true } },
+            payrollDetails: true,
+            addressInfo: true,
+            emergencyContact: true,
+            onboardingDocs: true,
+            documents: true,
+          }
+        })
+      })
+
+      return sendSuccess(res, updated, 'Employee profile and banking coordinates updated successfully')
+    } catch (error: any) {
+      console.error('[updateProfile error]', error)
+      return sendError(res, error.message || 'Failed to update employee profile', 500)
+    }
+  },
+
   async uploadSignature(req: AuthRequest, res: Response) {
     const userId = req.user?.id
     const { signature } = req.body
@@ -258,8 +389,9 @@ export const employeeController = {
           phone: true,
           gender: true,
           bloodGroup: true,
+          ...(req.query.includeMedia === 'true' ? { photo: true, signature: true } : {}),
           // Exclude large base64 strings (photo & signature exceed 85MB combined) from bulk roster
-          // to prevent Node.js Out-Of-Memory and 502 Bad Gateway crashes on server.
+          // to prevent Node.js Out-Of-Memory, timeouts, and 502 Bad Gateway crashes.
           // Single employee details/cards fetch on-demand via GET /employees/:id or /employees/me.
           joiningDate: true,
           salaryGross: true,
@@ -715,8 +847,8 @@ export const employeeController = {
             lastName: data.lastName,
             email: data.workEmail,
             personalEmail: (data.personalEmail && String(data.personalEmail).trim())
-              ? String(data.personalEmail).trim()
-              : employee.personalEmail,
+              ? String(data.personalEmail).trim().toLowerCase()
+              : (employee.personalEmail || null),
             phone: data.mobileNumber || null,
             dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
             gender: data.gender || null,
@@ -750,14 +882,14 @@ export const employeeController = {
         await tx.employeePayrollDetails.upsert({
           where: { employeeId: id },
           update: {
-            salaryStructure: data.salaryStructure || null,
-            basicSalary: parseFloat(data.basicSalary) || 0,
-            paymentType: data.paymentType || null,
-            bankName: data.bankName || null,
-            accountNumber: data.accountNumber || null,
-            ifscCode: data.ifscCode || null,
-            panNumber: data.panNumber || null,
-            uanNumber: data.uanNumber || null,
+            salaryStructure: data.salaryStructure !== undefined ? (data.salaryStructure || null) : undefined,
+            basicSalary: data.basicSalary !== undefined ? (parseFloat(data.basicSalary) || 0) : undefined,
+            paymentType: data.paymentType !== undefined ? (data.paymentType || null) : undefined,
+            bankName: data.bankName !== undefined ? (data.bankName ? String(data.bankName).trim() : null) : undefined,
+            accountNumber: data.accountNumber !== undefined ? (data.accountNumber ? String(data.accountNumber).trim() : null) : undefined,
+            ifscCode: data.ifscCode !== undefined ? (data.ifscCode ? String(data.ifscCode).trim() : null) : undefined,
+            panNumber: data.panNumber !== undefined ? (data.panNumber ? String(data.panNumber).trim() : null) : undefined,
+            uanNumber: data.uanNumber !== undefined ? (data.uanNumber ? String(data.uanNumber).trim() : null) : undefined,
             pfEnabled: data.pfEnabled === 'true',
             esiEnabled: data.esiEnabled === 'true',
           },
@@ -766,11 +898,11 @@ export const employeeController = {
             salaryStructure: data.salaryStructure || null,
             basicSalary: parseFloat(data.basicSalary) || 0,
             paymentType: data.paymentType || null,
-            bankName: data.bankName || null,
-            accountNumber: data.accountNumber || null,
-            ifscCode: data.ifscCode || null,
-            panNumber: data.panNumber || null,
-            uanNumber: data.uanNumber || null,
+            bankName: data.bankName ? String(data.bankName).trim() : null,
+            accountNumber: data.accountNumber ? String(data.accountNumber).trim() : null,
+            ifscCode: data.ifscCode ? String(data.ifscCode).trim() : null,
+            panNumber: data.panNumber ? String(data.panNumber).trim() : null,
+            uanNumber: data.uanNumber ? String(data.uanNumber).trim() : null,
             pfEnabled: data.pfEnabled === 'true',
             esiEnabled: data.esiEnabled === 'true',
           }

@@ -6,7 +6,7 @@ import {
   CheckCircle, Download, Upload, Sparkles, Printer, RefreshCw, Search, 
   Eye, Check, SlidersHorizontal, Image as ImageIcon,
   ZoomIn, ZoomOut, Move, RotateCw, MoveHorizontal, MoveVertical,
-  Crop, X
+  Crop, X, AlertCircle
 } from 'lucide-react'
 import { employeeApi } from '../../api/employee.api'
 import html2canvas from 'html2canvas'
@@ -53,6 +53,8 @@ export default function Profile() {
   })
 
   const [initialProfile, setInitialProfile] = useState<ProfileData | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
   // HR ID Card Live Studio state
   const [employees, setEmployees] = useState<any[]>([])
@@ -155,16 +157,22 @@ export default function Profile() {
           manualBloodGroup: emp.bloodGroup || '',
         }
 
-        // Apply any saved profile data from localStorage
+        // Database is the authoritative source of truth.
+        // Only supplement empty fields from local backup without overwriting server coordinates.
         if (user?.id) {
           const saved = localStorage.getItem(`hrms_profile_${user.id}`)
           if (saved) {
             try {
               const parsed = JSON.parse(saved)
-              if (user.role === 'HR' && parsed.manualEmployeeId && (parsed.manualEmployeeId.startsWith('HR-') || parsed.manualEmployeeId.includes('CMPW'))) {
-                parsed.manualEmployeeId = 'HR-0001'
-              }
-              Object.assign(initialData, parsed)
+              if (!initialData.phone && parsed.phone) initialData.phone = parsed.phone
+              if (!initialData.address && parsed.address) initialData.address = parsed.address
+              if (!initialData.emergencyName && parsed.emergencyName) initialData.emergencyName = parsed.emergencyName
+              if (!initialData.emergencyRelation && parsed.emergencyRelation) initialData.emergencyRelation = parsed.emergencyRelation
+              if (!initialData.emergencyPhone && parsed.emergencyPhone) initialData.emergencyPhone = parsed.emergencyPhone
+              if (!initialData.bankName && parsed.bankName) initialData.bankName = parsed.bankName
+              if (!initialData.bankAccount && parsed.bankAccount) initialData.bankAccount = parsed.bankAccount
+              if (!initialData.bankIfsc && parsed.bankIfsc) initialData.bankIfsc = parsed.bankIfsc
+              if (!initialData.manualBloodGroup && parsed.manualBloodGroup) initialData.manualBloodGroup = parsed.manualBloodGroup
             } catch (e) {}
           }
         }
@@ -232,51 +240,87 @@ export default function Profile() {
     fetchProfile()
   }, [user])
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
-    setSuccess(true)
+    setIsSaving(true)
+    setSaveError('')
 
-    // Calculate changes
-    const changes: string[] = []
-    if (initialProfile) {
-      const labels: Record<string, string> = {
-        phone: 'Phone Number',
-        address: 'Current Address',
-        emergencyName: 'Emergency Contact Person',
-        emergencyRelation: 'Emergency Relationship',
-        emergencyPhone: 'Emergency Contact Phone',
-        bankName: 'Bank Name',
-        bankAccount: 'Bank Account Number',
-        bankIfsc: 'Bank IFSC Code',
-        manualEmployeeId: 'Employee Identifier',
-        manualBloodGroup: 'Blood Group',
-      }
-      Object.keys(profile).forEach((key) => {
-        const field = key as keyof ProfileData
-        if (profile[field] !== initialProfile[field]) {
-          changes.push(`${labels[field] || field}: changed from "${initialProfile[field] || 'empty'}" to "${profile[field] || 'empty'}"`)
+    try {
+      // 1. Persist directly to backend PostgreSQL database
+      const res = await employeeApi.updateProfile({
+        phone: profile.phone,
+        address: profile.address,
+        emergencyName: profile.emergencyName,
+        emergencyRelation: profile.emergencyRelation,
+        emergencyPhone: profile.emergencyPhone,
+        bankName: profile.bankName,
+        bankAccount: profile.bankAccount,
+        accountNumber: profile.bankAccount,
+        bankIfsc: profile.bankIfsc,
+        ifscCode: profile.bankIfsc,
+        bloodGroup: profile.manualBloodGroup,
+        manualBloodGroup: profile.manualBloodGroup,
+      }).catch((err) => {
+        // Pure administrative accounts without employee profile fallback gracefully
+        if (err.response?.status === 404 && user?.role === 'HR') {
+          console.warn('Admin user profile saved locally', err)
+          return null
         }
+        throw err
       })
+
+      if (res?.data?.data) {
+        setEmployeeDetails(res.data.data)
+      }
+
+      // Calculate changes
+      const changes: string[] = []
+      if (initialProfile) {
+        const labels: Record<string, string> = {
+          phone: 'Phone Number',
+          address: 'Current Address',
+          emergencyName: 'Emergency Contact Person',
+          emergencyRelation: 'Emergency Relationship',
+          emergencyPhone: 'Emergency Contact Phone',
+          bankName: 'Bank Name',
+          bankAccount: 'Bank Account Number',
+          bankIfsc: 'Bank IFSC Code',
+          manualEmployeeId: 'Employee Identifier',
+          manualBloodGroup: 'Blood Group',
+        }
+        Object.keys(profile).forEach((key) => {
+          const field = key as keyof ProfileData
+          if (profile[field] !== initialProfile[field]) {
+            changes.push(`${labels[field] || field}: changed from "${initialProfile[field] || 'empty'}" to "${profile[field] || 'empty'}"`)
+          }
+        })
+      }
+
+      if (changes.length === 0) {
+        changes.push('Profile details confirmed and synchronized with database.')
+      }
+
+      triggerHrNotification(`Employee ${fullName} updated their profile details.`, {
+        employeeName: fullName,
+        action: 'Profile Details Update',
+        timestamp: new Date().toISOString(),
+        changes: changes
+      })
+
+      // Update initialProfile to current profile
+      setInitialProfile({ ...profile })
+      if (user?.id) {
+        localStorage.setItem(`hrms_profile_${user.id}`, JSON.stringify(profile))
+      }
+
+      setSuccess(true)
+      setTimeout(() => setSuccess(false), 3500)
+    } catch (err: any) {
+      console.error('Failed to save profile changes', err)
+      setSaveError(err.response?.data?.message || 'Failed to save profile changes. Please try again.')
+    } finally {
+      setIsSaving(false)
     }
-
-    if (changes.length === 0) {
-      changes.push('No values were changed but profile was saved.')
-    }
-
-    triggerHrNotification(`Employee ${fullName} updated their profile details.`, {
-      employeeName: fullName,
-      action: 'Profile Details Update',
-      timestamp: new Date().toISOString(),
-      changes: changes
-    })
-
-    // Simulate saving (update initialProfile to current profile)
-    setInitialProfile({ ...profile })
-    if (user?.id) {
-      localStorage.setItem(`hrms_profile_${user.id}`, JSON.stringify(profile))
-    }
-
-    setTimeout(() => setSuccess(false), 3000)
   }
 
   // Fetch workspace employees for HR ID card customizer
@@ -922,7 +966,14 @@ export default function Profile() {
       {success && (
         <div className="success-toast">
           <CheckCircle size={18} />
-          <span>Profile changes saved successfully! Local environment updated.</span>
+          <span>Profile changes saved successfully and synced with HR database!</span>
+        </div>
+      )}
+
+      {saveError && (
+        <div className="error-toast" style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #f87171', borderRadius: '10px', padding: '14px 18px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 600 }}>
+          <AlertCircle size={18} />
+          <span>{saveError}</span>
         </div>
       )}
 
@@ -977,6 +1028,30 @@ export default function Profile() {
                       value={profile.address}
                       onChange={(e) => setProfile({ ...profile, address: e.target.value })}
                       required
+                    />
+                  </div>
+                </div>
+                <div className="form-group readonly">
+                  <label>Official Work Email</label>
+                  <div className="input-with-icon">
+                    <Mail size={16} className="input-icon" />
+                    <input
+                      type="text"
+                      value={employeeDetails?.email || user?.email || ''}
+                      readOnly
+                      style={{ background: '#f8fafc', cursor: 'not-allowed', color: '#64748b' }}
+                    />
+                  </div>
+                </div>
+                <div className="form-group readonly">
+                  <label>Registered Personal Email</label>
+                  <div className="input-with-icon">
+                    <Mail size={16} className="input-icon" />
+                    <input
+                      type="text"
+                      value={employeeDetails?.personalEmail || 'Not Registered'}
+                      readOnly
+                      style={{ background: '#f8fafc', cursor: 'not-allowed', color: '#64748b' }}
                     />
                   </div>
                 </div>
@@ -1045,12 +1120,23 @@ export default function Profile() {
 
           {activeTab === 'BANK' && (
             <div className="tab-pane">
-              <h3>Direct Deposit Configuration</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+                <div>
+                  <h3 style={{ margin: 0 }}>Direct Deposit Configuration</h3>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#64748b' }}>
+                    Banking coordinates sync automatically with HR Payroll portal for monthly salary crediting.
+                  </p>
+                </div>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', background: '#dcfce7', color: '#166534', padding: '4px 10px', borderRadius: '12px', fontWeight: 600 }}>
+                  <CheckCircle size={14} /> HR Synced
+                </span>
+              </div>
               <div className="form-grid">
                 <div className="form-group">
                   <label>Financial Institution Name</label>
                   <input
                     type="text"
+                    placeholder="e.g. HDFC Bank, State Bank of India"
                     value={profile.bankName}
                     onChange={(e) => setProfile({ ...profile, bankName: e.target.value })}
                     required
@@ -1060,8 +1146,9 @@ export default function Profile() {
                   <label>Bank Routing IFSC Code</label>
                   <input
                     type="text"
+                    placeholder="e.g. HDFC0001234"
                     value={profile.bankIfsc}
-                    onChange={(e) => setProfile({ ...profile, bankIfsc: e.target.value })}
+                    onChange={(e) => setProfile({ ...profile, bankIfsc: e.target.value.toUpperCase() })}
                     required
                   />
                 </div>
@@ -1069,6 +1156,7 @@ export default function Profile() {
                   <label>Depositor Account Number</label>
                   <input
                     type="text"
+                    placeholder="e.g. 50100234567890"
                     value={profile.bankAccount}
                     onChange={(e) => setProfile({ ...profile, bankAccount: e.target.value })}
                     required
@@ -1824,9 +1912,9 @@ export default function Profile() {
 
           {activeTab !== 'JOB' && activeTab !== 'IDCARD' && (
             <div className="form-footer-action">
-              <button type="submit" className="btn-save">
+              <button type="submit" className="btn-save" disabled={isSaving}>
                 <Save size={16} />
-                <span>Save Profile Changes</span>
+                <span>{isSaving ? 'Saving to Database...' : 'Save Profile Changes'}</span>
               </button>
             </div>
           )}

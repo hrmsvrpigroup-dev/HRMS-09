@@ -47,6 +47,7 @@ export const employeeApi = {
   }) => api.post<{ success: boolean; data: Employee }>('/employees', data),
   delete: (id: string) => api.delete<{ success: boolean; data: any }>(`/employees/${id}`),
   getProfile: () => api.get<{ success: boolean; data: any }>('/employees/me'),
+  updateProfile: (data: any) => api.put<{ success: boolean; data: any; message: string }>('/employees/me/profile', data),
   updateSignature: (signature: string) => api.put<{ success: boolean; data: { signature: string; signatureUploadCount?: number } }>('/employees/me/signature', { signature }),
   updatePhoto: (photo: string) => api.put<{ success: boolean; data: { photo: string; photoUploadCount?: number } }>('/employees/me/photo', { photo }),
   getById: (id: string) => api.get<{ success: boolean; data: any }>(`/employees/${id}`),

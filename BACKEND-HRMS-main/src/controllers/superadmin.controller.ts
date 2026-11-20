@@ -1810,9 +1810,26 @@ export const superAdminController = {
       `
 
       const subject = `Resend Credentials – ${companyName} Account Ready`
-      await notificationService.sendEmail(adminUser.email, subject, htmlBody)
+      let emailSuccess = false
+      let emailWarningMsg = ''
+      try {
+        await notificationService.sendEmail(adminUser.email, subject, htmlBody)
+        emailSuccess = true
+      } catch (err: any) {
+        emailWarningMsg = err.message || 'Email delivery failed'
+        console.error('[RESEND CREDENTIALS EMAIL WARNING]', err)
+      }
 
-      return sendSuccess(res, null, 'Credentials have been regenerated and resent successfully')
+      const msg = emailSuccess
+        ? 'Credentials have been regenerated and resent successfully.'
+        : `Credentials regenerated! (Email dispatch notice: ${emailWarningMsg}. Temporary Password: ${newPassword})`
+
+      return sendSuccess(res, {
+        emailSent: emailSuccess,
+        adminEmail: adminUser.email,
+        temporaryPassword: newPassword,
+        loginUrl
+      }, msg)
     } catch (error: any) {
       console.error('[RESEND CREDENTIALS ERROR]', error)
       return sendError(res, error.message || 'Failed to resend credentials', 500)

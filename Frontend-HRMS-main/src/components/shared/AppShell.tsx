@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { History, Bell, Mail } from 'lucide-react'
+import { History, Bell, Mail, PanelLeftClose, PanelLeftOpen, Menu } from 'lucide-react'
 
 import { useAuthStore } from '../../store/auth.store'
 
@@ -22,6 +22,24 @@ export default function AppShell({ title, navItems }: Props) {
   const initials = user ? `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}`.toUpperCase() : 'U'
   
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    try {
+      const saved = localStorage.getItem('hrms_sidebar_open')
+      return saved !== null ? saved === 'true' : true
+    } catch {
+      return true
+    }
+  })
+
+  const toggleSidebar = () => {
+    setIsSidebarOpen((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem('hrms_sidebar_open', String(next))
+      } catch {}
+      return next
+    })
+  }
   const [showNotifications, setShowNotifications] = useState(false)
   const [showMessages, setShowMessages] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
@@ -143,7 +161,7 @@ export default function AppShell({ title, navItems }: Props) {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${!isSidebarOpen ? 'sidebar-collapsed' : ''}`}>
       {/* Mobile Header */}
       <div className="mobile-header">
         <button 
@@ -169,6 +187,15 @@ export default function AppShell({ title, navItems }: Props) {
       <aside className={`sidebar ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
         <div className="sidebar-logo">
           <span>{title}</span>
+          <button
+            type="button"
+            className="sidebar-close-btn"
+            onClick={toggleSidebar}
+            title="Close Nav Bar"
+            aria-label="Close Nav Bar"
+          >
+            <PanelLeftClose size={18} />
+          </button>
         </div>
         <nav>
           {navItems.map((item) => (
@@ -209,8 +236,34 @@ export default function AppShell({ title, navItems }: Props) {
         </div>
       </aside>
       <main className="content" style={{ position: 'relative' }}>
+        {/* Floating Quick Open Button when sidebar is collapsed */}
+        {!isSidebarOpen && (
+          <button
+            type="button"
+            className="floating-nav-open-btn"
+            onClick={toggleSidebar}
+            title="Open Navigation Bar"
+            aria-label="Open Navigation Bar"
+          >
+            <PanelLeftOpen size={18} />
+            <span>Open Nav</span>
+          </button>
+        )}
+
         {/* Desktop Topbar */}
         <div className="shell-topbar">
+          <div className="topbar-left">
+            <button
+              type="button"
+              className={`nav-toggle-btn ${!isSidebarOpen ? 'nav-collapsed-btn' : ''}`}
+              onClick={toggleSidebar}
+              title={isSidebarOpen ? "Close Nav Bar" : "Open Nav Bar"}
+              aria-label={isSidebarOpen ? "Close Nav Bar" : "Open Nav Bar"}
+            >
+              {isSidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+              <span>{isSidebarOpen ? "Close Nav" : "Open Nav Bar"}</span>
+            </button>
+          </div>
           <div className="topbar-right">
             {/* History Shortcut */}
             <button className="icon-btn" onClick={() => navigate(title === 'HR' ? '/hr/attendance' : title === 'Admin' ? '/admin/employees' : '/superadmin')} title="History / Logs">
@@ -405,10 +458,103 @@ export default function AppShell({ title, navItems }: Props) {
           .shell-topbar {
             display: flex;
             align-items: center;
-            justify-content: flex-end;
+            justify-content: space-between;
             margin-bottom: 1.5rem;
             position: relative;
             z-index: 100;
+          }
+
+          .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+          }
+
+          .nav-toggle-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 100px;
+            border: 1px solid rgba(226, 232, 240, 0.9);
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(8px);
+            color: #475569;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          }
+
+          .nav-toggle-btn:hover {
+            color: #2563eb;
+            background: #ffffff;
+            border-color: #93c5fd;
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
+            transform: translateY(-1px);
+          }
+
+          .nav-toggle-btn.nav-collapsed-btn {
+            background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+            color: #ffffff;
+            border-color: transparent;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.25);
+          }
+
+          .nav-toggle-btn.nav-collapsed-btn:hover {
+            background: linear-gradient(135deg, #1d4ed8 0%, #4338ca 100%);
+            box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35);
+          }
+
+          .sidebar-close-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            border: 1px solid rgba(226, 232, 240, 0.9);
+            background: rgba(255, 255, 255, 0.8);
+            color: #64748b;
+            -webkit-text-fill-color: initial !important;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          }
+
+          .sidebar-close-btn:hover {
+            background: #ffffff;
+            color: #2563eb;
+            border-color: #cbd5e1;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+            transform: scale(1.06);
+          }
+
+          .floating-nav-open-btn {
+            position: fixed;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 990;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 14px 10px 10px;
+            background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+            color: #ffffff;
+            border: none;
+            border-radius: 0 12px 12px 0;
+            box-shadow: 0 4px 20px rgba(37, 99, 235, 0.35);
+            font-size: 0.82rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          }
+
+          .floating-nav-open-btn:hover {
+            padding-left: 14px;
+            background: linear-gradient(135deg, #1d4ed8 0%, #4338ca 100%);
+            box-shadow: 0 6px 24px rgba(37, 99, 235, 0.5);
           }
 
           .topbar-right {
@@ -648,6 +794,12 @@ export default function AppShell({ title, navItems }: Props) {
           @media (max-width: 900px) {
             .shell-topbar {
               display: none;
+            }
+            .sidebar-close-btn {
+              display: none;
+            }
+            .floating-nav-open-btn {
+              display: none !important;
             }
           }
         `}</style>

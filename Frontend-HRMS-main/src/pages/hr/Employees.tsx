@@ -46,6 +46,7 @@ export default function Employees() {
       if (!silent) setLoading(true)
       const res = await employeeApi.list()
       const data = res.data.data || []
+      setError('')
       setEmployees(data)
       setFilteredEmployees(data)
       try {
@@ -92,6 +93,7 @@ export default function Employees() {
           emp.firstName?.toLowerCase().includes(term) ||
           emp.lastName?.toLowerCase().includes(term) ||
           emp.email?.toLowerCase().includes(term) ||
+          (emp.personalEmail && emp.personalEmail.toLowerCase().includes(term)) ||
           emp.employeeCode?.toLowerCase().includes(term)
       )
     }
@@ -308,8 +310,18 @@ export default function Employees() {
       </div>
 
       {error ? (
-        <div className="card" style={{ textAlign: 'center', padding: '2rem', color: 'var(--error)' }}>
-          {error}
+        <div className="card" style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--error)' }}>
+          <p style={{ marginBottom: '1rem', fontWeight: 500 }}>{error}</p>
+          <button
+            className="btn-primary"
+            style={{ padding: '0.5rem 1.25rem', fontSize: '0.875rem' }}
+            onClick={() => {
+              setError('')
+              fetchEmployees(false)
+            }}
+          >
+            Retry Loading
+          </button>
         </div>
       ) : (
         <div className="card table-container" style={{ marginTop: 0 }}>
@@ -366,7 +378,13 @@ export default function Employees() {
                     {emp.firstName} {emp.lastName}
                   </td>
                   <td>{emp.email}</td>
-                  <td>{emp.personalEmail || '-'}</td>
+                  <td>
+                    {emp.personalEmail ? (
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{emp.personalEmail}</span>
+                    ) : (
+                      <span style={{ color: '#94a3b8' }}>-</span>
+                    )}
+                  </td>
                   <td>
                     <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
                       {emp.designation?.title || 'Team Member'}

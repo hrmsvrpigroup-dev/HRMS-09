@@ -3,32 +3,54 @@ import nodemailer from 'nodemailer'
 
 // Lazy Resend client — instantiated only when an email is actually sent
 let _resend: Resend | null = null
+let _lastResendKey: string | undefined = undefined
 function getResendClient(): Resend {
-  if (!_resend) {
-    if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY.startsWith('re_placeholder')) {
-      throw new Error('RESEND_API_KEY is missing or not configured in environment variables.')
-    }
-    _resend = new Resend(process.env.RESEND_API_KEY)
+  const currentKey = process.env.RESEND_API_KEY
+  if (!currentKey || currentKey.startsWith('re_placeholder')) {
+    throw new Error('RESEND_API_KEY is missing or not configured in environment variables.')
+  }
+  if (!_resend || _lastResendKey !== currentKey) {
+    _resend = new Resend(currentKey)
+    _lastResendKey = currentKey
   }
   return _resend
 }
 
 // Lazy Nodemailer transporter
 let _transporter: nodemailer.Transporter | null = null
+let _lastSmtpPass: string | undefined = undefined
 function getNodemailerTransporter() {
-  if (!_transporter) {
-    if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
-      throw new Error('SMTP credentials are not configured in environment variables.')
-    }
-    _transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 465,
-      secure: Number(process.env.SMTP_PORT) === 465, // true for 465, false for other ports
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    })
+  const host = process.env.SMTP_HOST
+  const user = process.env.SMTP_USER
+  const pass = process.env.SMTP_PASS
+  if (!host || !user || !pass) {
+    throw new Error('SMTP credentials are not configured in environment variables.')
+  }
+  if (!_transporter || _lastSmtpPass !== pass) {
+    const port = Number(process.env.SMTP_PORT) || 465
+    const isGmail = host.includes('gmail.com')
+    _transporter = nodemailer.createTransport(
+      isGmail
+        ? {
+            service: 'gmail',
+            auth: {
+              user,
+              pass: pass.replace(/\s+/g, ''),
+            },
+            tls: { rejectUnauthorized: false },
+          }
+        : {
+            host,
+            port,
+            secure: port === 465,
+            auth: {
+              user,
+              pass,
+            },
+            tls: { rejectUnauthorized: false },
+          }
+    )
+    _lastSmtpPass = pass
   }
   return _transporter
 }
@@ -202,6 +224,20 @@ export const notificationService = {
       } catch (smtpError: any) {
         console.error(`[Nodemailer ERROR] Failed to send email to ${to}:`, smtpError.message)
         const resendMsg = resendErrorDetail ? `Resend failed: ${resendErrorDetail}. ` : ''
+        
+        // In local development, if external SMTP/Resend credentials fail, log the email body
+        // and allow the workflow to succeed with a warning so local features do not crash with 500 errors.
+        if (process.env.NODE_ENV === 'development') {
+          console.warn(`[DEVELOPMENT EMAIL NOTICE] Email to ${to} could not be dispatched remotely (${resendMsg}SMTP: ${smtpError.message}).`)
+          console.log(`[DEVELOPMENT EMAIL LOG] To: ${to} | Subject: "${subject}"`)
+          return {
+            success: true,
+            simulated: true,
+            warning: 'Email logged locally in development mode.',
+            details: `${resendMsg}SMTP: ${smtpError.message}`
+          }
+        }
+
         throw new Error(`Email sending failed (${resendMsg}SMTP failed: ${smtpError.message})`)
       }
     }
