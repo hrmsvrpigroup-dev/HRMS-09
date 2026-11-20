@@ -147,6 +147,7 @@ model Employee {
   photoUploadCount Int             @default(0)
   signature      String?         @db.Text
   signatureUploadCount Int         @default(0)
+  bankEditCount  Int             @default(0)
   departmentId   String?
   designationId  String?
   managerId      String?

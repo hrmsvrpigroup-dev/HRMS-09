@@ -76,13 +76,40 @@ export const employeeController = {
       const resolvedBankName = bankName
       const resolvedBloodGroup = bloodGroup || manualBloodGroup
 
+      const role = req.user?.role
+      const isEmployeeRole = role !== 'HR' && role !== 'ADMIN' && role !== 'SUPERADMIN'
+
+      // Check if banking coordinates are being modified (Employees edit only two: account number & IFSC)
+      const curBankName = employee.payrollDetails?.bankName || null
+      const curAccountNo = employee.payrollDetails?.accountNumber || null
+      const curIfsc = employee.payrollDetails?.ifscCode || null
+
+      const nextBankName = !isEmployeeRole && resolvedBankName !== undefined ? (resolvedBankName ? String(resolvedBankName).trim() : null) : curBankName
+      const nextAccountNo = resolvedBankAccount !== undefined ? (resolvedBankAccount ? String(resolvedBankAccount).trim() : null) : curAccountNo
+      const nextIfsc = resolvedIfsc !== undefined ? (resolvedIfsc ? String(resolvedIfsc).trim().toUpperCase() : null) : curIfsc
+
+      const isBankChanging = (
+        (!isEmployeeRole && resolvedBankName !== undefined && nextBankName !== curBankName) ||
+        (resolvedBankAccount !== undefined && nextAccountNo !== curAccountNo) ||
+        (resolvedIfsc !== undefined && nextIfsc !== curIfsc)
+      )
+
+      const bankEditCount = (employee as any).bankEditCount ?? 0
+
+      if (isEmployeeRole && isBankChanging && bankEditCount >= 2) {
+        return sendError(res, 'Bank details edit limit reached. You can only edit your banking coordinates up to 2 times from the employee portal.', 400)
+      }
+
       const updated = await prisma.$transaction(async (tx) => {
-        // 1. Update Employee details (phone, bloodGroup)
+        const newBankEditCount = (isEmployeeRole && isBankChanging) ? bankEditCount + 1 : bankEditCount
+
+        // 1. Update Employee details (phone, bloodGroup, bankEditCount)
         await tx.employee.update({
           where: { id: employee.id },
           data: {
             phone: phone !== undefined ? (phone ? String(phone).trim() : null) : employee.phone,
             bloodGroup: resolvedBloodGroup !== undefined ? (resolvedBloodGroup ? String(resolvedBloodGroup).trim() : null) : employee.bloodGroup,
+            bankEditCount: newBankEditCount,
           }
         })
 
@@ -93,10 +120,12 @@ export const employeeController = {
           }).catch(() => {})
         }
 
-        // 2. Upsert Payroll Details (bankName, accountNumber, ifscCode)
-        const updatedBankName = resolvedBankName !== undefined ? (resolvedBankName ? String(resolvedBankName).trim() : null) : employee.payrollDetails?.bankName
+        // 2. Upsert Payroll Details (bankName is HR-managed for employees; accountNumber & ifscCode are editable; uanNumber is strictly HR-only)
+        const updatedBankName = !isEmployeeRole && resolvedBankName !== undefined
+          ? (resolvedBankName ? String(resolvedBankName).trim() : null)
+          : (employee.payrollDetails?.bankName || (resolvedBankName ? String(resolvedBankName).trim() : null))
         const updatedAccountNo = resolvedBankAccount !== undefined ? (resolvedBankAccount ? String(resolvedBankAccount).trim() : null) : employee.payrollDetails?.accountNumber
-        const updatedIfsc = resolvedIfsc !== undefined ? (resolvedIfsc ? String(resolvedIfsc).trim() : null) : employee.payrollDetails?.ifscCode
+        const updatedIfsc = resolvedIfsc !== undefined ? (resolvedIfsc ? String(resolvedIfsc).trim().toUpperCase() : null) : employee.payrollDetails?.ifscCode
 
         await tx.employeePayrollDetails.upsert({
           where: { employeeId: employee.id },
@@ -884,11 +913,13 @@ export const employeeController = {
           update: {
             salaryStructure: data.salaryStructure !== undefined ? (data.salaryStructure || null) : undefined,
             basicSalary: data.basicSalary !== undefined ? (parseFloat(data.basicSalary) || 0) : undefined,
+            monthlySalary: data.monthlySalary !== undefined ? (parseFloat(data.monthlySalary) || null) : undefined,
+            pfAmount: data.pfAmount !== undefined ? (parseFloat(data.pfAmount) || null) : undefined,
             paymentType: data.paymentType !== undefined ? (data.paymentType || null) : undefined,
             bankName: data.bankName !== undefined ? (data.bankName ? String(data.bankName).trim() : null) : undefined,
             accountNumber: data.accountNumber !== undefined ? (data.accountNumber ? String(data.accountNumber).trim() : null) : undefined,
-            ifscCode: data.ifscCode !== undefined ? (data.ifscCode ? String(data.ifscCode).trim() : null) : undefined,
-            panNumber: data.panNumber !== undefined ? (data.panNumber ? String(data.panNumber).trim() : null) : undefined,
+            ifscCode: data.ifscCode !== undefined ? (data.ifscCode ? String(data.ifscCode).trim().toUpperCase() : null) : undefined,
+            panNumber: data.panNumber !== undefined ? (data.panNumber ? String(data.panNumber).trim().toUpperCase() : null) : undefined,
             uanNumber: data.uanNumber !== undefined ? (data.uanNumber ? String(data.uanNumber).trim() : null) : undefined,
             pfEnabled: data.pfEnabled === 'true',
             esiEnabled: data.esiEnabled === 'true',
@@ -897,11 +928,13 @@ export const employeeController = {
             employeeId: id,
             salaryStructure: data.salaryStructure || null,
             basicSalary: parseFloat(data.basicSalary) || 0,
+            monthlySalary: parseFloat(data.monthlySalary) || null,
+            pfAmount: parseFloat(data.pfAmount) || null,
             paymentType: data.paymentType || null,
             bankName: data.bankName ? String(data.bankName).trim() : null,
             accountNumber: data.accountNumber ? String(data.accountNumber).trim() : null,
-            ifscCode: data.ifscCode ? String(data.ifscCode).trim() : null,
-            panNumber: data.panNumber ? String(data.panNumber).trim() : null,
+            ifscCode: data.ifscCode ? String(data.ifscCode).trim().toUpperCase() : null,
+            panNumber: data.panNumber ? String(data.panNumber).trim().toUpperCase() : null,
             uanNumber: data.uanNumber ? String(data.uanNumber).trim() : null,
             pfEnabled: data.pfEnabled === 'true',
             esiEnabled: data.esiEnabled === 'true',

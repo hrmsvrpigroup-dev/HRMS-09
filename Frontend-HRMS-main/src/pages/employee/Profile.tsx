@@ -6,7 +6,7 @@ import {
   CheckCircle, Download, Upload, Sparkles, Printer, RefreshCw, Search, 
   Eye, Check, SlidersHorizontal, Image as ImageIcon,
   ZoomIn, ZoomOut, Move, RotateCw, MoveHorizontal, MoveVertical,
-  Crop, X, AlertCircle
+  Crop, X, AlertCircle, Lock
 } from 'lucide-react'
 import { employeeApi } from '../../api/employee.api'
 import html2canvas from 'html2canvas'
@@ -238,7 +238,7 @@ export default function Profile() {
       }
     }
     fetchProfile()
-  }, [user])
+  }, [user, activeTab])
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -247,20 +247,25 @@ export default function Profile() {
 
     try {
       // 1. Persist directly to backend PostgreSQL database
-      const res = await employeeApi.updateProfile({
+      const payload: any = {
         phone: profile.phone,
         address: profile.address,
         emergencyName: profile.emergencyName,
         emergencyRelation: profile.emergencyRelation,
         emergencyPhone: profile.emergencyPhone,
-        bankName: profile.bankName,
         bankAccount: profile.bankAccount,
         accountNumber: profile.bankAccount,
         bankIfsc: profile.bankIfsc,
         ifscCode: profile.bankIfsc,
         bloodGroup: profile.manualBloodGroup,
         manualBloodGroup: profile.manualBloodGroup,
-      }).catch((err) => {
+      }
+
+      if (isHRUser && profile.bankName) {
+        payload.bankName = profile.bankName
+      }
+
+      const res = await employeeApi.updateProfile(payload).catch((err) => {
         // Pure administrative accounts without employee profile fallback gracefully
         if (err.response?.status === 404 && user?.role === 'HR') {
           console.warn('Admin user profile saved locally', err)
@@ -803,6 +808,10 @@ export default function Profile() {
   const signatureUploadsUsed = employeeDetails?.signatureUploadCount ?? (employeeDetails?.signature ? 1 : 0)
   const canUploadSignature = signatureUploadsUsed < 2
 
+  const isHRUser = user?.role === 'HR' || (user?.role as string) === 'ADMIN' || (user?.role as string) === 'SUPER_ADMIN'
+  const bankEditsUsed = (employeeDetails as any)?.bankEditCount ?? 0
+  const canEditBank = isHRUser || bankEditsUsed < 2
+
   const handleSignatureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -1127,53 +1136,123 @@ export default function Profile() {
                     Banking coordinates sync automatically with HR Payroll portal for monthly salary crediting.
                   </p>
                 </div>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', background: '#dcfce7', color: '#166534', padding: '4px 10px', borderRadius: '12px', fontWeight: 600 }}>
-                  <CheckCircle size={14} /> HR Synced
-                </span>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', background: '#dcfce7', color: '#166534', padding: '4px 10px', borderRadius: '12px', fontWeight: 600 }}>
+                    <CheckCircle size={14} /> HR Synced
+                  </span>
+                  {!isHRUser && (
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      fontSize: '0.8rem',
+                      background: bankEditsUsed >= 2 ? '#fee2e2' : '#e0f2fe',
+                      color: bankEditsUsed >= 2 ? '#991b1b' : '#0369a1',
+                      padding: '4px 10px',
+                      borderRadius: '12px',
+                      fontWeight: 600
+                    }}>
+                      <Shield size={14} />
+                      {bankEditsUsed >= 2 ? '2/2 locked' : `${bankEditsUsed}/2 edits used`}
+                    </span>
+                  )}
+                </div>
               </div>
+
+              {!isHRUser && bankEditsUsed >= 2 && (
+                <div className="readonly-alert" style={{ marginBottom: '16px', background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', borderRadius: '8px' }}>
+                  <Shield size={18} color="#dc2626" style={{ flexShrink: 0 }} />
+                  <span>Bank details edit limit reached (2/2). Banking coordinates are now locked. If you require further updates, please contact HR.</span>
+                </div>
+              )}
+
               <div className="form-grid">
-                <div className="form-group">
-                  <label>Financial Institution Name</label>
+                {/* Field 1: Financial Institution Name - Managed by HR */}
+                <div className={`form-group ${!isHRUser ? 'readonly' : ''}`}>
+                  <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Financial Institution Name</span>
+                    {!isHRUser && (
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <Lock size={12} /> Managed by HR
+                      </span>
+                    )}
+                  </label>
                   <input
                     type="text"
                     placeholder="e.g. HDFC Bank, State Bank of India"
-                    value={profile.bankName}
-                    onChange={(e) => setProfile({ ...profile, bankName: e.target.value })}
+                    value={employeeDetails?.payrollDetails?.bankName || profile.bankName || ''}
+                    onChange={(e) => isHRUser && setProfile({ ...profile, bankName: e.target.value })}
+                    readOnly={!isHRUser}
+                    disabled={!isHRUser}
+                    style={!isHRUser ? { background: '#f8fafc', cursor: 'not-allowed', color: '#334155', border: '1px solid #cbd5e1' } : {}}
                     required
                   />
                 </div>
-                <div className="form-group">
-                  <label>Bank Routing IFSC Code</label>
+
+                {/* Field 2: Bank Routing IFSC Code - Editable by Employee (1 of 2) */}
+                <div className={`form-group ${!canEditBank ? 'readonly' : ''}`}>
+                  <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Bank Routing IFSC Code</span>
+                    {!isHRUser && (
+                      <span style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: 600 }}>
+                        Editable (1/2)
+                      </span>
+                    )}
+                  </label>
                   <input
                     type="text"
                     placeholder="e.g. HDFC0001234"
                     value={profile.bankIfsc}
                     onChange={(e) => setProfile({ ...profile, bankIfsc: e.target.value.toUpperCase() })}
+                    disabled={!canEditBank}
+                    style={!canEditBank ? { background: '#f8fafc', cursor: 'not-allowed', color: '#64748b' } : {}}
                     required
                   />
                 </div>
-                <div className="form-group">
-                  <label>Depositor Account Number</label>
+
+                {/* Field 3: Depositor Account Number - Editable by Employee (2 of 2) */}
+                <div className={`form-group ${!canEditBank ? 'readonly' : ''}`}>
+                  <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Depositor Account Number</span>
+                    {!isHRUser && (
+                      <span style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: 600 }}>
+                        Editable (2/2)
+                      </span>
+                    )}
+                  </label>
                   <input
                     type="text"
                     placeholder="e.g. 50100234567890"
                     value={profile.bankAccount}
                     onChange={(e) => setProfile({ ...profile, bankAccount: e.target.value })}
+                    disabled={!canEditBank}
+                    style={!canEditBank ? { background: '#f8fafc', cursor: 'not-allowed', color: '#64748b' } : {}}
                     required
                   />
                 </div>
+
+                {/* Field 4: UAN Number - Strictly Managed by HR Only */}
                 <div className="form-group readonly">
-                  <label>UAN Number</label>
+                  <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>UAN Number</span>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <Lock size={12} /> Managed by HR Only
+                    </span>
+                  </label>
                   <input
                     type="text"
-                    value={employeeDetails?.payrollDetails?.uanNumber || 'N/A'}
+                    value={employeeDetails?.payrollDetails?.uanNumber || ''}
+                    placeholder="Not Set (Managed by HR)"
                     readOnly
+                    disabled
+                    style={{ background: '#f8fafc', cursor: 'not-allowed', color: '#0f172a', fontWeight: 600, border: '1px solid #cbd5e1' }}
                   />
                 </div>
               </div>
-              <div className="readonly-alert" style={{ marginTop: '20px' }}>
-                <Shield size={16} />
-                <span>UAN Number is managed by HR. If you require changes, please contact HR.</span>
+
+              <div className="readonly-alert" style={{ marginTop: '20px', background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', borderRadius: '8px' }}>
+                <Shield size={18} color="#16a34a" style={{ flexShrink: 0 }} />
+                <span><strong>UAN Number:</strong> Managed exclusively by HR. Employees do not have permission to edit this field. When updated by HR in the management portal, the verified UAN number reflects here automatically.</span>
               </div>
             </div>
           )}
@@ -1912,9 +1991,18 @@ export default function Profile() {
 
           {activeTab !== 'JOB' && activeTab !== 'IDCARD' && (
             <div className="form-footer-action">
-              <button type="submit" className="btn-save" disabled={isSaving}>
+              <button 
+                type="submit" 
+                className="btn-save" 
+                disabled={isSaving || (activeTab === 'BANK' && !canEditBank)}
+                style={activeTab === 'BANK' && !canEditBank ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
+              >
                 <Save size={16} />
-                <span>{isSaving ? 'Saving to Database...' : 'Save Profile Changes'}</span>
+                <span>
+                  {isSaving 
+                    ? 'Saving to Database...' 
+                    : (activeTab === 'BANK' && !canEditBank ? 'Banking Coordinates Locked (2/2)' : 'Save Profile Changes')}
+                </span>
               </button>
             </div>
           )}

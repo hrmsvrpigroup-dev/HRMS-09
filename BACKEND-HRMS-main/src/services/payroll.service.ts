@@ -241,11 +241,11 @@ export const payrollService = {
     salaryStructure?: string
     basicSalary?: number
     paymentType?: string
-    bankName?: string
-    accountNumber?: string
-    ifscCode?: string
-    panNumber?: string
-    uanNumber?: string
+    bankName?: string | null
+    accountNumber?: string | null
+    ifscCode?: string | null
+    panNumber?: string | null
+    uanNumber?: string | null
     pfEnabled?: boolean
     esiEnabled?: boolean
   }) {
@@ -265,6 +265,18 @@ export const payrollService = {
 
     // Upsert payroll details
     const { salaryGross, ...payrollDetailsData } = data
+    if (payrollDetailsData.uanNumber !== undefined) {
+      payrollDetailsData.uanNumber = payrollDetailsData.uanNumber ? String(payrollDetailsData.uanNumber).trim() : null
+    }
+    if (payrollDetailsData.bankName !== undefined && payrollDetailsData.bankName) {
+      payrollDetailsData.bankName = String(payrollDetailsData.bankName).trim()
+    }
+    if (payrollDetailsData.accountNumber !== undefined && payrollDetailsData.accountNumber) {
+      payrollDetailsData.accountNumber = String(payrollDetailsData.accountNumber).trim()
+    }
+    if (payrollDetailsData.ifscCode !== undefined && payrollDetailsData.ifscCode) {
+      payrollDetailsData.ifscCode = String(payrollDetailsData.ifscCode).trim().toUpperCase()
+    }
     return prisma.employeePayrollDetails.upsert({
       where: { employeeId },
       update: payrollDetailsData,
