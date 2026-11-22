@@ -45,6 +45,7 @@ export const employeeApi = {
     salaryGross?: number
     hrUserId?: string
   }) => api.post<{ success: boolean; data: Employee }>('/employees', data),
+  getNextCode: () => api.get<{ success: boolean; data: { nextCode: string; currentMax: number } }>('/employees/next-code'),
   delete: (id: string) => api.delete<{ success: boolean; data: any }>(`/employees/${id}`),
   getProfile: () => api.get<{ success: boolean; data: any }>('/employees/me'),
   updateProfile: (data: any) => api.put<{ success: boolean; data: any; message: string }>('/employees/me/profile', data),

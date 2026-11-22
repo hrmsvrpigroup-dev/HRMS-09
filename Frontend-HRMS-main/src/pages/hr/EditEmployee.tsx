@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { employeeApi } from '../../api/employee.api'
-import { CheckCircle, ChevronRight, UploadCloud, Shield, User, MapPin, Building, CreditCard, Activity, ArrowLeft, ChevronDown, Check } from 'lucide-react'
+import { CheckCircle, ChevronRight, UploadCloud, Shield, User, MapPin, Building, CreditCard, Activity, ArrowLeft, ChevronDown, Check, Save } from 'lucide-react'
 import { LoadingSpinner } from '../../components/shared/LoadingSpinner'
+import SalaryBreakdown from '../../components/payroll/SalaryBreakdown'
 
 export default function EditEmployee() {
   const navigate = useNavigate()
@@ -13,7 +14,9 @@ export default function EditEmployee() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [updatedSuccessfully, setUpdatedSuccessfully] = useState(false)
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState('')
   const [employeeList, setEmployeeList] = useState<any[]>([])
+  const [initialFormData, setInitialFormData] = useState<any>(null)
 
   // Portal Active / Inactive state
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
@@ -49,6 +52,13 @@ export default function EditEmployee() {
 
   const [existingDocs, setExistingDocs] = useState<{ [key: string]: { name: string; url: string } }>({})
 
+  const isModified = initialFormData !== null && (
+    (Object.keys(formData) as (keyof typeof formData)[]).some(
+      k => String(formData[k] ?? '') !== String(initialFormData[k] ?? '')
+    ) ||
+    Object.values(files).some(f => f !== null)
+  )
+
   const steps = [
     { id: 1, name: 'Basic Details', icon: User, desc: 'Personal info' },
     { id: 2, name: 'Employment', icon: Building, desc: 'Role details' },
@@ -77,7 +87,7 @@ export default function EditEmployee() {
           console.error('Failed to load employee list for manager selection', listErr)
         }
 
-        setFormData({
+        const initialData = {
           employeeCode: emp.employeeCode || '',
           firstName: emp.firstName || '',
           lastName: emp.lastName || '',
@@ -98,9 +108,13 @@ export default function EditEmployee() {
           joiningDate: emp.joiningDate ? emp.joiningDate.slice(0, 10) : '',
 
           salaryStructure: emp.payrollDetails?.salaryStructure || '',
-          basicSalary: emp.payrollDetails?.basicSalary ? String(emp.payrollDetails.basicSalary) : '',
-          monthlySalary: emp.payrollDetails?.monthlySalary ? String(emp.payrollDetails.monthlySalary) : '',
-          pfAmount: emp.payrollDetails?.pfAmount ? String(emp.payrollDetails.pfAmount) : '',
+          basicSalary: emp.payrollDetails?.basicSalary ? String(emp.payrollDetails.basicSalary) : (emp.salaryGross ? String(emp.salaryGross) : ''),
+          monthlySalary: emp.payrollDetails?.monthlySalary 
+            ? String(emp.payrollDetails.monthlySalary) 
+            : (emp.payrollDetails?.basicSalary ? String(Math.round(emp.payrollDetails.basicSalary / 12)) : (emp.salaryGross ? String(Math.round(emp.salaryGross / 12)) : '')),
+          pfAmount: emp.payrollDetails?.pfAmount 
+            ? String(emp.payrollDetails.pfAmount) 
+            : (emp.payrollDetails?.basicSalary ? String(Math.round((emp.payrollDetails.basicSalary * 0.12) / 12)) : ''),
           paymentType: emp.payrollDetails?.paymentType || 'Bank Transfer',
           bankName: emp.payrollDetails?.bankName || '',
           accountNumber: emp.payrollDetails?.accountNumber || '',
@@ -126,7 +140,10 @@ export default function EditEmployee() {
           emergencyRelationship: emp.emergencyContact?.relationship || '',
           emergencyMobile: emp.emergencyContact?.mobile || '',
           experienceLevel: emp.experienceLevel || 'fresher',
-        })
+        }
+
+        setFormData(initialData)
+        setInitialFormData(initialData)
 
         const docs: any = {}
         if (emp.onboardingDocs) {
@@ -146,7 +163,30 @@ export default function EditEmployee() {
   }, [id])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value })
+    const { name, value } = e.target
+    if (name === 'basicSalary') {
+      const annual = Number(value) || 0
+      const monthly = annual > 0 ? Math.round(annual / 12) : 0
+      const epfMonthly = annual > 0 ? Math.round((annual * 0.12) / 12) : 0
+      setFormData(prev => ({
+        ...prev,
+        basicSalary: value,
+        monthlySalary: monthly > 0 ? String(monthly) : '',
+        pfAmount: epfMonthly > 0 ? String(epfMonthly) : prev.pfAmount,
+      }))
+    } else if (name === 'monthlySalary') {
+      const monthly = Number(value) || 0
+      const annual = monthly > 0 ? Math.round(monthly * 12) : 0
+      const epfMonthly = annual > 0 ? Math.round((annual * 0.12) / 12) : 0
+      setFormData(prev => ({
+        ...prev,
+        monthlySalary: value,
+        basicSalary: annual > 0 ? String(annual) : '',
+        pfAmount: epfMonthly > 0 ? String(epfMonthly) : prev.pfAmount,
+      }))
+    } else {
+      setFormData({ ...formData, [name]: value })
+    }
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -184,11 +224,12 @@ export default function EditEmployee() {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
+    if (e && 'preventDefault' in e) e.preventDefault()
     if (!id) return
     setIsSubmitting(true)
     setError('')
+    setSaveSuccessMessage('')
 
     // Basic validation before submit
     if (!formData.employeeCode || !formData.firstName || !formData.lastName || !formData.workEmail) {
@@ -204,17 +245,32 @@ export default function EditEmployee() {
       return
     }
 
-    // UAN validation removed
-
     try {
       const fd = new FormData()
       Object.keys(formData).forEach(key => fd.append(key, formData[key as keyof typeof formData]))
       Object.keys(files).forEach(key => { if (files[key]) fd.append(key, files[key] as File) })
 
-      await employeeApi.update(id, fd)
-      setUpdatedSuccessfully(true)
+      const res = await employeeApi.update(id, fd)
+      
+      // Update baseline state so isModified resets to false
+      setInitialFormData({ ...formData })
+      setFiles({
+        aadhaarCard: null, panCard: null, resume: null, offerLetter: null, profilePhoto: null, previousPayslips: null
+      })
+
+      if (res.data?.data?.onboardingDocs) {
+        const docs: any = {}
+        res.data.data.onboardingDocs.forEach((doc: any) => {
+          docs[doc.documentType] = { name: doc.fileName, url: doc.fileUrl }
+        })
+        setExistingDocs(docs)
+      }
+
+      setSaveSuccessMessage('Employee profile saved successfully to database!')
+      setTimeout(() => setSaveSuccessMessage(''), 6000)
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to update employee. Please check all fields and try again.')
+    } finally {
       setIsSubmitting(false)
     }
   }
@@ -281,7 +337,10 @@ export default function EditEmployee() {
             </div>
           </div>
 
-          <div className="success-actions">
+          <div className="success-actions" style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+            <button className="btn-secondary" onClick={() => setUpdatedSuccessfully(false)} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 20px', borderRadius: '10px', fontWeight: 600 }}>
+              <ArrowLeft size={18} /> Continue Editing
+            </button>
             <button className="btn-next" onClick={() => navigate(directoryPath)}>
               Back to Employee Directory <ChevronRight size={18} />
             </button>
@@ -355,11 +414,53 @@ export default function EditEmployee() {
                 )}
               </div>
 
+              {/* Save Button in Top Header */}
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={isSubmitting}
+                className={`btn-save-header ${isModified ? 'modified' : ''}`}
+                title={isModified ? "You have modified details — click to save to database" : "Save employee details to database"}
+              >
+                {isSubmitting ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <span className="spinner" style={{ width: '13px', height: '13px', border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 1s linear infinite' }} />
+                    Saving...
+                  </span>
+                ) : (
+                  <>
+                    <Save size={16} />
+                    <span>Save Changes</span>
+                    {isModified && (
+                      <span className="badge-modified">Modified</span>
+                    )}
+                  </>
+                )}
+              </button>
+
               <button onClick={() => navigate(directoryPath)} className="btn-cancel">
                 Cancel
               </button>
             </div>
           </div>
+
+          {saveSuccessMessage && (
+            <div className="save-success-banner fade-in">
+              <CheckCircle size={18} style={{ color: '#059669', flexShrink: 0 }} />
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <strong style={{ color: '#065f46' }}>Saved!</strong>
+                <span style={{ color: '#047857' }}>{saveSuccessMessage}</span>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setSaveSuccessMessage('')}
+                style={{ background: 'transparent', border: 'none', color: '#059669', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem' }}
+                title="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {statusToastMessage && (
             <div className={`status-toast-banner ${formData.employmentStatus === 'ACTIVE' ? 'toast-active' : 'toast-inactive'}`}>
@@ -474,7 +575,6 @@ export default function EditEmployee() {
                       <div className="form-grid">
                         {renderInput({ label: "Basic Salary (Annual ₹)", name: "basicSalary", type: "number" })}
                         {renderInput({ label: "Monthly Salary (₹)", name: "monthlySalary", type: "number" })}
-                        {renderInput({ label: "PF Amount (₹)", name: "pfAmount", type: "number" })}
                         {renderSelect({ label: "Payment Method", name: "paymentType", options: ['Bank Transfer', 'Cash', 'Cheque'] })}
                         {renderInput({ label: "Bank Name", name: "bankName", placeholder: "e.g. HDFC Bank", autoComplete: "off" })}
                         {renderInput({ label: "Account Number", name: "accountNumber", placeholder: "e.g. 50100234567890", autoComplete: "off" })}
@@ -484,6 +584,20 @@ export default function EditEmployee() {
                         {renderSelect({ label: "PF Enabled", name: "pfEnabled", options: [{label: 'Yes', value: 'true'}, {label: 'No', value: 'false'}] })}
                         {renderSelect({ label: "ESI Enabled", name: "esiEnabled", options: [{label: 'Yes', value: 'true'}, {label: 'No', value: 'false'}] })}
                       </div>
+
+                      {/* Salary Particulars & Statutory Deductions Breakdown (Offer Letter Style) */}
+                      <SalaryBreakdown
+                        annualSalary={formData.basicSalary}
+                        monthlySalary={formData.monthlySalary}
+                        onSalaryChange={(annual, monthly, epfMonthly) => {
+                          setFormData(prev => ({
+                            ...prev,
+                            basicSalary: String(annual),
+                            monthlySalary: String(monthly),
+                            pfAmount: String(epfMonthly),
+                          }))
+                        }}
+                      />
                     </div>
                   )}
 
@@ -629,30 +743,106 @@ export default function EditEmployee() {
                     Go Back
                   </button>
                   
-                  {activeStep < steps.length ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {/* Always-accessible Save Changes button across all steps */}
                     <button 
-                      type="button" 
-                      onClick={() => setActiveStep(prev => Math.min(steps.length, prev + 1))}
-                      className="btn-next"
-                    >
-                      Continue <ChevronRight size={18} />
-                    </button>
-                  ) : (
-                    <button 
-                      type="submit" 
+                      type="button"
+                      onClick={handleSubmit}
                       disabled={isSubmitting}
-                      className="btn-submit"
+                      className={`btn-save-step ${isModified ? 'highlight' : ''}`}
+                      title={isModified ? "Save modified employee details immediately to database" : "Save employee details to database"}
                     >
-                      {isSubmitting
-                        ? <><span className="spinner" /> Saving Changes…</>
-                        : <>✓ Save Changes</>
-                      }
+                      {isSubmitting ? (
+                        <>
+                          <span className="spinner" style={{ width: '14px', height: '14px', border: '2px solid currentColor', borderTopColor: 'transparent' }} />
+                          <span>Saving...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Save size={16} />
+                          <span>Save Changes</span>
+                          {isModified && (
+                            <span className="badge-modified-dot" title="Unsaved changes">●</span>
+                          )}
+                        </>
+                      )}
                     </button>
-                  )}
+
+                    {activeStep < steps.length ? (
+                      <button 
+                        type="button" 
+                        onClick={() => setActiveStep(prev => Math.min(steps.length, prev + 1))}
+                        className="btn-next"
+                      >
+                        Continue <ChevronRight size={18} />
+                      </button>
+                    ) : (
+                      <button 
+                        type="submit" 
+                        disabled={isSubmitting}
+                        className="btn-submit"
+                      >
+                        {isSubmitting
+                          ? <><span className="spinner" /> Saving Changes…</>
+                          : <>✓ Save & Finish</>
+                        }
+                      </button>
+                    )}
+                  </div>
                 </div>
               </form>
             </div>
           </div>
+
+          {/* Floating Unsaved Changes Bar when form has modifications */}
+          {isModified && (
+            <div className="floating-save-bar">
+              <div className="floating-save-content">
+                <div className="floating-save-info">
+                  <span className="pulse-dot" />
+                  <div>
+                    <strong>Unsaved Modifications</strong>
+                    <p>Employee details have been edited. Click Save to persist changes.</p>
+                  </div>
+                </div>
+                <div className="floating-save-actions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (initialFormData) {
+                        setFormData({ ...initialFormData })
+                        setFiles({ aadhaarCard: null, panCard: null, resume: null, offerLetter: null, profilePhoto: null, previousPayslips: null })
+                      }
+                    }}
+                    disabled={isSubmitting}
+                    className="btn-discard"
+                    title="Reset all fields to their original values"
+                  >
+                    Discard
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSubmit}
+                    disabled={isSubmitting}
+                    className="btn-save-floating"
+                    title="Save all changes to database"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <span className="spinner" style={{ width: '14px', height: '14px' }} />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save size={16} />
+                        Save Changes
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -1159,6 +1349,180 @@ export default function EditEmployee() {
         }
         .error-banner strong { font-size: 0.95rem; }
         .error-banner p { font-size: 0.85rem; margin: 4px 0 0 0; }
+
+        .btn-save-header {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          background: #2563eb;
+          color: #ffffff;
+          border: none;
+          padding: 9px 20px;
+          border-radius: 10px;
+          font-weight: 700;
+          font-size: 0.88rem;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+        }
+        .btn-save-header:hover {
+          background: #1d4ed8;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+        }
+        .btn-save-header.modified {
+          background: linear-gradient(135deg, #2563eb 0%, #4338ca 100%);
+          box-shadow: 0 4px 14px rgba(37, 99, 235, 0.45);
+        }
+        .badge-modified {
+          font-size: 0.68rem;
+          background: #f59e0b;
+          color: #ffffff;
+          padding: 2px 7px;
+          border-radius: 9999px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          display: inline-block;
+        }
+
+        .btn-save-step {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 22px;
+          border-radius: 10px;
+          font-weight: 700;
+          font-size: 0.9rem;
+          border: 1.5px solid #2563eb;
+          background: #ffffff;
+          color: #2563eb;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .btn-save-step:hover {
+          background: #eff6ff;
+          border-color: #1d4ed8;
+          color: #1d4ed8;
+        }
+        .btn-save-step.highlight {
+          background: #2563eb;
+          color: #ffffff;
+          border-color: #2563eb;
+          box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+        .btn-save-step.highlight:hover {
+          background: #1d4ed8;
+        }
+        .badge-modified-dot {
+          color: #fbbf24;
+          font-size: 0.9rem;
+          line-height: 1;
+        }
+
+        .floating-save-bar {
+          position: fixed;
+          bottom: 24px;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 9999;
+          animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .floating-save-content {
+          display: flex;
+          align-items: center;
+          gap: 24px;
+          background: #0f172a;
+          color: #ffffff;
+          padding: 12px 24px;
+          border-radius: 16px;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .floating-save-info {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .floating-save-info strong {
+          display: block;
+          font-size: 0.88rem;
+          font-weight: 700;
+          color: #f8fafc;
+        }
+        .floating-save-info p {
+          margin: 0;
+          font-size: 0.76rem;
+          color: #94a3b8;
+        }
+        .pulse-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background: #f59e0b;
+          box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.35);
+          animation: pulseDot 1.5s infinite;
+        }
+        @keyframes pulseDot {
+          0% { transform: scale(0.95); opacity: 0.8; }
+          50% { transform: scale(1.15); opacity: 1; }
+          100% { transform: scale(0.95); opacity: 0.8; }
+        }
+        .floating-save-actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .btn-discard {
+          background: transparent;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          color: #cbd5e1;
+          padding: 8px 16px;
+          border-radius: 8px;
+          font-size: 0.82rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .btn-discard:hover {
+          background: rgba(255, 255, 255, 0.1);
+          color: #ffffff;
+        }
+        .btn-save-floating {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: #2563eb;
+          color: #ffffff;
+          border: none;
+          padding: 8px 18px;
+          border-radius: 8px;
+          font-size: 0.84rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.2s;
+          box-shadow: 0 2px 10px rgba(37, 99, 235, 0.4);
+        }
+        .btn-save-floating:hover {
+          background: #1d4ed8;
+        }
+
+        .save-success-banner {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          background: #ecfdf5;
+          border: 1.5px solid #a7f3d0;
+          color: #065f46;
+          padding: 12px 20px;
+          border-radius: 12px;
+          margin-bottom: 24px;
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.1);
+        }
+        @keyframes slideUp {
+          from { opacity: 0; transform: translate(-50%, 20px); }
+          to { opacity: 1; transform: translate(-50%, 0); }
+        }
 
         .fade-in { animation: fadeIn 0.4s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }

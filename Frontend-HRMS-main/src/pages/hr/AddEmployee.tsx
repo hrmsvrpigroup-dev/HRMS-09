@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { hrApi } from '../../api/hr.api'
-import { CheckCircle, ChevronRight, UploadCloud, Shield, User, MapPin, Building, CreditCard, Activity } from 'lucide-react'
+import { employeeApi } from '../../api/employee.api'
+import { CheckCircle, ChevronRight, UploadCloud, Shield, User, MapPin, Building, CreditCard, Activity, RefreshCw } from 'lucide-react'
+import SalaryBreakdown from '../../components/payroll/SalaryBreakdown'
 
 const INITIAL_FORM_DATA = {
   employeeCode: '',
@@ -26,7 +28,7 @@ const ESSENTIAL_FIELDS: { name: string; label: string; step: number }[] = [
 
 export default function AddEmployee() {
   const navigate = useNavigate()
-  
+
   const [activeStep, setActiveStep] = useState<number>(() => {
     const saved = localStorage.getItem('onboard_active_step')
     return saved ? parseInt(saved, 10) : 1
@@ -35,6 +37,8 @@ export default function AddEmployee() {
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<string[]>([])
   const [created, setCreated] = useState<{ employeeCode: string; name: string; email: string } | null>(null)
+  const [autoCode, setAutoCode] = useState<string>('')
+  const [loadingCode, setLoadingCode] = useState(false)
 
   const [formData, setFormData] = useState(() => {
     const saved = localStorage.getItem('onboard_form_data')
@@ -48,6 +52,33 @@ export default function AddEmployee() {
     }
     return INITIAL_FORM_DATA
   })
+
+  // Auto-generate next employee code (VRPITS00236...) while keeping custom editable
+  useEffect(() => {
+    let active = true
+    const fetchNextCode = async () => {
+      try {
+        setLoadingCode(true)
+        const res = await employeeApi.getNextCode()
+        if (active && res.data?.data?.nextCode) {
+          const next = res.data.data.nextCode
+          setAutoCode(next)
+          setFormData((prev: typeof INITIAL_FORM_DATA) => {
+            if (!prev.employeeCode || prev.employeeCode.startsWith('EMP-')) {
+              return { ...prev, employeeCode: next }
+            }
+            return prev
+          })
+        }
+      } catch (err) {
+        console.error('Failed to fetch next employee code:', err)
+      } finally {
+        if (active) setLoadingCode(false)
+      }
+    }
+    fetchNextCode()
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     localStorage.setItem('onboard_active_step', activeStep.toString())
@@ -78,7 +109,29 @@ export default function AddEmployee() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
-    setFormData((prev: typeof INITIAL_FORM_DATA) => ({ ...prev, [name]: value }))
+    if (name === 'basicSalary') {
+      const annual = Number(value) || 0
+      const monthly = annual > 0 ? Math.round(annual / 12) : 0
+      const epfMonthly = annual > 0 ? Math.round((annual * 0.12) / 12) : 0
+      setFormData((prev: typeof INITIAL_FORM_DATA) => ({
+        ...prev,
+        basicSalary: value,
+        monthlySalary: monthly > 0 ? String(monthly) : '',
+        pfAmount: epfMonthly > 0 ? String(epfMonthly) : prev.pfAmount,
+      }))
+    } else if (name === 'monthlySalary') {
+      const monthly = Number(value) || 0
+      const annual = monthly > 0 ? Math.round(monthly * 12) : 0
+      const epfMonthly = annual > 0 ? Math.round((annual * 0.12) / 12) : 0
+      setFormData((prev: typeof INITIAL_FORM_DATA) => ({
+        ...prev,
+        monthlySalary: value,
+        basicSalary: annual > 0 ? String(annual) : '',
+        pfAmount: epfMonthly > 0 ? String(epfMonthly) : prev.pfAmount,
+      }))
+    } else {
+      setFormData((prev: typeof INITIAL_FORM_DATA) => ({ ...prev, [name]: value }))
+    }
     if (value.trim() && fieldErrors.includes(name)) {
       setFieldErrors((prev: string[]) => prev.filter(f => f !== name))
     }
@@ -126,7 +179,7 @@ export default function AddEmployee() {
       clearOnboardingDraft()
     } catch (err: any) {
       let serverMsg = err.response?.data?.message || 'Failed to create employee. Please check all fields and try again.'
-      
+
       if (serverMsg.includes('Unique constraint failed on the fields: (`email`)')) {
         serverMsg = `An employee account with work email "${formData.workEmail}" already exists in the system.`
       }
@@ -162,12 +215,12 @@ export default function AddEmployee() {
           {label} {required && <span>*</span>}
           {isMissing && <span className="field-required-badge">⚠️ Column Required</span>}
         </label>
-        <input 
-          required={required} 
-          type={type} 
-          name={name} 
-          placeholder={placeholder} 
-          value={formData[name as keyof typeof formData] || ''} 
+        <input
+          required={required}
+          type={type}
+          name={name}
+          placeholder={placeholder}
+          value={formData[name as keyof typeof formData] || ''}
           onChange={handleChange}
           autoComplete={autoComplete}
           autoCorrect="off"
@@ -187,9 +240,9 @@ export default function AddEmployee() {
           {label}
           {isMissing && <span className="field-required-badge">⚠️ Column Required</span>}
         </label>
-        <select 
-          name={name} 
-          value={formData[name as keyof typeof formData]} 
+        <select
+          name={name}
+          value={formData[name as keyof typeof formData]}
           onChange={handleChange}
           className={isMissing ? 'input-error-highlight' : ''}
         >
@@ -277,8 +330,8 @@ export default function AddEmployee() {
                   const isCompleted = activeStep > step.id
                   const missingInStep = ESSENTIAL_FIELDS.filter(f => f.step === step.id && fieldErrors.includes(f.name)).length
                   return (
-                    <div 
-                      key={step.id} 
+                    <div
+                      key={step.id}
                       onClick={() => setActiveStep(step.id)}
                       className={`stepper-item ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''} ${missingInStep > 0 ? 'step-has-error' : ''}`}
                     >
@@ -321,7 +374,54 @@ export default function AddEmployee() {
                         <p>Enter the core identity details for the new employee.</p>
                       </div>
                       <div className="form-grid">
-                        {renderInput({ label: "Employee ID", name: "employeeCode", placeholder: "e.g., EMP-1001" })}
+                        <div className="onboard-field" key="employeeCode">
+                          <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                              Employee ID
+                              {autoCode && formData.employeeCode === autoCode ? (
+                                <span style={{ fontSize: '0.72rem', color: '#166534', background: '#dcfce7', padding: '2px 8px', borderRadius: '10px', fontWeight: 600 }}>
+                                  Auto-Generated
+                                </span>
+                              ) : formData.employeeCode ? (
+                                <span style={{ fontSize: '0.72rem', color: '#1e40af', background: '#dbeafe', padding: '2px 8px', borderRadius: '10px', fontWeight: 600 }}>
+                                  Custom ID (Editable)
+                                </span>
+                              ) : null}
+                            </span>
+                            {autoCode && formData.employeeCode !== autoCode && (
+                              <button
+                                type="button"
+                                onClick={() => setFormData((prev: any) => ({ ...prev, employeeCode: autoCode }))}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#4f46e5',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: 0
+                                }}
+                                title="Reset to auto-generated sequence ID"
+                              >
+                                <RefreshCw size={12} /> Reset to {autoCode}
+                              </button>
+                            )}
+                          </label>
+                          <input
+                            type="text"
+                            name="employeeCode"
+                            placeholder={autoCode || "e.g., VRPITS00236"}
+                            value={formData.employeeCode || ''}
+                            onChange={handleChange}
+                            autoComplete="off"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            style={{ fontFamily: 'monospace', fontWeight: 600, letterSpacing: '0.04em' }}
+                          />
+                        </div>
                         {renderInput({ label: "First Name", name: "firstName", required: true })}
                         {renderInput({ label: "Last Name", name: "lastName", required: true })}
                         {renderInput({ label: "Work Email", name: "workEmail", type: "email", required: true, autoComplete: "off" })}
@@ -341,9 +441,9 @@ export default function AddEmployee() {
                         <p>Define the role, type, and timeline of employment.</p>
                       </div>
                       <div className="form-grid">
-                        {renderSelect({ label: "Employment Type", name: "employmentType", options: [{label: 'Full Time', value: 'FULL_TIME'}, {label: 'Part Time', value: 'PART_TIME'}, {label: 'Contract', value: 'CONTRACT'}] })}
-                        {renderSelect({ label: "Current Status", name: "employmentStatus", options: [{label: 'Active', value: 'ACTIVE'}, {label: 'Probation', value: 'PROBATION'}] })}
-                        {renderSelect({ label: "Experience Level", name: "experienceLevel", options: [{label: 'Fresher', value: 'fresher'}, {label: 'Experienced', value: 'experienced'}] })}
+                        {renderSelect({ label: "Employment Type", name: "employmentType", options: [{ label: 'Full Time', value: 'FULL_TIME' }, { label: 'Part Time', value: 'PART_TIME' }, { label: 'Contract', value: 'CONTRACT' }] })}
+                        {renderSelect({ label: "Current Status", name: "employmentStatus", options: [{ label: 'Active', value: 'ACTIVE' }, { label: 'Probation', value: 'PROBATION' }] })}
+                        {renderSelect({ label: "Experience Level", name: "experienceLevel", options: [{ label: 'Fresher', value: 'fresher' }, { label: 'Experienced', value: 'experienced' }] })}
                         {renderInput({ label: "Joining Date", name: "joiningDate", type: "date", required: true })}
                         {renderSelect({ label: "Assigned Shift", name: "shift", options: ['General Shift', 'Morning Shift', 'Afternoon Shift', 'Night Shift'] })}
                       </div>
@@ -359,7 +459,6 @@ export default function AddEmployee() {
                       <div className="form-grid">
                         {renderInput({ label: "Basic Salary (Annual ₹)", name: "basicSalary", type: "number" })}
                         {renderInput({ label: "Monthly Salary (₹)", name: "monthlySalary", type: "number" })}
-                        {renderInput({ label: "PF Amount (₹)", name: "pfAmount", type: "number" })}
                         {renderSelect({ label: "Payment Method", name: "paymentType", options: ['Bank Transfer', 'Cash', 'Cheque'] })}
                         {renderInput({ label: "Bank Name", name: "bankName" })}
                         {renderInput({ label: "Account Number", name: "accountNumber" })}
@@ -367,6 +466,20 @@ export default function AddEmployee() {
                         {renderInput({ label: "PAN Number", name: "panNumber" })}
                         {renderInput({ label: "UAN Number", name: "uanNumber" })}
                       </div>
+
+                      {/* Salary Particulars & Statutory Deductions Breakdown (Offer Letter Style) */}
+                      <SalaryBreakdown
+                        annualSalary={formData.basicSalary}
+                        monthlySalary={formData.monthlySalary}
+                        onSalaryChange={(annual, monthly, epfMonthly) => {
+                          setFormData((prev: typeof INITIAL_FORM_DATA) => ({
+                            ...prev,
+                            basicSalary: String(annual),
+                            monthlySalary: String(monthly),
+                            pfAmount: String(epfMonthly),
+                          }))
+                        }}
+                      />
                     </div>
                   )}
 
@@ -377,11 +490,11 @@ export default function AddEmployee() {
                         <p>Setup time tracking and security authentications.</p>
                       </div>
                       <div className="form-grid">
-                        {renderSelect({ label: "Attendance Mode", name: "attendanceType", options: [{label:'Facial Attendance', value:'FACIAL'}, {label:'QR Attendance', value:'QR'}, {label:'Both Facial and QR', value:'BOTH'}] })}
+                        {renderSelect({ label: "Attendance Mode", name: "attendanceType", options: [{ label: 'Facial Attendance', value: 'FACIAL' }, { label: 'QR Attendance', value: 'QR' }, { label: 'Both Facial and QR', value: 'BOTH' }] })}
                       </div>
-                      
+
                       <div className="toggle-box mt-4">
-                        <input type="checkbox" id="sendActivationEmail" checked={formData.sendActivationEmail === 'true'} onChange={(e) => setFormData({...formData, sendActivationEmail: e.target.checked ? 'true' : 'false'})} />
+                        <input type="checkbox" id="sendActivationEmail" checked={formData.sendActivationEmail === 'true'} onChange={(e) => setFormData({ ...formData, sendActivationEmail: e.target.checked ? 'true' : 'false' })} />
                         <div>
                           <label htmlFor="sendActivationEmail">Dispatch Activation Sequence</label>
                           <p>Automatically sends a cryptographically secure login link to the employee's work email.</p>
@@ -493,25 +606,25 @@ export default function AddEmployee() {
                 </div>
 
                 <div className="form-footer">
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={() => setActiveStep(prev => Math.max(1, prev - 1))}
                     className={`btn-back ${activeStep === 1 ? 'hidden' : ''}`}
                   >
                     Go Back
                   </button>
-                  
+
                   {activeStep < steps.length ? (
-                    <button 
-                      type="button" 
+                    <button
+                      type="button"
                       onClick={() => setActiveStep(prev => Math.min(steps.length, prev + 1))}
                       className="btn-next"
                     >
                       Continue to Next Step <ChevronRight size={18} />
                     </button>
                   ) : (
-                    <button 
-                      type="submit" 
+                    <button
+                      type="submit"
                       disabled={isSubmitting}
                       className="btn-submit"
                     >

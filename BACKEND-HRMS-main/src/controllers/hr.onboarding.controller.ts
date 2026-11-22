@@ -4,6 +4,7 @@ import { AuthRequest } from '../middleware/auth.middleware'
 import { sendError, sendSuccess } from '../utils/response.utils'
 import { hashPassword } from '../utils/password.utils'
 import { EMPLOYEE_CREATION_COST } from '../services/tenant.service'
+import { generateNextEmployeeCode } from './employee.controller'
 
 export const hrOnboardingController = {
   async onboardEmployee(req: AuthRequest, res: Response) {
@@ -34,9 +35,10 @@ export const hrOnboardingController = {
         return sendError(res, `Insufficient credits. Provisioning an employee account requires 🪙 ${EMPLOYEE_CREATION_COST} credits (current balance: 🪙 ${tenant.credits.toLocaleString()}).`, 400)
       }
 
-      // Generate Auto Employee ID (e.g. EMP-1001) if not provided
-      const empCount = await prisma.employee.count({ where: { tenantId } })
-      const employeeCode = data.employeeCode || `EMP-${1000 + empCount + 1}`
+      // Generate Auto Employee ID (e.g. VRPITS00236) if not provided
+      const employeeCode = (data.employeeCode && String(data.employeeCode).trim())
+        ? String(data.employeeCode).trim()
+        : await generateNextEmployeeCode(tenantId)
 
       // Check if employeeCode already exists in this tenant
       const existingEmpCode = await prisma.employee.findUnique({

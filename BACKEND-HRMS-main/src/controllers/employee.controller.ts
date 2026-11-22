@@ -39,6 +39,41 @@ export const employeeController = {
     }
   },
 
+  async getNextCode(req: AuthRequest, res: Response) {
+    const tenantId = req.tenantId ?? req.user?.tenantId
+    if (!tenantId) {
+      return sendError(res, 'Tenant context not found', 400)
+    }
+
+    try {
+      const employees = await prisma.employee.findMany({
+        where: { tenantId },
+        select: { employeeCode: true }
+      })
+
+      let maxNum = 0
+      const prefix = 'VRPITS'
+
+      for (const emp of employees) {
+        const code = emp.employeeCode?.trim().toUpperCase() || ''
+        if (code.startsWith(prefix)) {
+          const numPart = code.substring(prefix.length)
+          const parsed = parseInt(numPart, 10)
+          if (!isNaN(parsed) && parsed > maxNum) {
+            maxNum = parsed
+          }
+        }
+      }
+
+      const nextNum = maxNum > 0 ? maxNum + 1 : 1
+      const nextCode = `${prefix}${String(nextNum).padStart(5, '0')}`
+
+      return sendSuccess(res, { nextCode, currentMax: maxNum })
+    } catch (error: any) {
+      return sendError(res, error.message || 'Failed to generate next employee code', 500)
+    }
+  },
+
   async updateProfile(req: AuthRequest, res: Response) {
     const tenantId = req.tenantId ?? req.user?.tenantId
     const userId = req.user?.id
@@ -79,17 +114,17 @@ export const employeeController = {
       const role = req.user?.role
       const isEmployeeRole = role !== 'HR' && role !== 'ADMIN' && role !== 'SUPERADMIN'
 
-      // Check if banking coordinates are being modified (Employees edit only two: account number & IFSC)
+      // Check if banking coordinates are being modified (bankName, account number & IFSC - editable up to 2 times by employee)
       const curBankName = employee.payrollDetails?.bankName || null
       const curAccountNo = employee.payrollDetails?.accountNumber || null
       const curIfsc = employee.payrollDetails?.ifscCode || null
 
-      const nextBankName = !isEmployeeRole && resolvedBankName !== undefined ? (resolvedBankName ? String(resolvedBankName).trim() : null) : curBankName
+      const nextBankName = resolvedBankName !== undefined ? (resolvedBankName ? String(resolvedBankName).trim() : null) : curBankName
       const nextAccountNo = resolvedBankAccount !== undefined ? (resolvedBankAccount ? String(resolvedBankAccount).trim() : null) : curAccountNo
       const nextIfsc = resolvedIfsc !== undefined ? (resolvedIfsc ? String(resolvedIfsc).trim().toUpperCase() : null) : curIfsc
 
       const isBankChanging = (
-        (!isEmployeeRole && resolvedBankName !== undefined && nextBankName !== curBankName) ||
+        (resolvedBankName !== undefined && nextBankName !== curBankName) ||
         (resolvedBankAccount !== undefined && nextAccountNo !== curAccountNo) ||
         (resolvedIfsc !== undefined && nextIfsc !== curIfsc)
       )
@@ -120,10 +155,10 @@ export const employeeController = {
           }).catch(() => {})
         }
 
-        // 2. Upsert Payroll Details (bankName is HR-managed for employees; accountNumber & ifscCode are editable; uanNumber is strictly HR-only)
-        const updatedBankName = !isEmployeeRole && resolvedBankName !== undefined
+        // 2. Upsert Payroll Details (bankName, accountNumber & ifscCode are editable up to 2 times; uanNumber is strictly HR-only)
+        const updatedBankName = resolvedBankName !== undefined
           ? (resolvedBankName ? String(resolvedBankName).trim() : null)
-          : (employee.payrollDetails?.bankName || (resolvedBankName ? String(resolvedBankName).trim() : null))
+          : (employee.payrollDetails?.bankName || null)
         const updatedAccountNo = resolvedBankAccount !== undefined ? (resolvedBankAccount ? String(resolvedBankAccount).trim() : null) : employee.payrollDetails?.accountNumber
         const updatedIfsc = resolvedIfsc !== undefined ? (resolvedIfsc ? String(resolvedIfsc).trim().toUpperCase() : null) : employee.payrollDetails?.ifscCode
 
@@ -1173,4 +1208,26 @@ export const employeeController = {
       return sendError(res, error.message || 'Failed to update employee status', 500)
     }
   },
+}
+
+export async function generateNextEmployeeCode(tenantId: string, prefix = 'VRPITS'): Promise<string> {
+  const employees = await prisma.employee.findMany({
+    where: { tenantId },
+    select: { employeeCode: true }
+  })
+
+  let maxNum = 0
+  for (const emp of employees) {
+    const code = emp.employeeCode?.trim().toUpperCase() || ''
+    if (code.startsWith(prefix)) {
+      const numPart = code.substring(prefix.length)
+      const parsed = parseInt(numPart, 10)
+      if (!isNaN(parsed) && parsed > maxNum) {
+        maxNum = parsed
+      }
+    }
+  }
+
+  const nextNum = maxNum > 0 ? maxNum + 1 : 1
+  return `${prefix}${String(nextNum).padStart(5, '0')}`
 }

@@ -46,6 +46,7 @@ router.delete('/requests/:id', authenticate, tenantIsolation, employeeRequestCon
 
 router.use(authenticate, authorize('ADMIN', 'HR'), tenantIsolation)
 
+router.get('/next-code', employeeController.getNextCode)
 router.get('/', employeeController.list)
 router.post('/', employeeController.create)
 router.get('/:id', employeeController.getById)
