@@ -261,7 +261,7 @@ export default function Profile() {
         manualBloodGroup: profile.manualBloodGroup,
       }
 
-      if (isHRUser || canEditBank) {
+      if (isHRUser && profile.bankName) {
         payload.bankName = profile.bankName
       }
 
@@ -1167,48 +1167,36 @@ export default function Profile() {
               )}
 
               <div className="form-grid">
-                {/* Field 1: Financial Institution Name - Editable up to 2 times by employee */}
-                <div className={`form-group ${!canEditBank ? 'readonly' : ''}`}>
+                {/* Field 1: Financial Institution Name - Managed by HR */}
+                <div className={`form-group ${!isHRUser ? 'readonly' : ''}`}>
                   <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>Financial Institution Name</span>
                     {!isHRUser && (
-                      canEditBank ? (
-                        <span style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: 600 }}>
-                          Editable ({2 - bankEditsUsed} left)
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: '0.75rem', color: '#991b1b', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <Lock size={12} /> Locked
-                        </span>
-                      )
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <Lock size={12} /> Managed by HR
+                      </span>
                     )}
                   </label>
                   <input
                     type="text"
                     placeholder="e.g. HDFC Bank, State Bank of India"
-                    value={profile.bankName}
-                    onChange={(e) => setProfile({ ...profile, bankName: e.target.value })}
-                    readOnly={!canEditBank}
-                    disabled={!canEditBank}
-                    style={!canEditBank ? { background: '#f8fafc', cursor: 'not-allowed', color: '#64748b', border: '1px solid #cbd5e1' } : {}}
+                    value={employeeDetails?.payrollDetails?.bankName || profile.bankName || ''}
+                    onChange={(e) => isHRUser && setProfile({ ...profile, bankName: e.target.value })}
+                    readOnly={!isHRUser}
+                    disabled={!isHRUser}
+                    style={!isHRUser ? { background: '#f8fafc', cursor: 'not-allowed', color: '#334155', border: '1px solid #cbd5e1' } : {}}
                     required
                   />
                 </div>
 
-                {/* Field 2: Bank Routing IFSC Code - Editable up to 2 times by employee */}
+                {/* Field 2: Bank Routing IFSC Code - Editable by Employee (1 of 2) */}
                 <div className={`form-group ${!canEditBank ? 'readonly' : ''}`}>
                   <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>Bank Routing IFSC Code</span>
                     {!isHRUser && (
-                      canEditBank ? (
-                        <span style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: 600 }}>
-                          Editable ({2 - bankEditsUsed} left)
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: '0.75rem', color: '#991b1b', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <Lock size={12} /> Locked
-                        </span>
-                      )
+                      <span style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: 600 }}>
+                        Editable (1/2)
+                      </span>
                     )}
                   </label>
                   <input
@@ -1222,20 +1210,14 @@ export default function Profile() {
                   />
                 </div>
 
-                {/* Field 3: Depositor Account Number - Editable up to 2 times by employee */}
+                {/* Field 3: Depositor Account Number - Editable by Employee (2 of 2) */}
                 <div className={`form-group ${!canEditBank ? 'readonly' : ''}`}>
                   <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>Depositor Account Number</span>
                     {!isHRUser && (
-                      canEditBank ? (
-                        <span style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: 600 }}>
-                          Editable ({2 - bankEditsUsed} left)
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: '0.75rem', color: '#991b1b', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <Lock size={12} /> Locked
-                        </span>
-                      )
+                      <span style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: 600 }}>
+                        Editable (2/2)
+                      </span>
                     )}
                   </label>
                   <input

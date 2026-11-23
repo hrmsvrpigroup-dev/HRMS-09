@@ -104,6 +104,7 @@ interface Candidate {
   offerSalary?: number;
   offerJoiningDate?: string;
   offerStatus?: string;
+  variablePay?: string | number;
 
   // Onboarding Phase
   onboarded?: boolean;
@@ -2094,6 +2095,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     venue?: string;
     includeTraining?: boolean;
     trainingSalary?: string;
+    variablePay?: string;
     withGross?: boolean;
     customBreakdown?: any;
   }>>(() => {
@@ -2453,6 +2455,7 @@ const handleUpdateCandidateOfferForm = (
     venue: string;
     includeTraining: boolean;
     trainingSalary: string;
+    variablePay: string;
   }>
 ) => {
   const emailKey = candEmail ? candEmail.trim().toLowerCase() : undefined;
@@ -2482,7 +2485,8 @@ const handleUpdateCandidateOfferForm = (
         ...(updates.referenceNo !== undefined ? { callLetterReferenceNo: updates.referenceNo } : {}),
         ...(updates.annualCtc !== undefined ? { offerSalary: Math.round(Number(updates.annualCtc) / 12) } : {}),
         ...(updates.joiningDate !== undefined ? { offerJoiningDate: updates.joiningDate } : {}),
-        ...(updates.venue !== undefined ? { callLetterVenue: updates.venue } : {})
+        ...(updates.venue !== undefined ? { callLetterVenue: updates.venue } : {}),
+        ...(updates.variablePay !== undefined ? { variablePay: updates.variablePay } : {})
       };
     }
     return cand;
@@ -2502,7 +2506,8 @@ const handleUpdateCandidateOfferForm = (
           ...(updates.referenceNo !== undefined ? { callLetterReferenceNo: updates.referenceNo } : {}),
           ...(updates.annualCtc !== undefined ? { offerSalary: Math.round(Number(updates.annualCtc) / 12) } : {}),
           ...(updates.joiningDate !== undefined ? { offerJoiningDate: updates.joiningDate } : {}),
-          ...(updates.venue !== undefined ? { callLetterVenue: updates.venue } : {})
+          ...(updates.venue !== undefined ? { callLetterVenue: updates.venue } : {}),
+          ...(updates.variablePay !== undefined ? { variablePay: updates.variablePay } : {})
         };
       }
       return cand;
@@ -3827,7 +3832,8 @@ const handleExtendOfferSubmit = async (candidateId: string, isUpdate: boolean = 
       customName: candName || c.customName,
       callLetterDesignation: designation || c.callLetterDesignation,
       callLetterReferenceNo: referenceNo || c.callLetterReferenceNo,
-      callLetterVenue: venue || c.callLetterVenue
+      callLetterVenue: venue || c.callLetterVenue,
+      variablePay: candForm.variablePay || c.variablePay
     } : c));
 
     setEditingOfferIds(prev => ({ ...prev, [candidateId]: false }));
@@ -4620,7 +4626,8 @@ const handleDownloadFormalOfferLetter = (
   venueOverride?: string,
   candidateNameOverride?: string,
   includeTrainingOverride?: boolean,
-  customBreakdownOverride?: Partial<SalaryBreakdown>
+  customBreakdownOverride?: Partial<SalaryBreakdown>,
+  variablePayOverride?: string | number
 ) => {
   const candForm = candidateOfferForms[cand.id] || (cand.email ? candidateOfferForms[cand.email] : undefined) || (cand.email ? candidateOfferForms[cand.email.toLowerCase().trim()] : undefined) || {};
   const candName = candidateNameOverride || candForm.candidateName || cand.customName || `${cand.firstName || ''} ${cand.lastName || ''}`.trim() || 'Candidate';
@@ -4663,6 +4670,7 @@ const handleDownloadFormalOfferLetter = (
     reportingVenue: venue,
     includeTraining: includeTraining,
     trainingSalary: candForm.trainingSalary,
+    variablePay: variablePayOverride !== undefined ? variablePayOverride : (candForm.variablePay || cand.variablePay),
     withGross: isWithGross,
     withoutGross: !isWithGross,
     customBreakdown: customBreakdownOverride || candForm.customBreakdown
@@ -9966,6 +9974,7 @@ return (
                       const defaultCtc = c.offerSalary ? (c.offerSalary > 100000 ? c.offerSalary : c.offerSalary * 12) : 720000;
                       const annualCtcStr = candForm.annualCtc !== undefined ? candForm.annualCtc : String(defaultCtc);
                       const joiningDate = candForm.joiningDate !== undefined ? candForm.joiningDate : (c.offerJoiningDate || offerForm.joiningDate || format(new Date(Date.now() + 7 * 86400000), 'yyyy-MM-dd'));
+                      const variablePay = candForm.variablePay !== undefined ? candForm.variablePay : (c.variablePay !== undefined ? String(c.variablePay) : '');
                       const annualCtcNum = Number(annualCtcStr) || 0;
                       const breakdown = calculateSalaryBreakdown(annualCtcNum);
 
@@ -10192,8 +10201,8 @@ return (
                             </div>
                           </div>
 
-                          {/* Inputs Row 4: Joining Date */}
-                          <div>
+                          {/* Inputs Row 4: Joining Date & Variable Pay */}
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                             <div className="auth-luxury-label">
                               Joining Date *
                               <input
@@ -10203,6 +10212,24 @@ return (
                                 style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', background: isLocked ? '#f8fafc' : '#ffffff' }}
                                 value={joiningDate}
                                 onChange={e => handleUpdateCandidateOfferForm(c.id, c.email, { joiningDate: e.target.value })}
+                              />
+                            </div>
+
+                            <div className="auth-luxury-label">
+                              Variable Pay
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                disabled={isLocked}
+                                className="rec-search-input"
+                                style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', background: isLocked ? '#f8fafc' : '#ffffff' }}
+                                value={variablePay}
+                                onChange={e => {
+                                  const val = e.target.value.replace(/\D/g, '');
+                                  handleUpdateCandidateOfferForm(c.id, c.email, { variablePay: val });
+                                }}
+                                placeholder="e.g. 50000"
                               />
                             </div>
                           </div>
@@ -11002,7 +11029,8 @@ return (
                                       callLetterReferenceNo: referenceNo,
                                       offerSalary: Math.round(annualCtcNum / 12),
                                       offerJoiningDate: joiningDate,
-                                      callLetterVenue: venue
+                                      callLetterVenue: venue,
+                                      variablePay: variablePay
                                     };
                                     triggerPreviewModal(latestCand);
                                   }}
@@ -11015,7 +11043,7 @@ return (
                               )}
                               <button
                                 type="button"
-                                onClick={() => handleDownloadFormalOfferLetter(c, annualCtcNum, joiningDate, designation, referenceNo, venue, candName, candForm.includeTraining !== false, activeBreakdown)}
+                                onClick={() => handleDownloadFormalOfferLetter(c, annualCtcNum, joiningDate, designation, referenceNo, venue, candName, candForm.includeTraining !== false, activeBreakdown, variablePay)}
                                 className="rec-btn-outline"
                                 style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff', fontWeight: 700, gap: '4px' }}
                                 title="Download / Print Formal Offer Letter Contract PDF"
@@ -11063,7 +11091,8 @@ return (
                                         callLetterReferenceNo: referenceNo,
                                         offerSalary: Math.round(annualCtcNum / 12),
                                         offerJoiningDate: joiningDate,
-                                        callLetterVenue: venue
+                                        callLetterVenue: venue,
+                                        variablePay: variablePay
                                       };
                                       triggerPreviewModal(latestCand);
                                     }}
@@ -11075,7 +11104,7 @@ return (
                                 )}
                                 <button
                                   type="button"
-                                  onClick={() => handleDownloadFormalOfferLetter(c, annualCtcNum, joiningDate, designation, referenceNo, venue, candName, candForm.includeTraining !== false, activeBreakdown)}
+                                  onClick={() => handleDownloadFormalOfferLetter(c, annualCtcNum, joiningDate, designation, referenceNo, venue, candName, candForm.includeTraining !== false, activeBreakdown, variablePay)}
                                   className="rec-btn-outline"
                                   style={{ height: '36px', padding: '0 12px', fontSize: '0.72rem', color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff', fontWeight: 700, gap: '4px' }}
                                 >
@@ -11114,7 +11143,8 @@ return (
                                         callLetterReferenceNo: referenceNo,
                                         offerSalary: Math.round(annualCtcNum / 12),
                                         offerJoiningDate: joiningDate,
-                                        callLetterVenue: venue
+                                        callLetterVenue: venue,
+                                        variablePay: variablePay
                                       };
                                       triggerPreviewModal(latestCand);
                                     }}
@@ -11126,7 +11156,7 @@ return (
                                 )}
                                 <button
                                   type="button"
-                                  onClick={() => handleDownloadFormalOfferLetter(c, annualCtcNum, joiningDate, designation, referenceNo, venue, candName, candForm.includeTraining !== false, activeBreakdown)}
+                                  onClick={() => handleDownloadFormalOfferLetter(c, annualCtcNum, joiningDate, designation, referenceNo, venue, candName, candForm.includeTraining !== false, activeBreakdown, variablePay)}
                                   className="rec-btn-outline"
                                   style={{ height: '32px', padding: '0 12px', fontSize: '0.7rem', color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff', fontWeight: 700, gap: '4px' }}
                                 >
@@ -13673,6 +13703,7 @@ return (
                 reportingVenue: venue,
                 includeTraining: previewOfferWithTraining,
                 trainingSalary: candForm.trainingSalary,
+                variablePay: candForm.variablePay || previewOfferCandidate.variablePay,
                 withGross: isWithGross,
                 withoutGross: !isWithGross,
                 customBreakdown: candForm.customBreakdown

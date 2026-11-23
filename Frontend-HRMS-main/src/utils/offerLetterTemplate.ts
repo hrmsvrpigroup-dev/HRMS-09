@@ -20,6 +20,7 @@ export interface OfferLetterData {
   genderPrefix?: string;
   reportingVenue?: string;
   trainingSalary?: string | number;
+  variablePay?: string | number;
   includeTraining?: boolean;
   withGross?: boolean;
   withoutGross?: boolean;
@@ -253,6 +254,16 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
     ? (typeof d.trainingSalary === 'number' ? `INR ${d.trainingSalary.toLocaleString('en-IN')}` : d.trainingSalary)
     : 'INR 20,000';
   const withTraining = d.includeTraining !== false;
+
+  const varPayNum = d.variablePay ? Number(String(d.variablePay).replace(/[^0-9.]/g, '')) : 0;
+  let variablePayClause = '';
+  if (varPayNum > 0) {
+    const rawVarWords = numberToWordsINR(varPayNum);
+    const varWords = rawVarWords
+      ? (rawVarWords.startsWith('Rupees') ? rawVarWords : 'Rupees ' + rawVarWords.replace(/\s*Rupees Only$/i, ' Only'))
+      : '';
+    variablePayClause = `, and an annual variable pay of <strong>INR ${formatINR(varPayNum)}/- (${varWords})</strong>`;
+  }
   switch (pageNum) {
     case 1:
       return `
@@ -294,7 +305,7 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
 
           <div class="section-title-box">ANNUAL COMPENSATION</div>
           <p class="clause-item-letter text-justify">
-            ${withTraining ? `<strong>a.</strong> Initially, your pay will be ${trainingPay} salary during training period (Training period varies from 3 months to 6 months depending on your performance). After the training you will be sent to the Client location/Project will assigned and Your annual compensation including benefits and perquisites, if any, payable by the Organization Will be increased to <strong>INR ${formatINR(b.annualCtc)}/- (${ctcWords})</strong>.` : `<strong>a.</strong> Your annual compensation including benefits and perquisites, if any, payable by the Organization will be <strong>INR ${formatINR(b.annualCtc)}/- (${ctcWords})</strong>.`}
+            ${withTraining ? `<strong>a.</strong> Initially, your pay will be ${trainingPay} salary during training period (Training period varies from 3 months to 6 months depending on your performance). After the training you will be sent to the Client location/Project will assigned and Your annual compensation including benefits and perquisites, if any, payable by the Organization Will be increased to <strong>INR ${formatINR(b.annualCtc)}/- (${ctcWords})</strong>${variablePayClause}.` : `<strong>a.</strong> Your annual compensation including benefits and perquisites, if any, payable by the Organization will be <strong>INR ${formatINR(b.annualCtc)}/- (${ctcWords})</strong>${variablePayClause}.`}
           </p>
           <p class="clause-item-letter text-justify">
             <strong>b.</strong> Besides this, you will be eligible for Gratuity and leave encashment as per and subject to the conditions specified in payment of Gratuity Act, 1972 and other applicable acts.
