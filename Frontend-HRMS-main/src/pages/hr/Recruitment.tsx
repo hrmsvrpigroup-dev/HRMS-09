@@ -1999,48 +1999,55 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   };
 
   // Salary & Deductions Calculator according to VR PI Offer Template & Percentage Rules
-  const calculateSalaryBreakdown = (annualCtcNum: number) => {
+  const calculateSalaryBreakdown = (annualCtcNum: number, variablePayAmount?: number | boolean) => {
     const annualCtc = cleanYearly(Number(annualCtcNum) || 0);
+    const hasVarPay = typeof variablePayAmount === 'boolean'
+      ? variablePayAmount
+      : (variablePayAmount !== undefined ? (Number(variablePayAmount) > 0) : true);
+
+    const scale = hasVarPay ? 0.90 : 1.00;
+    const variablePayYearly = hasVarPay
+      ? (typeof variablePayAmount === 'number' && variablePayAmount > 0 ? cleanYearly(variablePayAmount) : cleanYearly(annualCtc * 0.10))
+      : 0;
+    const variablePayMonthly = round2(variablePayYearly / 12);
     const monthlyGross = round2(annualCtc / 12);
 
-    // Percentages:
-    // Basic (50%)
-    const basicYearly = cleanYearly(annualCtc * 0.50);
+    // Proportional scaling preserving exact ratios (50 : 18 : 10 : 12 : 10)
+    // When Variable Pay is ON (10%): Basic 45%, HRA 16.2%, LTA 9%, EPF 10.8%, Insurance 9%, VarPay 10% = 100%
+    // When Variable Pay is OFF (0%): Basic 50%, HRA 18%, LTA 10%, EPF 12%, Insurance 10% = 100%
+    const basicYearly = cleanYearly(annualCtc * 0.50 * scale);
     const basicMonthly = round2(basicYearly / 12);
 
-    // House Rent Allowance (HRA) (18%)
-    const hraYearly = cleanYearly(annualCtc * 0.18);
+    const hraYearly = cleanYearly(annualCtc * 0.18 * scale);
     const hraMonthly = round2(hraYearly / 12);
 
-    // Leave Travel Allowance (LTA) (10%)
-    const ltaYearly = cleanYearly(annualCtc * 0.10);
+    const ltaYearly = cleanYearly(annualCtc * 0.10 * scale);
     const ltaMonthly = round2(ltaYearly / 12);
 
-    // Employee PF (12%)
-    const employeePfYearly = cleanYearly(annualCtc * 0.12);
+    const employeePfYearly = cleanYearly(annualCtc * 0.12 * scale);
     const employeePfMonthly = round2(employeePfYearly / 12);
 
-    // Insurance (10%)
-    const insuranceYearly = cleanYearly(annualCtc * 0.10);
+    const insuranceYearly = cleanYearly(annualCtc * 0.10 * scale);
     const insuranceMonthly = round2(insuranceYearly / 12);
 
     // Deductions:
     const ptMonthly = 200;
     const ptYearly = 2400;
 
-    // EPF - Exact above EPF
     const epfYearly = employeePfYearly;
     const epfMonthly = employeePfMonthly;
 
-    // Insurance (10%)
-    const deductInsuranceYearly = cleanYearly(annualCtc * 0.10);
-    const deductInsuranceMonthly = round2(monthlyGross * 0.10);
+    const deductInsuranceYearly = insuranceYearly;
+    const deductInsuranceMonthly = insuranceMonthly;
+
+    const deductVariablePayYearly = variablePayYearly;
+    const deductVariablePayMonthly = variablePayMonthly;
 
     const otherDeductMonthly = 200;
     const otherDeductYearly = 2400;
 
-    const totalDeductYearly = cleanYearly(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly);
-    const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly);
+    const totalDeductYearly = cleanYearly(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly + deductVariablePayYearly);
+    const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly + deductVariablePayMonthly);
 
     const netYearly = cleanYearly(Math.max(0, annualCtc - totalDeductYearly));
     const netMonthly = round2(Math.max(0, monthlyGross - totalDeductMonthly));
@@ -2058,6 +2065,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       employeePfMonthly,
       insuranceYearly,
       insuranceMonthly,
+      variablePayYearly,
+      variablePayMonthly,
+      deductVariablePayMonthly,
+      deductVariablePayYearly,
       otherAllowYearly: insuranceYearly,
       otherAllowMonthly: insuranceMonthly,
       ptMonthly,
@@ -2068,10 +2079,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       deductEmployeePfYearly: epfYearly,
       epfMonthly,
       epfYearly,
-      deductInsuranceMonthly,
-      deductInsuranceYearly,
       pfMonthly: epfMonthly,
       pfYearly: epfYearly,
+      deductInsuranceMonthly,
+      deductInsuranceYearly,
       otherDeductMonthly,
       otherDeductYearly,
       totalDeductMonthly,
@@ -2095,6 +2106,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     venue?: string;
     includeTraining?: boolean;
     trainingSalary?: string;
+    includeVariablePay?: boolean;
     variablePay?: string;
     withGross?: boolean;
     customBreakdown?: any;
@@ -2279,77 +2291,200 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     });
   };
 
+  const handleToggleCandidateVariablePay = (candId: string, candEmail: string | undefined, enableVarPay: boolean) => {
+    const emailKey = candEmail ? candEmail.trim().toLowerCase() : undefined;
+    setCandidateOfferForms(prev => {
+      const existing = prev[candId] || (emailKey ? prev[emailKey] : undefined) || {};
+      const annualCtcNum = Number(existing.annualCtc) || (offerForm.salary ? Number(offerForm.salary) : 540000);
+      const grossYearly = cleanYearly(annualCtcNum);
+      const grossMonthly = round2(grossYearly / 12);
+      const withGrossMode = existing.withGross !== false;
+
+      const scale = enableVarPay ? 0.90 : 1.00;
+      const variablePayYearly = enableVarPay ? cleanYearly(grossYearly * 0.10) : 0;
+      const variablePayMonthly = round2(variablePayYearly / 12);
+
+      const basicYearly = cleanYearly(grossYearly * 0.50 * scale);
+      const basicMonthly = round2(basicYearly / 12);
+
+      const hraYearly = cleanYearly(grossYearly * 0.18 * scale);
+      const hraMonthly = round2(hraYearly / 12);
+
+      const ltaYearly = cleanYearly(grossYearly * 0.10 * scale);
+      const ltaMonthly = round2(ltaYearly / 12);
+
+      const employerPfYearly = cleanYearly(grossYearly * 0.12 * scale);
+      const employerPfMonthly = round2(employerPfYearly / 12);
+
+      const insuranceYearly = cleanYearly(grossYearly * 0.10 * scale);
+      const insuranceMonthly = round2(insuranceYearly / 12);
+
+      const ptMonthly = 200;
+      const ptYearly = 2400;
+      const epfYearly = employerPfYearly;
+      const epfMonthly = employerPfMonthly;
+
+      const deductInsuranceYearly = insuranceYearly;
+      const deductInsuranceMonthly = insuranceMonthly;
+
+      const deductVariablePayYearly = variablePayYearly;
+      const deductVariablePayMonthly = variablePayMonthly;
+
+      const otherDeductMonthly = 200;
+      const otherDeductYearly = 2400;
+
+      const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly + deductVariablePayMonthly);
+      const totalDeductYearly = cleanYearly(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly + deductVariablePayYearly);
+
+      const netBaseMonthly = grossMonthly;
+      const netBaseYearly = grossYearly;
+      const netMonthly = round2(Math.max(0, netBaseMonthly - totalDeductMonthly));
+      const netYearly = cleanYearly(Math.max(0, netBaseYearly - totalDeductYearly));
+
+      const newBreakdown = {
+        monthlyGross: grossMonthly,
+        annualCtc: grossYearly,
+        basicMonthly,
+        basicYearly,
+        hraMonthly,
+        hraYearly,
+        ltaMonthly,
+        ltaYearly,
+        employeePfMonthly: employerPfMonthly,
+        employeePfYearly: employerPfYearly,
+        insuranceMonthly,
+        insuranceYearly,
+        variablePayMonthly,
+        variablePayYearly,
+        deductVariablePayMonthly,
+        deductVariablePayYearly,
+        ptMonthly,
+        ptYearly,
+        employerPfMonthly: 0,
+        employerPfYearly: 0,
+        deductEmployeePfMonthly: epfMonthly,
+        deductEmployeePfYearly: epfYearly,
+        epfMonthly,
+        epfYearly,
+        pfMonthly: epfMonthly,
+        pfYearly: epfYearly,
+        deductInsuranceMonthly,
+        deductInsuranceYearly,
+        otherDeductMonthly,
+        otherDeductYearly,
+        totalDeductMonthly,
+        totalDeductYearly,
+        netMonthly,
+        netYearly
+      };
+
+      const updatedForm = {
+        ...existing,
+        includeVariablePay: enableVarPay,
+        variablePay: String(variablePayYearly),
+        annualCtc: String(grossYearly),
+        withGross: withGrossMode,
+        customBreakdown: newBreakdown
+      };
+
+      return {
+        ...prev,
+        [candId]: updatedForm,
+        ...(emailKey ? { [emailKey]: updatedForm } : {})
+      };
+    });
+  };
+
   const handleAutoCalculateCandidateBreakdown = (candId: string, candEmail: string | undefined, baseGrossMonthly: number, withGrossMode?: boolean) => {
     const emailKey = candEmail ? candEmail.trim().toLowerCase() : undefined;
     const grossMonthly = round2(baseGrossMonthly);
     const grossYearly = cleanYearly(grossMonthly * 12);
-    const basicYearly = cleanYearly(grossYearly * 0.50);
-    const basicMonthly = round2(basicYearly / 12);
-    const hraYearly = cleanYearly(grossYearly * 0.18);
-    const hraMonthly = round2(hraYearly / 12);
-    const ltaYearly = cleanYearly(grossYearly * 0.10);
-    const ltaMonthly = round2(ltaYearly / 12);
-    const employerPfYearly = cleanYearly(grossYearly * 0.12);
-    const employerPfMonthly = round2(employerPfYearly / 12);
-    const insuranceYearly = cleanYearly(grossYearly * 0.10);
-    const insuranceMonthly = round2(insuranceYearly / 12);
-
-    const ptMonthly = 200;
-    const ptYearly = 2400;
-    // EPF - Exact above EPF
-    const epfYearly = employerPfYearly;
-    const epfMonthly = employerPfMonthly;
-    const deductInsuranceYearly = cleanYearly(grossYearly * 0.10);
-    const deductInsuranceMonthly = round2(deductInsuranceYearly / 12);
-    const otherDeductMonthly = 200;
-    const otherDeductYearly = 2400;
-
-    const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly);
-    const totalDeductYearly = cleanYearly(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly);
-    const isWithGross = withGrossMode === true;
-    const netBaseMonthly = isWithGross ? grossMonthly : basicMonthly;
-    const netBaseYearly = isWithGross ? grossYearly : basicYearly;
-    const netMonthly = round2(Math.max(0, netBaseMonthly - totalDeductMonthly));
-    const netYearly = cleanYearly(Math.max(0, netBaseYearly - totalDeductYearly));
-
-    const newBreakdown = {
-      monthlyGross: grossMonthly,
-      annualCtc: grossYearly,
-      basicMonthly,
-      basicYearly,
-      hraMonthly,
-      hraYearly,
-      ltaMonthly,
-      ltaYearly,
-      employeePfMonthly: employerPfMonthly,
-      employeePfYearly: employerPfYearly,
-      insuranceMonthly,
-      insuranceYearly,
-      ptMonthly,
-      ptYearly,
-      employerPfMonthly: 0,
-      employerPfYearly: 0,
-      deductEmployeePfMonthly: epfMonthly,
-      deductEmployeePfYearly: epfYearly,
-      epfMonthly,
-      epfYearly,
-      pfMonthly: epfMonthly,
-      pfYearly: epfYearly,
-      deductInsuranceMonthly,
-      deductInsuranceYearly,
-      otherDeductMonthly,
-      otherDeductYearly,
-      totalDeductMonthly,
-      totalDeductYearly,
-      netMonthly,
-      netYearly
-    };
 
     setCandidateOfferForms(prev => {
       const existing = prev[candId] || (emailKey ? prev[emailKey] : undefined) || {};
+      const enableVarPay = existing.includeVariablePay !== false;
+      const scale = enableVarPay ? 0.90 : 1.00;
+      const variablePayYearly = enableVarPay ? cleanYearly(grossYearly * 0.10) : 0;
+      const variablePayMonthly = round2(variablePayYearly / 12);
+
+      const basicYearly = cleanYearly(grossYearly * 0.50 * scale);
+      const basicMonthly = round2(basicYearly / 12);
+
+      const hraYearly = cleanYearly(grossYearly * 0.18 * scale);
+      const hraMonthly = round2(hraYearly / 12);
+
+      const ltaYearly = cleanYearly(grossYearly * 0.10 * scale);
+      const ltaMonthly = round2(ltaYearly / 12);
+
+      const employerPfYearly = cleanYearly(grossYearly * 0.12 * scale);
+      const employerPfMonthly = round2(employerPfYearly / 12);
+
+      const insuranceYearly = cleanYearly(grossYearly * 0.10 * scale);
+      const insuranceMonthly = round2(insuranceYearly / 12);
+
+      const ptMonthly = 200;
+      const ptYearly = 2400;
+      const epfYearly = employerPfYearly;
+      const epfMonthly = employerPfMonthly;
+
+      const deductInsuranceYearly = insuranceYearly;
+      const deductInsuranceMonthly = insuranceMonthly;
+
+      const deductVariablePayYearly = variablePayYearly;
+      const deductVariablePayMonthly = variablePayMonthly;
+
+      const otherDeductMonthly = 200;
+      const otherDeductYearly = 2400;
+
+      const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly + deductVariablePayMonthly);
+      const totalDeductYearly = cleanYearly(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly + deductVariablePayYearly);
+
+      const netBaseMonthly = grossMonthly;
+      const netBaseYearly = grossYearly;
+      const netMonthly = round2(Math.max(0, netBaseMonthly - totalDeductMonthly));
+      const netYearly = cleanYearly(Math.max(0, netBaseYearly - totalDeductYearly));
+
+      const newBreakdown = {
+        monthlyGross: grossMonthly,
+        annualCtc: grossYearly,
+        basicMonthly,
+        basicYearly,
+        hraMonthly,
+        hraYearly,
+        ltaMonthly,
+        ltaYearly,
+        employeePfMonthly: employerPfMonthly,
+        employeePfYearly: employerPfYearly,
+        insuranceMonthly,
+        insuranceYearly,
+        variablePayMonthly,
+        variablePayYearly,
+        deductVariablePayMonthly,
+        deductVariablePayYearly,
+        ptMonthly,
+        ptYearly,
+        employerPfMonthly: 0,
+        employerPfYearly: 0,
+        deductEmployeePfMonthly: epfMonthly,
+        deductEmployeePfYearly: epfYearly,
+        epfMonthly,
+        epfYearly,
+        pfMonthly: epfMonthly,
+        pfYearly: epfYearly,
+        deductInsuranceMonthly,
+        deductInsuranceYearly,
+        otherDeductMonthly,
+        otherDeductYearly,
+        totalDeductMonthly,
+        totalDeductYearly,
+        netMonthly,
+        netYearly
+      };
+
       const updatedForm = {
         ...existing,
         annualCtc: String(grossYearly),
+        variablePay: String(variablePayYearly),
         withGross: withGrossMode !== undefined ? withGrossMode : (existing.withGross === true),
         customBreakdown: newBreakdown
       };
@@ -2365,73 +2500,92 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     const emailKey = candEmail ? candEmail.trim().toLowerCase() : undefined;
     const grossYearly = cleanYearly(annualCtcNum);
     const grossMonthly = round2(grossYearly / 12);
-    const basicYearly = cleanYearly(grossYearly * 0.50);
-    const basicMonthly = round2(basicYearly / 12);
-    const hraYearly = cleanYearly(grossYearly * 0.18);
-    const hraMonthly = round2(hraYearly / 12);
-    const ltaYearly = cleanYearly(grossYearly * 0.10);
-    const ltaMonthly = round2(ltaYearly / 12);
-    const employerPfYearly = cleanYearly(grossYearly * 0.12);
-    const employerPfMonthly = round2(employerPfYearly / 12);
-    const insuranceYearly = cleanYearly(grossYearly * 0.10);
-    const insuranceMonthly = round2(insuranceYearly / 12);
-
-    const ptMonthly = 200;
-    const ptYearly = 2400;
-    // EPF - Exact above EPF
-    const epfYearly = employerPfYearly;
-    const epfMonthly = employerPfMonthly;
-    const deductInsuranceYearly = cleanYearly(grossYearly * 0.10);
-    const deductInsuranceMonthly = round2(deductInsuranceYearly / 12);
-    const otherDeductMonthly = 200;
-    const otherDeductYearly = 2400;
-
-    const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly);
-    const totalDeductYearly = cleanYearly(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly);
-    const isWithGross = withGrossMode === true;
-    const netBaseMonthly = isWithGross ? grossMonthly : basicMonthly;
-    const netBaseYearly = isWithGross ? grossYearly : basicYearly;
-    const netMonthly = round2(Math.max(0, netBaseMonthly - totalDeductMonthly));
-    const netYearly = cleanYearly(Math.max(0, netBaseYearly - totalDeductYearly));
-
-    const newBreakdown = {
-      monthlyGross: grossMonthly,
-      annualCtc: grossYearly,
-      basicMonthly,
-      basicYearly,
-      hraMonthly,
-      hraYearly,
-      ltaMonthly,
-      ltaYearly,
-      employeePfMonthly: employerPfMonthly,
-      employeePfYearly: employerPfYearly,
-      insuranceMonthly,
-      insuranceYearly,
-      ptMonthly,
-      ptYearly,
-      employerPfMonthly: 0,
-      employerPfYearly: 0,
-      deductEmployeePfMonthly: epfMonthly,
-      deductEmployeePfYearly: epfYearly,
-      epfMonthly,
-      epfYearly,
-      pfMonthly: epfMonthly,
-      pfYearly: epfYearly,
-      deductInsuranceMonthly,
-      deductInsuranceYearly,
-      otherDeductMonthly,
-      otherDeductYearly,
-      totalDeductMonthly,
-      totalDeductYearly,
-      netMonthly,
-      netYearly
-    };
 
     setCandidateOfferForms(prev => {
       const existing = prev[candId] || (emailKey ? prev[emailKey] : undefined) || {};
+      const enableVarPay = existing.includeVariablePay !== false;
+      const scale = enableVarPay ? 0.90 : 1.00;
+      const variablePayYearly = enableVarPay ? cleanYearly(grossYearly * 0.10) : 0;
+      const variablePayMonthly = round2(variablePayYearly / 12);
+
+      const basicYearly = cleanYearly(grossYearly * 0.50 * scale);
+      const basicMonthly = round2(basicYearly / 12);
+
+      const hraYearly = cleanYearly(grossYearly * 0.18 * scale);
+      const hraMonthly = round2(hraYearly / 12);
+
+      const ltaYearly = cleanYearly(grossYearly * 0.10 * scale);
+      const ltaMonthly = round2(ltaYearly / 12);
+
+      const employerPfYearly = cleanYearly(grossYearly * 0.12 * scale);
+      const employerPfMonthly = round2(employerPfYearly / 12);
+
+      const insuranceYearly = cleanYearly(grossYearly * 0.10 * scale);
+      const insuranceMonthly = round2(insuranceYearly / 12);
+
+      const ptMonthly = 200;
+      const ptYearly = 2400;
+      const epfYearly = employerPfYearly;
+      const epfMonthly = employerPfMonthly;
+
+      const deductInsuranceYearly = insuranceYearly;
+      const deductInsuranceMonthly = insuranceMonthly;
+
+      const deductVariablePayYearly = variablePayYearly;
+      const deductVariablePayMonthly = variablePayMonthly;
+
+      const otherDeductMonthly = 200;
+      const otherDeductYearly = 2400;
+
+      const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly + deductVariablePayMonthly);
+      const totalDeductYearly = cleanYearly(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly + deductVariablePayYearly);
+
+      const netBaseMonthly = grossMonthly;
+      const netBaseYearly = grossYearly;
+      const netMonthly = round2(Math.max(0, netBaseMonthly - totalDeductMonthly));
+      const netYearly = cleanYearly(Math.max(0, netBaseYearly - totalDeductYearly));
+
+      const newBreakdown = {
+        monthlyGross: grossMonthly,
+        annualCtc: grossYearly,
+        basicMonthly,
+        basicYearly,
+        hraMonthly,
+        hraYearly,
+        ltaMonthly,
+        ltaYearly,
+        employeePfMonthly: employerPfMonthly,
+        employeePfYearly: employerPfYearly,
+        insuranceMonthly,
+        insuranceYearly,
+        variablePayMonthly,
+        variablePayYearly,
+        deductVariablePayMonthly,
+        deductVariablePayYearly,
+        ptMonthly,
+        ptYearly,
+        employerPfMonthly: 0,
+        employerPfYearly: 0,
+        deductEmployeePfMonthly: epfMonthly,
+        deductEmployeePfYearly: epfYearly,
+        epfMonthly,
+        epfYearly,
+        pfMonthly: epfMonthly,
+        pfYearly: epfYearly,
+        deductInsuranceMonthly,
+        deductInsuranceYearly,
+        otherDeductMonthly,
+        otherDeductYearly,
+        totalDeductMonthly,
+        totalDeductYearly,
+        netMonthly,
+        netYearly
+      };
+
       const updatedForm = {
         ...existing,
         annualCtc: String(grossYearly),
+        variablePay: String(variablePayYearly),
         withGross: withGrossMode !== undefined ? withGrossMode : (existing.withGross === true),
         customBreakdown: newBreakdown
       };
@@ -9974,9 +10128,12 @@ return (
                       const defaultCtc = c.offerSalary ? (c.offerSalary > 100000 ? c.offerSalary : c.offerSalary * 12) : 720000;
                       const annualCtcStr = candForm.annualCtc !== undefined ? candForm.annualCtc : String(defaultCtc);
                       const joiningDate = candForm.joiningDate !== undefined ? candForm.joiningDate : (c.offerJoiningDate || offerForm.joiningDate || format(new Date(Date.now() + 7 * 86400000), 'yyyy-MM-dd'));
-                      const variablePay = candForm.variablePay !== undefined ? candForm.variablePay : (c.variablePay !== undefined ? String(c.variablePay) : '');
                       const annualCtcNum = Number(annualCtcStr) || 0;
-                      const breakdown = calculateSalaryBreakdown(annualCtcNum);
+                      const hasVarPay = candForm.includeVariablePay !== false && (candForm.includeVariablePay === true || candForm.variablePay === undefined || Number(candForm.variablePay) > 0);
+                      const defaultVarPay = hasVarPay ? cleanYearly(annualCtcNum * 0.10) : 0;
+                      const variablePay = String(defaultVarPay);
+                      const varPayNum = defaultVarPay;
+                      const breakdown = calculateSalaryBreakdown(annualCtcNum, hasVarPay);
 
                       const cleanJobTitle = (c.jobTitle || '')
                         .replace(/\s*\([^)]*Google\s*Form[^)]*\)/gi, '')
@@ -10009,23 +10166,28 @@ return (
                       const withGross = candForm.withGross === true;
                       const custom = candForm.customBreakdown;
 
-                      const bGrossMonthly = custom?.monthlyGross !== undefined ? round2(custom.monthlyGross) : breakdown.monthlyGross;
-                      const bGrossYearly = custom?.annualCtc !== undefined ? cleanYearly(custom.annualCtc) : cleanYearly(breakdown.annualCtc);
+                      const isCustomMatch = custom?.annualCtc === annualCtcNum && (custom?.variablePayYearly !== undefined ? ((custom.variablePayYearly > 0) === hasVarPay) : true);
 
-                      const bBasicMonthly = custom?.basicMonthly !== undefined ? round2(custom.basicMonthly) : breakdown.basicMonthly;
-                      const bBasicYearly = custom?.basicYearly !== undefined ? cleanYearly(custom.basicYearly) : cleanYearly(breakdown.basicYearly);
+                      const bGrossMonthly = isCustomMatch && custom?.monthlyGross !== undefined ? round2(custom.monthlyGross) : breakdown.monthlyGross;
+                      const bGrossYearly = isCustomMatch && custom?.annualCtc !== undefined ? cleanYearly(custom.annualCtc) : cleanYearly(breakdown.annualCtc);
 
-                      const bHraMonthly = custom?.hraMonthly !== undefined ? round2(custom.hraMonthly) : breakdown.hraMonthly;
-                      const bHraYearly = custom?.hraYearly !== undefined ? cleanYearly(custom.hraYearly) : cleanYearly(breakdown.hraYearly);
+                      const bBasicMonthly = isCustomMatch && custom?.basicMonthly !== undefined ? round2(custom.basicMonthly) : breakdown.basicMonthly;
+                      const bBasicYearly = isCustomMatch && custom?.basicYearly !== undefined ? cleanYearly(custom.basicYearly) : breakdown.basicYearly;
 
-                      const bLtaMonthly = custom?.ltaMonthly !== undefined ? round2(custom.ltaMonthly) : breakdown.ltaMonthly;
-                      const bLtaYearly = custom?.ltaYearly !== undefined ? cleanYearly(custom.ltaYearly) : cleanYearly(breakdown.ltaYearly);
+                      const bHraMonthly = isCustomMatch && custom?.hraMonthly !== undefined ? round2(custom.hraMonthly) : breakdown.hraMonthly;
+                      const bHraYearly = isCustomMatch && custom?.hraYearly !== undefined ? cleanYearly(custom.hraYearly) : breakdown.hraYearly;
 
-                      const bEmployerPfMonthly = custom?.employeePfMonthly !== undefined ? round2(custom.employeePfMonthly) : breakdown.employeePfMonthly;
-                      const bEmployerPfYearly = custom?.employeePfYearly !== undefined ? cleanYearly(custom.employeePfYearly) : cleanYearly(breakdown.employeePfYearly);
+                      const bLtaMonthly = isCustomMatch && custom?.ltaMonthly !== undefined ? round2(custom.ltaMonthly) : breakdown.ltaMonthly;
+                      const bLtaYearly = isCustomMatch && custom?.ltaYearly !== undefined ? cleanYearly(custom.ltaYearly) : breakdown.ltaYearly;
 
-                      const bInsuranceMonthly = custom?.insuranceMonthly !== undefined ? round2(custom.insuranceMonthly) : breakdown.insuranceMonthly;
-                      const bInsuranceYearly = custom?.insuranceYearly !== undefined ? cleanYearly(custom.insuranceYearly) : cleanYearly(breakdown.insuranceYearly);
+                      const bEmployerPfMonthly = isCustomMatch && custom?.employeePfMonthly !== undefined ? round2(custom.employeePfMonthly) : breakdown.employeePfMonthly;
+                      const bEmployerPfYearly = isCustomMatch && custom?.employeePfYearly !== undefined ? cleanYearly(custom.employeePfYearly) : cleanYearly(breakdown.employeePfYearly);
+
+                      const bInsuranceMonthly = isCustomMatch && custom?.insuranceMonthly !== undefined ? round2(custom.insuranceMonthly) : breakdown.insuranceMonthly;
+                      const bInsuranceYearly = isCustomMatch && custom?.insuranceYearly !== undefined ? cleanYearly(custom.insuranceYearly) : cleanYearly(breakdown.insuranceYearly);
+
+                      const bVariablePayMonthly = hasVarPay ? (isCustomMatch && custom?.variablePayMonthly !== undefined ? round2(custom.variablePayMonthly) : breakdown.variablePayMonthly) : 0;
+                      const bVariablePayYearly = hasVarPay ? (isCustomMatch && custom?.variablePayYearly !== undefined ? cleanYearly(custom.variablePayYearly) : breakdown.variablePayYearly) : 0;
 
                       const bCtcMonthly = bGrossMonthly;
                       const bCtcYearly = bGrossYearly;
@@ -10045,16 +10207,19 @@ return (
                           : bEmployerPfYearly);
 
                       const bDedInsuranceMonthly = custom?.deductInsuranceMonthly !== undefined ? round2(custom.deductInsuranceMonthly) : breakdown.deductInsuranceMonthly;
-                      const bDedInsuranceYearly = custom?.deductInsuranceYearly !== undefined ? cleanYearly(custom.deductInsuranceYearly) : cleanYearly(breakdown.deductInsuranceYearly);
+                      const bDedInsuranceYearly = isCustomMatch && custom?.deductInsuranceYearly !== undefined ? cleanYearly(custom.deductInsuranceYearly) : cleanYearly(breakdown.deductInsuranceYearly);
 
-                      const bOtherDedMonthly = custom?.otherDeductMonthly !== undefined ? round2(custom.otherDeductMonthly) : breakdown.otherDeductMonthly;
-                      const bOtherDedYearly = custom?.otherDeductYearly !== undefined ? cleanYearly(custom.otherDeductYearly) : cleanYearly(breakdown.otherDeductYearly);
+                      const bDedVariablePayMonthly = hasVarPay ? (isCustomMatch && custom?.deductVariablePayMonthly !== undefined ? round2(custom.deductVariablePayMonthly) : breakdown.deductVariablePayMonthly) : 0;
+                      const bDedVariablePayYearly = hasVarPay ? (isCustomMatch && custom?.deductVariablePayYearly !== undefined ? cleanYearly(custom.deductVariablePayYearly) : breakdown.deductVariablePayYearly) : 0;
 
-                      const bTotalDeductMonthly = round2(bPtMonthly + bEpfMonthly + bDedInsuranceMonthly + bOtherDedMonthly);
-                      const bTotalDeductYearly = cleanYearly(bPtYearly + bEpfYearly + bDedInsuranceYearly + bOtherDedYearly);
+                      const bOtherDedMonthly = isCustomMatch && custom?.otherDeductMonthly !== undefined ? round2(custom.otherDeductMonthly) : breakdown.otherDeductMonthly;
+                      const bOtherDedYearly = isCustomMatch && custom?.otherDeductYearly !== undefined ? cleanYearly(custom.otherDeductYearly) : cleanYearly(breakdown.otherDeductYearly);
 
-                      const baseForNetMonthly = withGross ? bGrossMonthly : bBasicMonthly;
-                      const baseForNetYearly = withGross ? bGrossYearly : bBasicYearly;
+                      const bTotalDeductMonthly = round2(bPtMonthly + bEpfMonthly + bDedInsuranceMonthly + bDedVariablePayMonthly + bOtherDedMonthly);
+                      const bTotalDeductYearly = cleanYearly(bPtYearly + bEpfYearly + bDedInsuranceYearly + bDedVariablePayYearly + bOtherDedYearly);
+
+                      const baseForNetMonthly = bGrossMonthly;
+                      const baseForNetYearly = bGrossYearly;
 
                       const bNetMonthly = round2(Math.max(0, baseForNetMonthly - bTotalDeductMonthly));
                       const bNetYearly = cleanYearly(Math.max(0, baseForNetYearly - bTotalDeductYearly));
@@ -10086,6 +10251,10 @@ return (
                         pfYearly: bEpfYearly,
                         deductInsuranceMonthly: bDedInsuranceMonthly,
                         deductInsuranceYearly: bDedInsuranceYearly,
+                        variablePayMonthly: bVariablePayMonthly,
+                        variablePayYearly: bVariablePayYearly,
+                        deductVariablePayMonthly: bDedVariablePayMonthly,
+                        deductVariablePayYearly: bDedVariablePayYearly,
                         otherDeductMonthly: bOtherDedMonthly,
                         otherDeductYearly: bOtherDedYearly,
                         totalDeductMonthly: bTotalDeductMonthly,
@@ -10201,37 +10370,17 @@ return (
                             </div>
                           </div>
 
-                          {/* Inputs Row 4: Joining Date & Variable Pay */}
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                            <div className="auth-luxury-label">
-                              Joining Date *
-                              <input
-                                type="date"
-                                disabled={isLocked}
-                                className="rec-search-input"
-                                style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', background: isLocked ? '#f8fafc' : '#ffffff' }}
-                                value={joiningDate}
-                                onChange={e => handleUpdateCandidateOfferForm(c.id, c.email, { joiningDate: e.target.value })}
-                              />
-                            </div>
-
-                            <div className="auth-luxury-label">
-                              Variable Pay
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                pattern="[0-9]*"
-                                disabled={isLocked}
-                                className="rec-search-input"
-                                style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', background: isLocked ? '#f8fafc' : '#ffffff' }}
-                                value={variablePay}
-                                onChange={e => {
-                                  const val = e.target.value.replace(/\D/g, '');
-                                  handleUpdateCandidateOfferForm(c.id, c.email, { variablePay: val });
-                                }}
-                                placeholder="e.g. 50000"
-                              />
-                            </div>
+                          {/* Inputs Row 4: Joining Date */}
+                          <div className="auth-luxury-label">
+                            Joining Date *
+                            <input
+                              type="date"
+                              disabled={isLocked}
+                              className="rec-search-input"
+                              style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', background: isLocked ? '#f8fafc' : '#ffffff' }}
+                              value={joiningDate}
+                              onChange={e => handleUpdateCandidateOfferForm(c.id, c.email, { joiningDate: e.target.value })}
+                            />
                           </div>
 
                           {/* Inputs Row 5: Training Option Selection */}
@@ -10704,6 +10853,44 @@ return (
                                   </td>
                                 </tr>
 
+                                {hasVarPay && (
+                                  <tr>
+                                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Variable Pay</td>
+                                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                      {isEditingBreakdown ? (
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          value={bVariablePayMonthly}
+                                          onChange={(e) => {
+                                            const val = Number(e.target.value) || 0;
+                                            handleUpdateCandidateBreakdown(c.id, c.email, { variablePayMonthly: val, variablePayYearly: cleanYearly(val * 12) });
+                                          }}
+                                          style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
+                                        />
+                                      ) : (
+                                        formatINR(bVariablePayMonthly)
+                                      )}
+                                    </td>
+                                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                      {isEditingBreakdown ? (
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          value={bVariablePayYearly}
+                                          onChange={(e) => {
+                                            const val = Number(e.target.value) || 0;
+                                            handleUpdateCandidateBreakdown(c.id, c.email, { variablePayYearly: val, variablePayMonthly: round2(val / 12) });
+                                          }}
+                                          style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
+                                        />
+                                      ) : (
+                                        formatINR(bVariablePayYearly)
+                                      )}
+                                    </td>
+                                  </tr>
+                                )}
+
                                 {/* Total Amount (CTC) */}
                                 <tr style={{ fontWeight: 'bold', background: !withGross ? '#f0fdf4' : 'transparent' }}>
                                   <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Total Amount (CTC)</td>
@@ -10967,6 +11154,106 @@ return (
                                     )}
                                   </td>
                                 </tr>
+
+                                {hasVarPay && (
+                                  <tr style={{ background: (bDedVariablePayMonthly === 0 && bDedVariablePayYearly === 0) ? '#fefce8' : 'transparent' }}>
+                                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span>
+                                          Variable Pay
+                                          {(bDedVariablePayMonthly === 0 && bDedVariablePayYearly === 0) && (
+                                            <span style={{ marginLeft: '6px', fontSize: '0.68rem', color: '#16a34a', fontWeight: 700 }}>
+                                              (+₹ added to Take-Home)
+                                            </span>
+                                          )}
+                                        </span>
+                                        {isEditingBreakdown && (
+                                          (bDedVariablePayMonthly > 0 || bDedVariablePayYearly > 0) ? (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { deductVariablePayMonthly: 0, deductVariablePayYearly: 0 });
+                                              }}
+                                              style={{
+                                                background: '#fee2e2',
+                                                border: '1px solid #fca5a5',
+                                                color: '#dc2626',
+                                                borderRadius: '3px',
+                                                padding: '1px 6px',
+                                                fontSize: '0.68rem',
+                                                fontWeight: 700,
+                                                cursor: 'pointer',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '3px'
+                                              }}
+                                              title="Delete Variable Pay deduction (adds money to Take-Home)"
+                                            >
+                                              🗑️ Delete
+                                            </button>
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const defaultYearly = cleanYearly(bCtcYearly * 0.10);
+                                                const defaultMonthly = round2(defaultYearly / 12);
+                                                handleUpdateCandidateBreakdown(c.id, c.email, { deductVariablePayMonthly: defaultMonthly, deductVariablePayYearly: defaultYearly });
+                                              }}
+                                              style={{
+                                                background: '#dcfce7',
+                                                border: '1px solid #86efac',
+                                                color: '#15803d',
+                                                borderRadius: '3px',
+                                                padding: '1px 6px',
+                                                fontSize: '0.68rem',
+                                                fontWeight: 700,
+                                                cursor: 'pointer',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '3px'
+                                              }}
+                                              title="Add 10% Variable Pay deduction"
+                                            >
+                                              + Add
+                                            </button>
+                                          )
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                      {isEditingBreakdown ? (
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          value={bDedVariablePayMonthly}
+                                          onChange={(e) => {
+                                            const val = Number(e.target.value) || 0;
+                                            handleUpdateCandidateBreakdown(c.id, c.email, { deductVariablePayMonthly: val, deductVariablePayYearly: cleanYearly(val * 12) });
+                                          }}
+                                          style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
+                                        />
+                                      ) : (
+                                        formatINR(bDedVariablePayMonthly)
+                                      )}
+                                    </td>
+                                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                      {isEditingBreakdown ? (
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          value={bDedVariablePayYearly}
+                                          onChange={(e) => {
+                                            const val = Number(e.target.value) || 0;
+                                            handleUpdateCandidateBreakdown(c.id, c.email, { deductVariablePayYearly: val, deductVariablePayMonthly: round2(val / 12) });
+                                          }}
+                                          style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
+                                        />
+                                      ) : (
+                                        formatINR(bDedVariablePayYearly)
+                                      )}
+                                    </td>
+                                  </tr>
+                                )}
 
                                 {/* Total Deductions */}
                                 <tr style={{ fontWeight: 'bold' }}>

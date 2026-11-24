@@ -40,6 +40,10 @@ export interface SalaryBreakdown {
   employeePfYearly: number;
   insuranceMonthly: number;
   insuranceYearly: number;
+  variablePayMonthly?: number;
+  variablePayYearly?: number;
+  deductVariablePayMonthly?: number;
+  deductVariablePayYearly?: number;
   ptMonthly: number;
   ptYearly: number;
   employerPfMonthly: number;
@@ -80,42 +84,52 @@ export const formatINR = (val?: number | string | null): string => {
   return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-export function calculateSalaryBreakdown(annualCtc: number): SalaryBreakdown {
+export function calculateSalaryBreakdown(annualCtc: number, variablePayAmount: number | boolean = true): SalaryBreakdown {
   const ctc = cleanYearly(Number(annualCtc) || 0);
+  const hasVarPay = typeof variablePayAmount === 'boolean'
+    ? variablePayAmount
+    : (variablePayAmount !== undefined ? (Number(variablePayAmount) > 0) : true);
+
+  const scale = hasVarPay ? 0.90 : 1.00;
+  const variablePayYearly = hasVarPay
+    ? (typeof variablePayAmount === 'number' && variablePayAmount > 0 ? cleanYearly(variablePayAmount) : cleanYearly(ctc * 0.10))
+    : 0;
+  const variablePayMonthly = round2(variablePayYearly / 12);
   const monthlyGross = round2(ctc / 12);
 
-  // Upper Box (Gross Salary Calculations)
-  // Basic - 50%
-  const basicYearly = cleanYearly(ctc * 0.50);
+  // Proportional scaling preserving exact ratios (50 : 18 : 10 : 12 : 10)
+  // When Variable Pay is ON (10%): Basic 45%, HRA 16.2%, LTA 9%, EPF 10.8%, Insurance 9%, VarPay 10% = 100%
+  // When Variable Pay is OFF (0%): Basic 50%, HRA 18%, LTA 10%, EPF 12%, Insurance 10% = 100%
+  const basicYearly = cleanYearly(ctc * 0.50 * scale);
   const basicMonthly = round2(basicYearly / 12);
-  // HRA - 18%
-  const hraYearly = cleanYearly(ctc * 0.18);
+
+  const hraYearly = cleanYearly(ctc * 0.18 * scale);
   const hraMonthly = round2(hraYearly / 12);
-  // LTA - 10%
-  const ltaYearly = cleanYearly(ctc * 0.10);
+
+  const ltaYearly = cleanYearly(ctc * 0.10 * scale);
   const ltaMonthly = round2(ltaYearly / 12);
-  // Employee PF - 12%
-  const employeePfYearly = cleanYearly(ctc * 0.12);
+
+  const employeePfYearly = cleanYearly(ctc * 0.12 * scale);
   const employeePfMonthly = round2(employeePfYearly / 12);
-  // Insurance - 10%
-  const insuranceYearly = cleanYearly(ctc * 0.10);
+
+  const insuranceYearly = cleanYearly(ctc * 0.10 * scale);
   const insuranceMonthly = round2(insuranceYearly / 12);
 
   // Deductions:
-  // PT - ₹200
   const ptMonthly = 200;
   const ptYearly = 2400;
-  // EPF - Exact above EPF
+
   const epfYearly = employeePfYearly;
   const epfMonthly = employeePfMonthly;
-  // Insurance - 10%
-  const deductInsuranceYearly = cleanYearly(ctc * 0.10);
-  const deductInsuranceMonthly = round2(monthlyGross * 0.10);
-  // Other deductions - ₹200
+
+  const deductInsuranceYearly = insuranceYearly;
+  const deductInsuranceMonthly = insuranceMonthly;
+
   const otherDeductMonthly = 200;
   const otherDeductYearly = 2400;
-  const totalDeductYearly = cleanYearly(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly);
-  const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly);
+
+  const totalDeductYearly = cleanYearly(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly + variablePayYearly);
+  const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly + variablePayMonthly);
 
   const netYearly = cleanYearly(Math.max(0, ctc - totalDeductYearly));
   const netMonthly = round2(Math.max(0, monthlyGross - totalDeductMonthly));
@@ -133,6 +147,10 @@ export function calculateSalaryBreakdown(annualCtc: number): SalaryBreakdown {
     employeePfYearly,
     insuranceMonthly,
     insuranceYearly,
+    variablePayMonthly,
+    variablePayYearly,
+    deductVariablePayMonthly: variablePayMonthly,
+    deductVariablePayYearly: variablePayYearly,
     ptMonthly,
     ptYearly,
     employerPfMonthly: 0,
@@ -173,7 +191,8 @@ export function numberToWordsINR(num: number): string {
 }
 
 export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): string {
-  const autoB = calculateSalaryBreakdown(d.annualCtc || 420000);
+  const varPayNum = d.variablePay ? Number(String(d.variablePay).replace(/[^0-9.]/g, '')) : 0;
+  const autoB = calculateSalaryBreakdown(d.annualCtc || 420000, varPayNum);
   const rawB = d.customBreakdown ? { ...autoB, ...d.customBreakdown } : { ...autoB };
 
   // Re-derive particulars from raw items
@@ -194,10 +213,10 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
   // Re-derive deductions dynamically so Total Deductions always equals the exact sum of rows
   const ptMonthly = rawB.ptMonthly !== undefined ? round2(rawB.ptMonthly) : 200;
   const ptYearly = cleanYearly(ptMonthly * 12);
-  const epfMonthly = rawB.epfMonthly !== undefined 
-    ? round2(rawB.epfMonthly) 
-    : (rawB.deductEmployeePfMonthly !== undefined 
-      ? round2(rawB.deductEmployeePfMonthly) 
+  const epfMonthly = rawB.epfMonthly !== undefined
+    ? round2(rawB.epfMonthly)
+    : (rawB.deductEmployeePfMonthly !== undefined
+      ? round2(rawB.deductEmployeePfMonthly)
       : employeePfMonthly);
   const epfYearly = rawB.epfYearly !== undefined ? cleanYearly(rawB.epfYearly) : employeePfYearly;
   const deductInsuranceMonthly = rawB.deductInsuranceMonthly !== undefined ? round2(rawB.deductInsuranceMonthly) : round2(monthlyGross * 0.10);
@@ -205,12 +224,18 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
   const otherDeductMonthly = rawB.otherDeductMonthly !== undefined ? round2(rawB.otherDeductMonthly) : 200;
   const otherDeductYearly = cleanYearly(otherDeductMonthly * 12);
 
-  const totalDeductYearly = cleanYearly(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly);
-  const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly);
+  const variablePayYearly = rawB.variablePayYearly !== undefined ? cleanYearly(rawB.variablePayYearly) : cleanYearly(varPayNum);
+  const variablePayMonthly = rawB.variablePayMonthly !== undefined ? round2(rawB.variablePayMonthly) : round2(variablePayYearly / 12);
+
+  const deductVariablePayYearly = rawB.deductVariablePayYearly !== undefined ? cleanYearly(rawB.deductVariablePayYearly) : variablePayYearly;
+  const deductVariablePayMonthly = rawB.deductVariablePayMonthly !== undefined ? round2(rawB.deductVariablePayMonthly) : variablePayMonthly;
 
   const isWithGross = d.withGross === true && !d.withoutGross;
-  const baseForNetMonthly = isWithGross ? monthlyGross : basicMonthly;
-  const baseForNetYearly = isWithGross ? annualCtc : basicYearly;
+  const totalDeductYearly = cleanYearly(ptYearly + epfYearly + deductInsuranceYearly + otherDeductYearly + deductVariablePayYearly);
+  const totalDeductMonthly = round2(ptMonthly + epfMonthly + deductInsuranceMonthly + otherDeductMonthly + deductVariablePayMonthly);
+
+  const baseForNetMonthly = monthlyGross;
+  const baseForNetYearly = annualCtc;
 
   const netYearly = cleanYearly(Math.max(0, baseForNetYearly - totalDeductYearly));
   const netMonthly = round2(Math.max(0, baseForNetMonthly - totalDeductMonthly));
@@ -229,6 +254,10 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
     employeePfYearly,
     insuranceMonthly,
     insuranceYearly,
+    variablePayMonthly,
+    variablePayYearly,
+    deductVariablePayMonthly: variablePayMonthly,
+    deductVariablePayYearly: variablePayYearly,
     ptMonthly,
     ptYearly,
     employerPfMonthly: 0,
@@ -255,7 +284,6 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
     : 'INR 20,000';
   const withTraining = d.includeTraining !== false;
 
-  const varPayNum = d.variablePay ? Number(String(d.variablePay).replace(/[^0-9.]/g, '')) : 0;
   let totalCompensationAmount = b.annualCtc;
   let totalCompensationWords = ctcWords;
   let variablePayClause = '';
@@ -654,6 +682,11 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
                     <td style="text-align: right;">${formatINR(b.insuranceMonthly)}</td>
                     <td style="text-align: right;">${formatINR(b.insuranceYearly)}</td>
                   </tr>
+                  <tr class="table-row-white">
+                    <td>Variable Pay</td>
+                    <td style="text-align: right;">${formatINR(b.variablePayMonthly || 0)}</td>
+                    <td style="text-align: right;">${formatINR(b.variablePayYearly || 0)}</td>
+                  </tr>
                   <tr class="table-row-white" style="font-weight: 700;">
                     <td>Total Amount (CTC)</td>
                     <td style="text-align: right;">${formatINR(b.monthlyGross)}</td>
@@ -683,6 +716,11 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
                     <td>Other Deductions</td>
                     <td style="text-align: right;">${formatINR(b.otherDeductMonthly)}</td>
                     <td style="text-align: right;">${formatINR(b.otherDeductYearly)}</td>
+                  </tr>
+                  <tr class="table-row-white">
+                    <td>Variable Pay</td>
+                    <td style="text-align: right;">${formatINR(b.deductVariablePayMonthly !== undefined ? b.deductVariablePayMonthly : (b.variablePayMonthly || 0))}</td>
+                    <td style="text-align: right;">${formatINR(b.deductVariablePayYearly !== undefined ? b.deductVariablePayYearly : (b.variablePayYearly || 0))}</td>
                   </tr>
                   <tr class="table-row-white" style="font-weight: 700;">
                     <td>Total Deductions</td>
