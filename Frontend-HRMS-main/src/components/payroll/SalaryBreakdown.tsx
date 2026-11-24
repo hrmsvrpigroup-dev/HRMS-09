@@ -18,7 +18,7 @@ export default function SalaryBreakdown({
   onSalaryChange,
   readOnly = false,
 }: SalaryBreakdownProps) {
-  const [withGross, setWithGross] = useState<boolean>(true)
+  const [withGross, setWithGross] = useState<boolean>(false)
   const [isEditingBreakdown, setIsEditingBreakdown] = useState<boolean>(false)
 
   // Parse parent salary input
@@ -48,11 +48,6 @@ export default function SalaryBreakdown({
     deductInsuranceYearly?: number
     otherDeductMonthly?: number
     otherDeductYearly?: number
-    variablePayMonthly?: number
-    variablePayYearly?: number
-    deductVariablePayMonthly?: number
-    deductVariablePayYearly?: number
-    includeVariablePay?: boolean
   }>({})
 
   // Synchronize when parent annual salary changes from input
@@ -70,33 +65,17 @@ export default function SalaryBreakdown({
     const ctc = cleanYearly(currentCtcYearly || 0)
     const monthlyGross = round2(ctc / 12)
 
-    // Variable pay is 10% of the salary
-    const hasVarPay = customBreakdown.variablePayYearly !== undefined
-      ? (customBreakdown.variablePayYearly > 0)
-      : (customBreakdown.includeVariablePay !== false);
-
-    const scale = hasVarPay ? 0.90 : 1.00;
-    const stdVariablePayYearly = hasVarPay ? cleanYearly(ctc * 0.10) : 0;
-    const stdVariablePayMonthly = round2(stdVariablePayYearly / 12);
-
-    const variablePayMonthly = customBreakdown.variablePayMonthly !== undefined ? round2(customBreakdown.variablePayMonthly) : stdVariablePayMonthly;
-    const variablePayYearly = customBreakdown.variablePayYearly !== undefined ? cleanYearly(customBreakdown.variablePayYearly) : stdVariablePayYearly;
-
-    // Proportional percentages calculated directly on the Annual CTC (inside salary, never exceeding Annual Salary)
-    const stdBasicYearly = cleanYearly(ctc * 0.50 * scale);
-    const stdBasicMonthly = round2(stdBasicYearly / 12);
-
-    const stdHraYearly = cleanYearly(ctc * 0.18 * scale);
-    const stdHraMonthly = round2(stdHraYearly / 12);
-
-    const stdLtaYearly = cleanYearly(ctc * 0.10 * scale);
-    const stdLtaMonthly = round2(stdLtaYearly / 12);
-
-    const stdEpfYearly = cleanYearly(ctc * 0.12 * scale);
-    const stdEpfMonthly = round2(stdEpfYearly / 12);
-
-    const stdInsuranceYearly = cleanYearly(ctc * 0.10 * scale);
-    const stdInsuranceMonthly = round2(stdInsuranceYearly / 12);
+    // Standard 50/18/10/12/10 formula
+    const stdBasicYearly = cleanYearly(ctc * 0.50)
+    const stdBasicMonthly = round2(stdBasicYearly / 12)
+    const stdHraYearly = cleanYearly(ctc * 0.18)
+    const stdHraMonthly = round2(stdHraYearly / 12)
+    const stdLtaYearly = cleanYearly(ctc * 0.10)
+    const stdLtaMonthly = round2(stdLtaYearly / 12)
+    const stdEpfYearly = cleanYearly(ctc * 0.12)
+    const stdEpfMonthly = round2(stdEpfYearly / 12)
+    const stdInsuranceYearly = cleanYearly(ctc * 0.10)
+    const stdInsuranceMonthly = round2(stdInsuranceYearly / 12)
 
     const basicMonthly = customBreakdown.basicMonthly !== undefined ? round2(customBreakdown.basicMonthly) : stdBasicMonthly
     const basicYearly = customBreakdown.basicYearly !== undefined ? cleanYearly(customBreakdown.basicYearly) : stdBasicYearly
@@ -112,8 +91,8 @@ export default function SalaryBreakdown({
     const ctcMonthly = monthlyGross
     const ctcYearly = ctc
 
-    const grossMonthly = customBreakdown.grossMonthly !== undefined ? round2(customBreakdown.grossMonthly) : monthlyGross
-    const grossYearly = customBreakdown.grossYearly !== undefined ? cleanYearly(customBreakdown.grossYearly) : ctc
+    const grossMonthly = customBreakdown.grossMonthly !== undefined ? round2(customBreakdown.grossMonthly) : (basicMonthly * 2)
+    const grossYearly = customBreakdown.grossYearly !== undefined ? cleanYearly(customBreakdown.grossYearly) : (basicYearly * 2)
 
     // Deductions
     const ptMonthly = customBreakdown.ptMonthly !== undefined ? round2(customBreakdown.ptMonthly) : 200
@@ -125,19 +104,12 @@ export default function SalaryBreakdown({
     const otherDeductMonthly = customBreakdown.otherDeductMonthly !== undefined ? round2(customBreakdown.otherDeductMonthly) : 200
     const otherDeductYearly = customBreakdown.otherDeductYearly !== undefined ? cleanYearly(customBreakdown.otherDeductYearly) : 2400
 
-    const deductVariablePayMonthly = customBreakdown.deductVariablePayMonthly !== undefined
-      ? round2(customBreakdown.deductVariablePayMonthly)
-      : variablePayMonthly
-    const deductVariablePayYearly = customBreakdown.deductVariablePayYearly !== undefined
-      ? cleanYearly(customBreakdown.deductVariablePayYearly)
-      : variablePayYearly
-
-    const totalDeductMonthly = round2(ptMonthly + deductEpfMonthly + deductInsuranceMonthly + otherDeductMonthly + deductVariablePayMonthly)
-    const totalDeductYearly = cleanYearly(ptYearly + deductEpfYearly + deductInsuranceYearly + otherDeductYearly + deductVariablePayYearly)
+    const totalDeductMonthly = round2(ptMonthly + deductEpfMonthly + deductInsuranceMonthly + otherDeductMonthly)
+    const totalDeductYearly = cleanYearly(ptYearly + deductEpfYearly + deductInsuranceYearly + otherDeductYearly)
 
     // Net take-home calculation
-    const baseForNetMonthly = grossMonthly
-    const baseForNetYearly = grossYearly
+    const baseForNetMonthly = withGross ? grossMonthly : basicMonthly
+    const baseForNetYearly = withGross ? grossYearly : basicYearly
 
     const netMonthly = round2(Math.max(0, baseForNetMonthly - totalDeductMonthly))
     const netYearly = cleanYearly(Math.max(0, baseForNetYearly - totalDeductYearly))
@@ -157,16 +129,12 @@ export default function SalaryBreakdown({
       epfYearly,
       insuranceMonthly,
       insuranceYearly,
-      variablePayMonthly,
-      variablePayYearly,
       ptMonthly,
       ptYearly,
       deductEpfMonthly,
       deductEpfYearly,
       deductInsuranceMonthly,
       deductInsuranceYearly,
-      deductVariablePayMonthly,
-      deductVariablePayYearly,
       otherDeductMonthly,
       otherDeductYearly,
       totalDeductMonthly,
@@ -342,7 +310,6 @@ export default function SalaryBreakdown({
                 {(breakdown.deductInsuranceMonthly > 0 || breakdown.deductInsuranceYearly > 0) ? '🗑️ Delete Insurance' : '+ Add Insurance (10%)'}
               </button>
 
-
               <button
                 type="button"
                 onClick={() => setIsEditingBreakdown(false)}
@@ -399,7 +366,7 @@ export default function SalaryBreakdown({
                     value={breakdown.grossMonthly}
                     onChange={(e) => {
                       const val = Number(e.target.value) || 0
-                      handleAutoCalculate(val * 12)
+                      updateCustom({ grossMonthly: val, grossYearly: cleanYearly(val * 12) })
                     }}
                     style={{ width: '100px', textAlign: 'right', padding: '2px 4px', fontWeight: 'bold', border: '1px solid #16a34a', borderRadius: '3px', fontSize: '0.78rem' }}
                   />
@@ -415,7 +382,7 @@ export default function SalaryBreakdown({
                     value={breakdown.grossYearly}
                     onChange={(e) => {
                       const val = Number(e.target.value) || 0
-                      handleAutoCalculate(val)
+                      updateCustom({ grossYearly: val, grossMonthly: round2(val / 12) })
                     }}
                     style={{ width: '100px', textAlign: 'right', padding: '2px 4px', fontWeight: 'bold', border: '1px solid #16a34a', borderRadius: '3px', fontSize: '0.78rem' }}
                   />
@@ -611,45 +578,6 @@ export default function SalaryBreakdown({
             </td>
           </tr>
 
-          {/* Variable Pay (10% of Salary) */}
-          <tr>
-            <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>
-              Variable Pay
-            </td>
-            <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-              {isEditingBreakdown ? (
-                <input
-                  type="number"
-                  step="0.01"
-                  value={breakdown.variablePayMonthly}
-                  onChange={(e) => {
-                    const val = Number(e.target.value) || 0
-                    updateCustom({ variablePayMonthly: val, variablePayYearly: cleanYearly(val * 12) })
-                  }}
-                  style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
-                />
-              ) : (
-                formatINR(breakdown.variablePayMonthly)
-              )}
-            </td>
-            <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-              {isEditingBreakdown ? (
-                <input
-                  type="number"
-                  step="0.01"
-                  value={breakdown.variablePayYearly}
-                  onChange={(e) => {
-                    const val = Number(e.target.value) || 0
-                    updateCustom({ variablePayYearly: val, variablePayMonthly: round2(val / 12) })
-                  }}
-                  style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
-                />
-              ) : (
-                formatINR(breakdown.variablePayYearly)
-              )}
-            </td>
-          </tr>
-
           {/* Total Amount (CTC) */}
           <tr style={{ fontWeight: 'bold', background: !withGross ? '#f0fdf4' : 'transparent' }}>
             <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Total Amount (CTC)</td>
@@ -780,33 +708,6 @@ export default function SalaryBreakdown({
                     </span>
                   )}
                 </span>
-                {isEditingBreakdown && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (breakdown.deductInsuranceMonthly > 0 || breakdown.deductInsuranceYearly > 0) {
-                        updateCustom({ deductInsuranceMonthly: 0, deductInsuranceYearly: 0 })
-                      } else {
-                        const defaultYearly = cleanYearly(breakdown.ctcYearly * 0.10)
-                        const defaultMonthly = round2(defaultYearly / 12)
-                        updateCustom({ deductInsuranceMonthly: defaultMonthly, deductInsuranceYearly: defaultYearly })
-                      }
-                    }}
-                    style={{
-                      marginLeft: '6px',
-                      padding: '1px 6px',
-                      fontSize: '0.65rem',
-                      borderRadius: '3px',
-                      border: (breakdown.deductInsuranceMonthly > 0 || breakdown.deductInsuranceYearly > 0) ? '1px solid #fecaca' : '1px solid #86efac',
-                      background: (breakdown.deductInsuranceMonthly > 0 || breakdown.deductInsuranceYearly > 0) ? '#fef2f2' : '#f0fdf4',
-                      color: (breakdown.deductInsuranceMonthly > 0 || breakdown.deductInsuranceYearly > 0) ? '#dc2626' : '#16a34a',
-                      cursor: 'pointer',
-                      fontWeight: 700
-                    }}
-                  >
-                    {(breakdown.deductInsuranceMonthly > 0 || breakdown.deductInsuranceYearly > 0) ? '✕ Del' : '+ Add'}
-                  </button>
-                )}
               </div>
             </td>
             <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
@@ -876,81 +777,6 @@ export default function SalaryBreakdown({
                 />
               ) : (
                 formatINR(breakdown.otherDeductYearly)
-              )}
-            </td>
-          </tr>
-
-          {/* Variable Pay (10% of Salary - Withheld for annual disbursement) */}
-          <tr>
-            <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>
-                  Variable Pay
-                  {(breakdown.deductVariablePayMonthly === 0 && breakdown.deductVariablePayYearly === 0) && (
-                    <span style={{ marginLeft: '6px', fontSize: '0.68rem', color: '#16a34a', fontWeight: 700 }}>
-                      (+₹ added to Take-Home)
-                    </span>
-                  )}
-                </span>
-                {isEditingBreakdown && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (breakdown.deductVariablePayMonthly > 0 || breakdown.deductVariablePayYearly > 0) {
-                        updateCustom({ deductVariablePayMonthly: 0, deductVariablePayYearly: 0 })
-                      } else {
-                        const defaultYearly = cleanYearly(breakdown.ctcYearly * 0.10)
-                        const defaultMonthly = round2(defaultYearly / 12)
-                        updateCustom({ deductVariablePayMonthly: defaultMonthly, deductVariablePayYearly: defaultYearly })
-                      }
-                    }}
-                    style={{
-                      marginLeft: '6px',
-                      padding: '1px 6px',
-                      fontSize: '0.65rem',
-                      borderRadius: '3px',
-                      border: (breakdown.deductVariablePayMonthly > 0 || breakdown.deductVariablePayYearly > 0) ? '1px solid #fecaca' : '1px solid #86efac',
-                      background: (breakdown.deductVariablePayMonthly > 0 || breakdown.deductVariablePayYearly > 0) ? '#fef2f2' : '#f0fdf4',
-                      color: (breakdown.deductVariablePayMonthly > 0 || breakdown.deductVariablePayYearly > 0) ? '#dc2626' : '#16a34a',
-                      cursor: 'pointer',
-                      fontWeight: 700
-                    }}
-                  >
-                    {(breakdown.deductVariablePayMonthly > 0 || breakdown.deductVariablePayYearly > 0) ? '🗑️ Delete' : '+ Add'}
-                  </button>
-                )}
-              </div>
-            </td>
-            <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-              {isEditingBreakdown ? (
-                <input
-                  type="number"
-                  step="0.01"
-                  value={breakdown.deductVariablePayMonthly}
-                  onChange={(e) => {
-                    const val = Number(e.target.value) || 0
-                    updateCustom({ deductVariablePayMonthly: val, deductVariablePayYearly: cleanYearly(val * 12) })
-                  }}
-                  style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
-                />
-              ) : (
-                formatINR(breakdown.deductVariablePayMonthly)
-              )}
-            </td>
-            <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
-              {isEditingBreakdown ? (
-                <input
-                  type="number"
-                  step="0.01"
-                  value={breakdown.deductVariablePayYearly}
-                  onChange={(e) => {
-                    const val = Number(e.target.value) || 0
-                    updateCustom({ deductVariablePayYearly: val, deductVariablePayMonthly: round2(val / 12) })
-                  }}
-                  style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #fca5a5', borderRadius: '3px', fontSize: '0.78rem' }}
-                />
-              ) : (
-                formatINR(breakdown.deductVariablePayYearly)
               )}
             </td>
           </tr>
