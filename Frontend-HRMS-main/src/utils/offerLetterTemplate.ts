@@ -287,22 +287,39 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
     : 'INR 20,000';
   const withTraining = d.includeTraining !== false;
 
+  // Check if variable pay is effectively 0:
+  // 1) If deductVariablePayYearly was explicitly set to 0 (deleted from deductions)
+  // 2) If variablePayYearly was explicitly set to 0
+  // 3) If varPayNum is 0 or not provided
+  const hasZeroVariablePay =
+    (b.deductVariablePayYearly !== undefined && b.deductVariablePayYearly <= 0) ||
+    (b.variablePayYearly !== undefined && b.variablePayYearly <= 0) ||
+    varPayNum <= 0;
+
+  const effectiveVarPay = hasZeroVariablePay
+    ? 0
+    : (b.deductVariablePayYearly !== undefined && b.deductVariablePayYearly > 0
+        ? b.deductVariablePayYearly
+        : (b.variablePayYearly !== undefined && b.variablePayYearly > 0
+            ? b.variablePayYearly
+            : varPayNum));
+
   let totalCompensationAmount = b.annualCtc;
   let totalCompensationWords = ctcWords;
   let variablePayClause = '';
-  if (varPayNum > 0) {
-    let fixedComp = b.annualCtc - varPayNum;
+  if (effectiveVarPay > 0) {
+    let fixedComp = b.annualCtc - effectiveVarPay;
     let totalCtc = b.annualCtc;
     if (fixedComp <= 0) {
       fixedComp = b.annualCtc;
-      totalCtc = b.annualCtc + varPayNum;
+      totalCtc = b.annualCtc + effectiveVarPay;
     }
     const rawTotWords = numberToWordsINR(totalCtc);
     totalCompensationWords = rawTotWords
       ? (rawTotWords.startsWith('Rupees') ? rawTotWords : 'Rupees ' + rawTotWords.replace(/\s*Rupees Only$/i, ' Only'))
       : '';
     totalCompensationAmount = totalCtc;
-    variablePayClause = `, (Which includes Rs. ${fixedComp.toLocaleString('en-IN')} annual compensation and of Rs. ${formatINR(varPayNum)}/- as an annual variable pay)`;
+    variablePayClause = `, (Which includes Rs. ${fixedComp.toLocaleString('en-IN')} annual compensation and of Rs. ${formatINR(effectiveVarPay)}/- as an annual variable pay)`;
   }
   switch (pageNum) {
     case 1:

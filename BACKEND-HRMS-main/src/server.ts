@@ -64,30 +64,37 @@ const bootstrap = async () => {
   // Trigger background backfill sync to Google Sheets on startup to guarantee zero data loss
   syncAllAttendanceToGoogleSheet().catch((err) => console.error('[GOOGLE_SHEETS] Startup sync failed:', err))
 
-  // Keep-alive self ping to prevent Render free-tier instance from sleeping (every 10 minutes)
-  const KEEP_ALIVE_URL = process.env.BACKEND_PUBLIC_URL || 'https://hrms-09.onrender.com/api/health'
+  // Keep-alive self ping to prevent Render free-tier instance from sleeping (every 5 minutes)
+  const KEEP_ALIVE_URLS = [
+    process.env.BACKEND_PUBLIC_URL,
+    'https://hrms-09-1.onrender.com/api/health',
+    'https://hrms-09.onrender.com/api/health'
+  ].filter(Boolean) as string[]
+
   const pingKeepAlive = () => {
-    try {
-      const parsedUrl = new URL(KEEP_ALIVE_URL)
-      const isHttps = parsedUrl.protocol === 'https:'
-      const client = isHttps ? require('node:https') : require('node:http')
-      const req = client.get(KEEP_ALIVE_URL, (res: any) => {
+    KEEP_ALIVE_URLS.forEach((url) => {
+      try {
+        const parsedUrl = new URL(url)
+        const isHttps = parsedUrl.protocol === 'https:'
+        const client = isHttps ? require('node:https') : require('node:http')
+        const req = client.get(url, (res: any) => {
+          // eslint-disable-next-line no-console
+          console.log(`[KEEP-ALIVE] Pinged ${url} - Status: ${res.statusCode}`)
+        })
+        req.on('error', (e: any) => {
+          // eslint-disable-next-line no-console
+          console.warn(`[KEEP-ALIVE] Ping warning for ${url}: ${e.message}`)
+        })
+        req.setTimeout(10000, () => req.destroy())
+      } catch (e: any) {
         // eslint-disable-next-line no-console
-        console.log(`[KEEP-ALIVE] Pinged ${KEEP_ALIVE_URL} - Status: ${res.statusCode}`)
-      })
-      req.on('error', (e: any) => {
-        // eslint-disable-next-line no-console
-        console.warn(`[KEEP-ALIVE] Ping warning: ${e.message}`)
-      })
-      req.setTimeout(10000, () => req.destroy())
-    } catch (e: any) {
-      // eslint-disable-next-line no-console
-      console.warn('[KEEP-ALIVE] Error scheduling ping:', e.message)
-    }
+        console.warn(`[KEEP-ALIVE] Error scheduling ping for ${url}:`, e.message)
+      }
+    })
   }
-  // Run first keep-alive ping after 2 minutes, then every 10 minutes
-  setTimeout(pingKeepAlive, 2 * 60 * 1000)
-  setInterval(pingKeepAlive, 10 * 60 * 1000)
+  // Run first keep-alive ping after 30 seconds, then every 5 minutes to stay awake
+  setTimeout(pingKeepAlive, 30 * 1000)
+  setInterval(pingKeepAlive, 5 * 60 * 1000)
 
   const server = http.createServer(app)
 

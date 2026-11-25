@@ -2,7 +2,7 @@ import axios from 'axios'
 
 import { useAuthStore } from '../store/auth.store'
 
-const LIVE_API_URL = 'https://hrms-09.onrender.com/api'
+const LIVE_API_URL = 'https://hrms-09-1.onrender.com/api'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || LIVE_API_URL,
@@ -48,9 +48,9 @@ api.interceptors.response.use(
       error.code === 'ERR_NETWORK' ||
       [502, 503, 504].includes(error.response?.status)
 
-    if (isNetworkOrGatewayError && (originalRequest._retryCount || 0) < 2) {
+    if (isNetworkOrGatewayError && (originalRequest._retryCount || 0) < 4) {
       originalRequest._retryCount = (originalRequest._retryCount || 0) + 1
-      const delayMs = originalRequest._retryCount * 1500
+      const delayMs = originalRequest._retryCount * 2000
       await new Promise((resolve) => setTimeout(resolve, delayMs))
       return api(originalRequest)
     }
