@@ -125,6 +125,9 @@ export function calculateSalaryBreakdown(annualCtc: number, variablePayAmount: n
   const deductInsuranceYearly = insuranceYearly;
   const deductInsuranceMonthly = insuranceMonthly;
 
+  const deductVariablePayYearly = variablePayYearly;
+  const deductVariablePayMonthly = variablePayMonthly;
+
   const otherDeductMonthly = 200;
   const otherDeductYearly = 2400;
 
@@ -149,8 +152,8 @@ export function calculateSalaryBreakdown(annualCtc: number, variablePayAmount: n
     insuranceYearly,
     variablePayMonthly,
     variablePayYearly,
-    deductVariablePayMonthly: variablePayMonthly,
-    deductVariablePayYearly: variablePayYearly,
+    deductVariablePayMonthly,
+    deductVariablePayYearly,
     ptMonthly,
     ptYearly,
     employerPfMonthly: 0,
@@ -256,8 +259,8 @@ export function getOfferLetterPageHtml(pageNum: number, d: OfferLetterData): str
     insuranceYearly,
     variablePayMonthly,
     variablePayYearly,
-    deductVariablePayMonthly: variablePayMonthly,
-    deductVariablePayYearly: variablePayYearly,
+    deductVariablePayMonthly,
+    deductVariablePayYearly,
     ptMonthly,
     ptYearly,
     employerPfMonthly: 0,

@@ -2113,7 +2113,17 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   }>>(() => {
     try {
       const saved = localStorage.getItem('hrms_candidate_offer_forms');
-      return saved ? JSON.parse(saved) : {};
+      if (!saved) return {};
+      const parsed = JSON.parse(saved);
+      // Clean up corrupted 1,200,000 CTC
+      Object.keys(parsed).forEach(k => {
+        const item = parsed[k];
+        if (item && item.annualCtc === '1200000') {
+          delete item.annualCtc;
+          delete item.customBreakdown;
+        }
+      });
+      return parsed;
     } catch (_) {
       return {};
     }
@@ -2137,6 +2147,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   const [previewOfferMode, setPreviewOfferMode] = useState<'all' | 'single'>('all');
   const [previewOfferWithTraining, setPreviewOfferWithTraining] = useState<boolean>(true);
   const [editingOfferIds, setEditingOfferIds] = useState<Record<string, boolean>>({});
+
+  // Stage 8 Single Template Selected Candidate State
+  const [selectedOfferCandidateId, setSelectedOfferCandidateId] = useState<string | null>(null);
+  const [offerSearchQuery, setOfferSearchQuery] = useState<string>('');
+  const [offerFilterStatus, setOfferFilterStatus] = useState<'ALL' | 'PENDING' | 'SENT'>('ALL');
 
   const toggleOfferEditing = (candidateId: string) => {
     setEditingOfferIds(prev => ({
@@ -2168,8 +2183,11 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       const insM = merged.insuranceMonthly !== undefined ? round2(merged.insuranceMonthly) : 0;
       const insY = merged.insuranceYearly !== undefined ? cleanYearly(merged.insuranceYearly) : cleanYearly(insM * 12);
 
-      const grossM = merged.monthlyGross !== undefined ? round2(merged.monthlyGross) : round2(basicM + hraM + ltaM + empPfM + insM);
-      const grossY = merged.annualCtc !== undefined ? cleanYearly(merged.annualCtc) : cleanYearly(basicY + hraY + ltaY + empPfY + insY);
+      const varPayM = merged.variablePayMonthly !== undefined ? round2(merged.variablePayMonthly) : 0;
+      const varPayY = merged.variablePayYearly !== undefined ? cleanYearly(merged.variablePayYearly) : cleanYearly(varPayM * 12);
+
+      const grossM = merged.monthlyGross !== undefined ? round2(merged.monthlyGross) : round2(basicM + hraM + ltaM + empPfM + insM + varPayM);
+      const grossY = merged.annualCtc !== undefined ? cleanYearly(merged.annualCtc) : cleanYearly(basicY + hraY + ltaY + empPfY + insY + varPayY);
 
       const ptM = merged.ptMonthly !== undefined ? round2(merged.ptMonthly) : 200;
       const ptY = merged.ptYearly !== undefined ? cleanYearly(merged.ptYearly) : cleanYearly(ptM * 12);
@@ -2181,15 +2199,16 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       const epfY = merged.epfYearly !== undefined ? cleanYearly(merged.epfYearly) : empPfY;
       const dedInsM = merged.deductInsuranceMonthly !== undefined ? round2(merged.deductInsuranceMonthly) : 0;
       const dedInsY = merged.deductInsuranceYearly !== undefined ? cleanYearly(merged.deductInsuranceYearly) : cleanYearly(dedInsM * 12);
+      const dedVarM = merged.deductVariablePayMonthly !== undefined ? round2(merged.deductVariablePayMonthly) : varPayM;
+      const dedVarY = merged.deductVariablePayYearly !== undefined ? cleanYearly(merged.deductVariablePayYearly) : cleanYearly(dedVarM * 12);
       const otherM = merged.otherDeductMonthly !== undefined ? round2(merged.otherDeductMonthly) : 200;
       const otherY = merged.otherDeductYearly !== undefined ? cleanYearly(merged.otherDeductYearly) : cleanYearly(otherM * 12);
 
-      const totalDeductM = round2(ptM + epfM + dedInsM + otherM);
-      const totalDeductY = cleanYearly(ptY + epfY + dedInsY + otherY);
+      const totalDeductM = round2(ptM + epfM + dedInsM + dedVarM + otherM);
+      const totalDeductY = cleanYearly(ptY + epfY + dedInsY + dedVarY + otherY);
 
-      const isWithGross = existing.withGross === true;
-      const baseForNetM = isWithGross ? grossM : basicM;
-      const baseForNetY = isWithGross ? grossY : basicY;
+      const baseForNetM = grossM;
+      const baseForNetY = grossY;
 
       const netM = round2(Math.max(0, baseForNetM - totalDeductM));
       const netY = cleanYearly(Math.max(0, baseForNetY - totalDeductY));
@@ -2208,6 +2227,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         employeePfYearly: empPfY,
         insuranceMonthly: insM,
         insuranceYearly: insY,
+        variablePayMonthly: varPayM,
+        variablePayYearly: varPayY,
+        deductVariablePayMonthly: dedVarM,
+        deductVariablePayYearly: dedVarY,
         ptMonthly: ptM,
         ptYearly: ptY,
         employerPfMonthly: 0,
@@ -2232,6 +2255,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       return {
         ...prev,
         [candId]: updatedForm,
+        ...(candEmail ? { [candEmail]: updatedForm } : {}),
         ...(emailKey ? { [emailKey]: updatedForm } : {})
       };
     });
@@ -2249,8 +2273,8 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         const grossM = currentBreakdown.monthlyGross !== undefined ? Number(currentBreakdown.monthlyGross) : Math.round(Number(existing.annualCtc || 720000) / 12);
         const grossY = currentBreakdown.annualCtc !== undefined ? cleanYearly(currentBreakdown.annualCtc) : cleanYearly(grossM * 12);
 
-        const baseMonthly = withGross ? grossM : basicM;
-        const baseYearly = withGross ? grossY : basicY;
+        const baseMonthly = grossM;
+        const baseYearly = grossY;
 
         const ptM = currentBreakdown.ptMonthly !== undefined ? Number(currentBreakdown.ptMonthly) : 200;
         const ptY = currentBreakdown.ptYearly !== undefined ? cleanYearly(currentBreakdown.ptYearly) : cleanYearly(ptM * 12);
@@ -2264,11 +2288,13 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         const epfY = currentBreakdown.epfYearly !== undefined ? cleanYearly(currentBreakdown.epfYearly) : cleanYearly(epfM * 12);
         const dedInsM = currentBreakdown.deductInsuranceMonthly !== undefined ? Number(currentBreakdown.deductInsuranceMonthly) : 0;
         const dedInsY = currentBreakdown.deductInsuranceYearly !== undefined ? cleanYearly(currentBreakdown.deductInsuranceYearly) : cleanYearly(dedInsM * 12);
+        const dedVarM = currentBreakdown.deductVariablePayMonthly !== undefined ? Number(currentBreakdown.deductVariablePayMonthly) : (currentBreakdown.variablePayMonthly !== undefined ? Number(currentBreakdown.variablePayMonthly) : 0);
+        const dedVarY = currentBreakdown.deductVariablePayYearly !== undefined ? cleanYearly(currentBreakdown.deductVariablePayYearly) : cleanYearly(dedVarM * 12);
         const otherM = currentBreakdown.otherDeductMonthly !== undefined ? Number(currentBreakdown.otherDeductMonthly) : 200;
         const otherY = currentBreakdown.otherDeductYearly !== undefined ? cleanYearly(currentBreakdown.otherDeductYearly) : cleanYearly(otherM * 12);
 
-        const totalDeductM = round2(ptM + epfM + dedInsM + otherM);
-        const totalDeductY = cleanYearly(ptY + epfY + dedInsY + otherY);
+        const totalDeductM = round2(ptM + epfM + dedInsM + dedVarM + otherM);
+        const totalDeductY = cleanYearly(ptY + epfY + dedInsY + dedVarY + otherY);
 
         updatedBreakdown = {
           ...currentBreakdown,
@@ -2286,6 +2312,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       return {
         ...prev,
         [candId]: updatedForm,
+        ...(candEmail ? { [candEmail]: updatedForm } : {}),
         ...(emailKey ? { [emailKey]: updatedForm } : {})
       };
     });
@@ -2491,6 +2518,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       return {
         ...prev,
         [candId]: updatedForm,
+        ...(candEmail ? { [candEmail]: updatedForm } : {}),
         ...(emailKey ? { [emailKey]: updatedForm } : {})
       };
     });
@@ -2592,6 +2620,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
       return {
         ...prev,
         [candId]: updatedForm,
+        ...(candEmail ? { [candEmail]: updatedForm } : {}),
         ...(emailKey ? { [emailKey]: updatedForm } : {})
       };
     });
@@ -10098,7 +10127,14 @@ return (
               }
             });
 
-            const offerCandidates = Array.from(map.values());
+            const allOfferCandidates = Array.from(map.values());
+            // Filter to only Kavali bavya template (removing all other candidate templates as requested)
+            const bavyaCandidate = allOfferCandidates.find(c => {
+              const emailMatch = c.email && c.email.trim().toLowerCase().includes('kbaladattu');
+              const nameMatch = (c.customName || `${c.firstName || ''} ${c.lastName || ''}`).toLowerCase().includes('bavya');
+              return emailMatch || nameMatch;
+            });
+            const offerCandidates = bavyaCandidate ? [bavyaCandidate] : (allOfferCandidates.length > 0 ? [allOfferCandidates[0]] : []);
 
             return (
               <div className="rec-card" style={{ padding: '1.5rem' }}>
@@ -10116,14 +10152,29 @@ return (
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: '1.5rem' }}>
-                  {offerCandidates.length === 0 ? (
-                    <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '3rem 1.5rem', background: '#f8fafc', borderRadius: '1rem', border: '1px dashed #cbd5e1', color: '#64748b', fontSize: '0.8rem' }}>
-                      <Award className="h-10 w-10 text-orange-400 mx-auto mb-2 opacity-70" />
-                      <p style={{ fontWeight: 700, color: '#334155', fontSize: '0.9rem' }}>No candidates currently in Offer Phase</p>
-                    </div>
-                  ) : (
-                    offerCandidates.map(c => {
+                {offerCandidates.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '3rem 1.5rem', background: '#f8fafc', borderRadius: '1rem', border: '1px dashed #cbd5e1', color: '#64748b', fontSize: '0.8rem' }}>
+                    <Award className="h-10 w-10 text-orange-400 mx-auto mb-2 opacity-70" />
+                    <p style={{ fontWeight: 700, color: '#334155', fontSize: '0.9rem' }}>No candidates currently in Offer Phase</p>
+                  </div>
+                ) : (() => {
+                  const filteredOfferCandidates = offerCandidates.filter(item => {
+                    const candForm = candidateOfferForms[item.id] || (item.email ? candidateOfferForms[item.email] : undefined) || (item.email ? candidateOfferForms[item.email.toLowerCase()] : undefined) || {};
+                    const name = (candForm.candidateName || item.customName || `${item.firstName || ''} ${item.lastName || ''}`).toLowerCase();
+                    const email = (item.email || '').toLowerCase();
+                    const query = offerSearchQuery.toLowerCase().trim();
+                    const matchesSearch = !query || name.includes(query) || email.includes(query) || (item.jobTitle && item.jobTitle.toLowerCase().includes(query));
+                    const status = item.offerStatus || 'PENDING';
+                    const matchesStatus = offerFilterStatus === 'ALL' || (offerFilterStatus === 'SENT' ? status === 'SENT' : status !== 'SENT');
+                    return matchesSearch && matchesStatus;
+                  });
+
+                  const activeCandidate = bavyaCandidate
+                    || offerCandidates.find(item => item.id === selectedOfferCandidateId)
+                    || filteredOfferCandidates[0]
+                    || offerCandidates[0];
+                  const activeIndex = offerCandidates.findIndex(item => item.id === activeCandidate?.id);
+                  const c = activeCandidate;
                       const candForm = candidateOfferForms[c.id] || (c.email ? candidateOfferForms[c.email] : undefined) || (c.email ? candidateOfferForms[c.email.toLowerCase()] : undefined) || {};
                       const defaultCtc = c.offerSalary ? (c.offerSalary > 100000 ? c.offerSalary : c.offerSalary * 12) : 720000;
                       const annualCtcStr = candForm.annualCtc !== undefined ? candForm.annualCtc : String(defaultCtc);
@@ -10145,7 +10196,7 @@ return (
                         ? candForm.designation
                         : (c.callLetterDesignation || cleanJobTitle);
 
-                      const autoRefNo = getAutoGeneratedRefNo(c, offerCandidates);
+                      const autoRefNo = getAutoGeneratedRefNo(c, allOfferCandidates);
                       const isOldRef = candForm.referenceNo && (candForm.referenceNo.startsWith('2026') || candForm.referenceNo.length > 14);
                       const referenceNo = candForm.referenceNo !== undefined && !isOldRef
                         ? candForm.referenceNo
@@ -10163,31 +10214,32 @@ return (
                       const isEditing = !!editingOfferIds[c.id];
                       const isLocked = c.offerStatus === 'SENT' && !isEditing;
                       const isEditingBreakdown = !!editingBreakdownIds[c.id];
-                      const withGross = candForm.withGross === true;
+                      const withGross = candForm.withGross !== false;
                       const custom = candForm.customBreakdown;
 
                       const isCustomMatch = custom?.annualCtc === annualCtcNum && (custom?.variablePayYearly !== undefined ? ((custom.variablePayYearly > 0) === hasVarPay) : true);
+                      const isCustomValid = isCustomMatch && !(custom?.basicMonthly && custom?.monthlyGross && Number(custom.basicMonthly) > Number(custom.monthlyGross));
 
-                      const bGrossMonthly = isCustomMatch && custom?.monthlyGross !== undefined ? round2(custom.monthlyGross) : breakdown.monthlyGross;
-                      const bGrossYearly = isCustomMatch && custom?.annualCtc !== undefined ? cleanYearly(custom.annualCtc) : cleanYearly(breakdown.annualCtc);
+                      const bGrossMonthly = isCustomValid && custom?.monthlyGross !== undefined ? round2(custom.monthlyGross) : breakdown.monthlyGross;
+                      const bGrossYearly = isCustomValid && custom?.annualCtc !== undefined ? cleanYearly(custom.annualCtc) : cleanYearly(breakdown.annualCtc);
 
-                      const bBasicMonthly = isCustomMatch && custom?.basicMonthly !== undefined ? round2(custom.basicMonthly) : breakdown.basicMonthly;
-                      const bBasicYearly = isCustomMatch && custom?.basicYearly !== undefined ? cleanYearly(custom.basicYearly) : breakdown.basicYearly;
+                      const bBasicMonthly = isCustomValid && custom?.basicMonthly !== undefined ? round2(custom.basicMonthly) : breakdown.basicMonthly;
+                      const bBasicYearly = isCustomValid && custom?.basicYearly !== undefined ? cleanYearly(custom.basicYearly) : breakdown.basicYearly;
 
-                      const bHraMonthly = isCustomMatch && custom?.hraMonthly !== undefined ? round2(custom.hraMonthly) : breakdown.hraMonthly;
-                      const bHraYearly = isCustomMatch && custom?.hraYearly !== undefined ? cleanYearly(custom.hraYearly) : breakdown.hraYearly;
+                      const bHraMonthly = isCustomValid && custom?.hraMonthly !== undefined ? round2(custom.hraMonthly) : breakdown.hraMonthly;
+                      const bHraYearly = isCustomValid && custom?.hraYearly !== undefined ? cleanYearly(custom.hraYearly) : breakdown.hraYearly;
 
-                      const bLtaMonthly = isCustomMatch && custom?.ltaMonthly !== undefined ? round2(custom.ltaMonthly) : breakdown.ltaMonthly;
-                      const bLtaYearly = isCustomMatch && custom?.ltaYearly !== undefined ? cleanYearly(custom.ltaYearly) : breakdown.ltaYearly;
+                      const bLtaMonthly = isCustomValid && custom?.ltaMonthly !== undefined ? round2(custom.ltaMonthly) : breakdown.ltaMonthly;
+                      const bLtaYearly = isCustomValid && custom?.ltaYearly !== undefined ? cleanYearly(custom.ltaYearly) : breakdown.ltaYearly;
 
-                      const bEmployerPfMonthly = isCustomMatch && custom?.employeePfMonthly !== undefined ? round2(custom.employeePfMonthly) : breakdown.employeePfMonthly;
-                      const bEmployerPfYearly = isCustomMatch && custom?.employeePfYearly !== undefined ? cleanYearly(custom.employeePfYearly) : cleanYearly(breakdown.employeePfYearly);
+                      const bEmployerPfMonthly = isCustomValid && custom?.employeePfMonthly !== undefined ? round2(custom.employeePfMonthly) : breakdown.employeePfMonthly;
+                      const bEmployerPfYearly = isCustomValid && custom?.employeePfYearly !== undefined ? cleanYearly(custom.employeePfYearly) : cleanYearly(breakdown.employeePfYearly);
 
-                      const bInsuranceMonthly = isCustomMatch && custom?.insuranceMonthly !== undefined ? round2(custom.insuranceMonthly) : breakdown.insuranceMonthly;
-                      const bInsuranceYearly = isCustomMatch && custom?.insuranceYearly !== undefined ? cleanYearly(custom.insuranceYearly) : cleanYearly(breakdown.insuranceYearly);
+                      const bInsuranceMonthly = isCustomValid && custom?.insuranceMonthly !== undefined ? round2(custom.insuranceMonthly) : breakdown.insuranceMonthly;
+                      const bInsuranceYearly = isCustomValid && custom?.insuranceYearly !== undefined ? cleanYearly(custom.insuranceYearly) : cleanYearly(breakdown.insuranceYearly);
 
-                      const bVariablePayMonthly = hasVarPay ? (isCustomMatch && custom?.variablePayMonthly !== undefined ? round2(custom.variablePayMonthly) : breakdown.variablePayMonthly) : 0;
-                      const bVariablePayYearly = hasVarPay ? (isCustomMatch && custom?.variablePayYearly !== undefined ? cleanYearly(custom.variablePayYearly) : breakdown.variablePayYearly) : 0;
+                      const bVariablePayMonthly = hasVarPay ? (isCustomValid && custom?.variablePayMonthly !== undefined ? round2(custom.variablePayMonthly) : breakdown.variablePayMonthly) : 0;
+                      const bVariablePayYearly = hasVarPay ? (isCustomValid && custom?.variablePayYearly !== undefined ? cleanYearly(custom.variablePayYearly) : breakdown.variablePayYearly) : 0;
 
                       const bCtcMonthly = bGrossMonthly;
                       const bCtcYearly = bGrossYearly;
@@ -10278,27 +10330,87 @@ return (
                         setPreviewOfferCandidate(latestCand);
                       };
 
-                      return (
-                        <div key={c.id} style={{ background: '#fff', border: isEditing ? '1.5px solid #3b82f6' : '1.5px solid #e2e8f0', borderRadius: '1rem', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.85rem', boxShadow: isEditing ? '0 4px 20px -2px rgba(59, 130, 246, 0.15)' : '0 4px 15px -3px rgba(0,0,0,0.04)' }}>
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%', maxWidth: '720px', margin: '0 auto' }}>
+                      {/* Candidate Switcher Ribbon - Only rendered if multiple candidates exist */}
+                      {offerCandidates.length > 1 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: '#f8fafc', borderRadius: '0.75rem', border: '1px solid #e2e8f0', flexWrap: 'wrap', gap: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              disabled={activeIndex <= 0}
+                              onClick={() => {
+                                if (activeIndex > 0) {
+                                  setSelectedOfferCandidateId(offerCandidates[activeIndex - 1].id);
+                                }
+                              }}
+                              className="rec-btn-outline"
+                              style={{ padding: '4px 12px', fontSize: '0.72rem', height: '30px', opacity: activeIndex <= 0 ? 0.4 : 1, cursor: activeIndex <= 0 ? 'not-allowed' : 'pointer', fontWeight: 700 }}
+                            >
+                              ◀ Prev
+                            </button>
+
+                            {/* Candidate Dropdown Selector */}
+                            <select
+                              value={activeCandidate?.id || ''}
+                              onChange={(e) => setSelectedOfferCandidateId(e.target.value)}
+                              style={{
+                                height: '30px',
+                                padding: '0 10px',
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                borderRadius: '6px',
+                                border: '1.5px solid #cbd5e1',
+                                background: '#ffffff',
+                                color: '#0f172a',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {offerCandidates.map((cand, idx) => {
+                                const candFormItem = candidateOfferForms[cand.id] || (cand.email ? candidateOfferForms[cand.email] : undefined) || {};
+                                const nameItem = candFormItem.candidateName || cand.customName || `${cand.firstName || ''} ${cand.lastName || ''}`.trim() || 'Candidate';
+                                const isSent = cand.offerStatus === 'SENT';
+                                return (
+                                  <option key={cand.id || idx} value={cand.id}>
+                                    ({idx + 1}/{offerCandidates.length}) {nameItem} — {cand.jobTitle || 'Associate Software Engineer'} [{isSent ? 'SENT' : 'PENDING'}]
+                                  </option>
+                                );
+                              })}
+                            </select>
+
+                            <button
+                              type="button"
+                              disabled={activeIndex >= offerCandidates.length - 1}
+                              onClick={() => {
+                                if (activeIndex < offerCandidates.length - 1) {
+                                  setSelectedOfferCandidateId(offerCandidates[activeIndex + 1].id);
+                                }
+                              }}
+                              className="rec-btn-outline"
+                              style={{ padding: '4px 12px', fontSize: '0.72rem', height: '30px', opacity: activeIndex >= offerCandidates.length - 1 ? 0.4 : 1, cursor: activeIndex >= offerCandidates.length - 1 ? 'not-allowed' : 'pointer', fontWeight: 700 }}
+                            >
+                              Next ▶
+                            </button>
+                          </div>
+
+                          <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
+                            Active Template: <strong style={{ color: '#ea580c' }}>{candName}</strong> ({activeIndex + 1} of {offerCandidates.length})
+                          </div>
+                        </div>
+                      )}
+
+                                              {/* Single Template Card */}
+                        <div key={c.id} style={{ background: '#fff', border: isEditing ? '1.5px solid #3b82f6' : '1.5px solid #e2e8f0', borderRadius: '0.85rem', padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', boxShadow: isEditing ? '0 4px 20px -2px rgba(59, 130, 246, 0.15)' : '0 4px 15px -3px rgba(0,0,0,0.04)' }}>
                           {/* Candidate Header */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.35rem' }}>
                             <div>
                               <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>{candName}</h3>
                               <p style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>
                                 {designation} · {c.email}
                               </p>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <button
-                                type="button"
-                                onClick={() => handleRevertOfferToReceived(c.id)}
-                                className="rec-btn-outline"
-                                style={{ fontSize: '0.65rem', height: '24px', padding: '0 8px', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', gap: '4px', fontWeight: 700 }}
-                                title="Move candidate back to Received Call Letter stage"
-                              >
-                                <ArrowLeft className="h-3 w-3" /> Back
-                              </button>
-                              {c.offerStatus === 'SENT' && (
+                            {c.offerStatus === 'SENT' && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <button
                                   type="button"
                                   onClick={() => toggleOfferEditing(c.id)}
@@ -10317,52 +10429,45 @@ return (
                                 >
                                   <Edit2 className="h-3 w-3" /> {isEditing ? 'Cancel' : 'Edit'}
                                 </button>
-                              )}
-                              <span className={cn(
-                                'px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase',
-                                c.offerStatus === 'SENT' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-amber-50 text-amber-600 border-amber-100'
-                              )}>
-                                {c.offerStatus || 'PENDING'}
-                              </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Compact Candidate Details (2 Rows) */}
+                          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 1fr', gap: '0.6rem' }}>
+                            <div className="auth-luxury-label" style={{ fontSize: '0.7rem' }}>
+                              Candidate Name *
+                              <input
+                                type="text"
+                                disabled={isLocked}
+                                className="rec-search-input"
+                                style={{ width: '100%', paddingLeft: '0.6rem', height: '30px', fontSize: '0.78rem', fontWeight: 700, color: '#0f172a', background: isLocked ? '#f8fafc' : '#ffffff' }}
+                                value={candName}
+                                onChange={e => handleUpdateCandidateOfferForm(c.id, c.email, { candidateName: e.target.value })}
+                                placeholder="e.g. Shiva Prasad"
+                              />
                             </div>
-                          </div>
 
-                          {/* Inputs Row 1: Candidate Name */}
-                          <div className="auth-luxury-label">
-                            Candidate Name *
-                            <input
-                              type="text"
-                              disabled={isLocked}
-                              className="rec-search-input"
-                              style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', fontWeight: 700, color: '#0f172a', background: isLocked ? '#f8fafc' : '#ffffff' }}
-                              value={candName}
-                              onChange={e => handleUpdateCandidateOfferForm(c.id, c.email, { candidateName: e.target.value })}
-                              placeholder="e.g. Shiva Prasad"
-                            />
-                          </div>
-
-                          {/* Inputs Row 2: Designation & Call Letter Reference No. */}
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                            <div className="auth-luxury-label">
+                            <div className="auth-luxury-label" style={{ fontSize: '0.7rem' }}>
                               Designation *
                               <input
                                 type="text"
                                 disabled={isLocked}
                                 className="rec-search-input"
-                                style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', fontWeight: 700, color: '#0f172a', background: isLocked ? '#f8fafc' : '#ffffff' }}
+                                style={{ width: '100%', paddingLeft: '0.6rem', height: '30px', fontSize: '0.78rem', fontWeight: 700, color: '#0f172a', background: isLocked ? '#f8fafc' : '#ffffff' }}
                                 value={designation}
                                 onChange={e => handleUpdateCandidateOfferForm(c.id, c.email, { designation: e.target.value })}
                                 placeholder="e.g. Associate Software Engineer"
                               />
                             </div>
 
-                            <div className="auth-luxury-label">
-                              Call Letter Reference No. *
+                            <div className="auth-luxury-label" style={{ fontSize: '0.7rem' }}>
+                              Reference No. *
                               <input
                                 type="text"
                                 disabled={isLocked}
                                 className="rec-search-input"
-                                style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', fontWeight: 600, color: '#0f172a', background: isLocked ? '#f8fafc' : '#ffffff' }}
+                                style={{ width: '100%', paddingLeft: '0.6rem', height: '30px', fontSize: '0.78rem', fontWeight: 600, color: '#0f172a', background: isLocked ? '#f8fafc' : '#ffffff' }}
                                 value={referenceNo}
                                 onChange={e => handleUpdateCandidateOfferForm(c.id, c.email, { referenceNo: e.target.value })}
                                 placeholder="e.g. 2627/0917/0001"
@@ -10370,61 +10475,71 @@ return (
                             </div>
                           </div>
 
-                          {/* Inputs Row 4: Joining Date */}
-                          <div className="auth-luxury-label">
-                            Joining Date *
-                            <input
-                              type="date"
-                              disabled={isLocked}
-                              className="rec-search-input"
-                              style={{ width: '100%', paddingLeft: '0.75rem', height: '36px', background: isLocked ? '#f8fafc' : '#ffffff' }}
-                              value={joiningDate}
-                              onChange={e => handleUpdateCandidateOfferForm(c.id, c.email, { joiningDate: e.target.value })}
-                            />
-                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: '0.6rem', alignItems: 'flex-end' }}>
+                            <div className="auth-luxury-label" style={{ fontSize: '0.7rem' }}>
+                              Joining Date *
+                              <input
+                                type="date"
+                                disabled={isLocked}
+                                className="rec-search-input"
+                                style={{ width: '100%', paddingLeft: '0.6rem', height: '30px', fontSize: '0.78rem', background: isLocked ? '#f8fafc' : '#ffffff' }}
+                                value={joiningDate}
+                                onChange={e => handleUpdateCandidateOfferForm(c.id, c.email, { joiningDate: e.target.value })}
+                              />
+                            </div>
 
-                          {/* Inputs Row 5: Training Option Selection */}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155' }}>
-                              Offer Compensation Model:
-                            </span>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                              <button
-                                type="button"
-                                disabled={isLocked}
-                                onClick={() => handleUpdateCandidateOfferForm(c.id, c.email, { includeTraining: true })}
-                                style={{
-                                  padding: '7px 10px',
-                                  fontSize: '0.72rem',
-                                  borderRadius: '8px',
-                                  border: (candForm.includeTraining !== false) ? '1.5px solid #f97316' : '1px solid #cbd5e1',
-                                  background: (candForm.includeTraining !== false) ? '#fff7ed' : '#ffffff',
-                                  color: (candForm.includeTraining !== false) ? '#ea580c' : '#64748b',
-                                  cursor: isLocked ? 'not-allowed' : 'pointer',
-                                  textAlign: 'left'
-                                }}
-                              >
-                                <span style={{ display: 'block', fontWeight: 800 }}>✓ With Training</span>
-                                <span style={{ fontSize: '0.62rem', fontWeight: 500, opacity: 0.85 }}>INR 20K during 3-6m training</span>
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isLocked}
-                                onClick={() => handleUpdateCandidateOfferForm(c.id, c.email, { includeTraining: false })}
-                                style={{
-                                  padding: '7px 10px',
-                                  fontSize: '0.72rem',
-                                  borderRadius: '8px',
-                                  border: (candForm.includeTraining === false) ? '1.5px solid #3b82f6' : '1px solid #cbd5e1',
-                                  background: (candForm.includeTraining === false) ? '#eff6ff' : '#ffffff',
-                                  color: (candForm.includeTraining === false) ? '#2563eb' : '#64748b',
-                                  cursor: isLocked ? 'not-allowed' : 'pointer',
-                                  textAlign: 'left'
-                                }}
-                              >
-                                <span style={{ display: 'block', fontWeight: 800 }}>✓ Without Training</span>
-                                <span style={{ fontSize: '0.62rem', fontWeight: 500, opacity: 0.85 }}>Direct Annual Compensation</span>
-                              </button>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#334155' }}>
+                                Offer Compensation Model:
+                              </span>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                                <button
+                                  type="button"
+                                  disabled={isLocked}
+                                  onClick={() => handleUpdateCandidateOfferForm(c.id, c.email, { includeTraining: true })}
+                                  style={{
+                                    height: '30px',
+                                    padding: '2px 8px',
+                                    fontSize: '0.68rem',
+                                    borderRadius: '6px',
+                                    border: (candForm.includeTraining !== false) ? '1.5px solid #f97316' : '1px solid #cbd5e1',
+                                    background: (candForm.includeTraining !== false) ? '#fff7ed' : '#ffffff',
+                                    color: (candForm.includeTraining !== false) ? '#ea580c' : '#64748b',
+                                    cursor: isLocked ? 'not-allowed' : 'pointer',
+                                    textAlign: 'center',
+                                    fontWeight: 700,
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis'
+                                  }}
+                                  title="INR 20K during 3-6m training"
+                                >
+                                  ✓ With Training (20k)
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isLocked}
+                                  onClick={() => handleUpdateCandidateOfferForm(c.id, c.email, { includeTraining: false })}
+                                  style={{
+                                    height: '30px',
+                                    padding: '2px 8px',
+                                    fontSize: '0.68rem',
+                                    borderRadius: '6px',
+                                    border: (candForm.includeTraining === false) ? '1.5px solid #3b82f6' : '1px solid #cbd5e1',
+                                    background: (candForm.includeTraining === false) ? '#eff6ff' : '#ffffff',
+                                    color: (candForm.includeTraining === false) ? '#2563eb' : '#64748b',
+                                    cursor: isLocked ? 'not-allowed' : 'pointer',
+                                    textAlign: 'center',
+                                    fontWeight: 700,
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis'
+                                  }}
+                                  title="Direct Annual Compensation"
+                                >
+                                  ✓ Without Training
+                                </button>
+                              </div>
                             </div>
                           </div>
 
@@ -10514,7 +10629,7 @@ return (
 
                                     <button
                                       type="button"
-                                      onClick={() => handleAutoCalculateCandidateBreakdown(c.id, c.email, withGross ? bGrossMonthly : (bBasicMonthly * 2), withGross)}
+                                      onClick={() => handleAutoCalculateCandidateBreakdown(c.id, c.email, withGross ? bGrossMonthly : bCtcMonthly, withGross)}
                                       style={{
                                         background: '#f8fafc',
                                         border: '1px solid #cbd5e1',
@@ -10559,6 +10674,37 @@ return (
                                     >
                                       {(bDedInsuranceMonthly > 0 || bDedInsuranceYearly > 0) ? '🗑️ Delete Insurance' : '+ Add Insurance (10%)'}
                                     </button>
+                                    {/* Variable Pay Toggle Button */}
+                                    {hasVarPay && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (bDedVariablePayMonthly > 0 || bDedVariablePayYearly > 0) {
+                                            handleUpdateCandidateBreakdown(c.id, c.email, { deductVariablePayMonthly: 0, deductVariablePayYearly: 0 });
+                                          } else {
+                                            const defaultYearly = cleanYearly(bCtcYearly * 0.10);
+                                            const defaultMonthly = round2(defaultYearly / 12);
+                                            handleUpdateCandidateBreakdown(c.id, c.email, { deductVariablePayMonthly: defaultMonthly, deductVariablePayYearly: defaultYearly });
+                                          }
+                                        }}
+                                        style={{
+                                          background: (bDedVariablePayMonthly > 0 || bDedVariablePayYearly > 0) ? '#fef2f2' : '#f0fdf4',
+                                          border: (bDedVariablePayMonthly > 0 || bDedVariablePayYearly > 0) ? '1px solid #fecaca' : '1px solid #bbf7d0',
+                                          color: (bDedVariablePayMonthly > 0 || bDedVariablePayYearly > 0) ? '#dc2626' : '#16a34a',
+                                          borderRadius: '4px',
+                                          padding: '4px 8px',
+                                          fontSize: '0.72rem',
+                                          fontWeight: 700,
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '3px'
+                                        }}
+                                        title={(bDedVariablePayMonthly > 0 || bDedVariablePayYearly > 0) ? "Delete Variable Pay deduction (adds money to Take-Home)" : "Add 10% Variable Pay deduction"}
+                                      >
+                                        {(bDedVariablePayMonthly > 0 || bDedVariablePayYearly > 0) ? '🗑️ Delete Variable Pay' : '+ Add Variable Pay (10%)'}
+                                      </button>
+                                    )}
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -10604,22 +10750,22 @@ return (
                               </colgroup>
                               <thead>
                                 <tr style={{ background: '#009a49', color: '#ffffff', textAlign: 'center', fontWeight: 'bold' }}>
-                                  <th colSpan={3} style={{ padding: '8px 12px', fontSize: '0.85rem', letterSpacing: '0.5px', textTransform: 'uppercase', border: '1.5px solid #000000', boxSizing: 'border-box' }}>
+                                  <th colSpan={3} style={{ padding: '3px 8px', fontSize: '0.85rem', letterSpacing: '0.5px', textTransform: 'uppercase', border: '1.5px solid #000000', boxSizing: 'border-box' }}>
                                     GROSS SALARY CALCULATIONS
                                   </th>
                                 </tr>
                                 <tr style={{ background: '#ffff00', color: '#000000', fontWeight: 'bold', fontSize: '0.78rem' }}>
-                                  <th style={{ padding: '6px 12px', textAlign: 'left', border: '1px solid #000000', width: '50%', boxSizing: 'border-box' }}>Particulars</th>
-                                  <th style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000', width: '25%', boxSizing: 'border-box' }}>Monthly</th>
-                                  <th style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000', width: '25%', boxSizing: 'border-box' }}>Yearly</th>
+                                  <th style={{ padding: '2.5px 8px', textAlign: 'left', border: '1px solid #000000', width: '50%', boxSizing: 'border-box' }}>Particulars</th>
+                                  <th style={{ padding: '2.5px 8px', textAlign: 'right', border: '1px solid #000000', width: '25%', boxSizing: 'border-box' }}>Monthly</th>
+                                  <th style={{ padding: '2.5px 8px', textAlign: 'right', border: '1px solid #000000', width: '25%', boxSizing: 'border-box' }}>Yearly</th>
                                 </tr>
                               </thead>
                               <tbody style={{ fontSize: '0.78rem' }}>
                                 {/* Gross Primary Row (Highlighted Light Green - only rendered when withGross is true) */}
                                 {withGross && (
                                   <tr style={{ background: '#9bd770', fontWeight: 'bold' }}>
-                                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Gross</td>
-                                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                    <td style={{ padding: '2.5px 8px', border: '1px solid #000000' }}>Gross</td>
+                                    <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                       {isEditingBreakdown ? (
                                         <input
                                           type="number"
@@ -10635,7 +10781,7 @@ return (
                                         formatINR(bGrossMonthly)
                                       )}
                                     </td>
-                                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                    <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                       {isEditingBreakdown ? (
                                         <input
                                           type="number"
@@ -10656,8 +10802,8 @@ return (
 
                                 {/* Basic */}
                                 <tr>
-                                  <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Basic</td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2.5px 8px', border: '1px solid #000000' }}>Basic</td>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
                                         type="number"
@@ -10665,7 +10811,13 @@ return (
                                         value={bBasicMonthly}
                                         onChange={(e) => {
                                           const val = Number(e.target.value) || 0;
-                                          handleUpdateCandidateBreakdown(c.id, c.email, { basicMonthly: val, basicYearly: cleanYearly(val * 12) });
+                                          if (!withGross) {
+                                            const scale = hasVarPay ? 0.90 : 1.00;
+                                            const derivedMonthly = val > 0 ? val / (0.50 * scale) : 0;
+                                            handleAutoCalculateCandidateBreakdown(c.id, c.email, derivedMonthly, false);
+                                          } else {
+                                            handleUpdateCandidateBreakdown(c.id, c.email, { basicMonthly: val, basicYearly: cleanYearly(val * 12) });
+                                          }
                                         }}
                                         style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
                                       />
@@ -10673,7 +10825,7 @@ return (
                                       formatINR(bBasicMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
                                         type="number"
@@ -10681,7 +10833,13 @@ return (
                                         value={bBasicYearly}
                                         onChange={(e) => {
                                           const val = Number(e.target.value) || 0;
-                                          handleUpdateCandidateBreakdown(c.id, c.email, { basicYearly: val, basicMonthly: round2(val / 12) });
+                                          if (!withGross) {
+                                            const scale = hasVarPay ? 0.90 : 1.00;
+                                            const derivedYearly = val > 0 ? val / (0.50 * scale) : 0;
+                                            handleAutoCalculateFromYearly(c.id, c.email, derivedYearly, false);
+                                          } else {
+                                            handleUpdateCandidateBreakdown(c.id, c.email, { basicYearly: val, basicMonthly: round2(val / 12) });
+                                          }
                                         }}
                                         style={{ width: '100px', textAlign: 'right', padding: '2px 4px', border: '1px solid #93c5fd', borderRadius: '3px', fontSize: '0.78rem' }}
                                       />
@@ -10693,8 +10851,8 @@ return (
 
                                 {/* House Rent Allowance (HRA) */}
                                 <tr>
-                                  <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>House Rent Allowance (HRA)</td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2.5px 8px', border: '1px solid #000000' }}>House Rent Allowance (HRA)</td>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
                                         type="number"
@@ -10710,7 +10868,7 @@ return (
                                       formatINR(bHraMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
                                         type="number"
@@ -10730,8 +10888,8 @@ return (
 
                                 {/* LTA */}
                                 <tr>
-                                  <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>LTA</td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2.5px 8px', border: '1px solid #000000' }}>LTA</td>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
                                         type="number"
@@ -10747,7 +10905,7 @@ return (
                                       formatINR(bLtaMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
                                         type="number"
@@ -10767,8 +10925,8 @@ return (
 
                                 {/* EPF */}
                                 <tr>
-                                  <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>EPF</td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2.5px 8px', border: '1px solid #000000' }}>EPF</td>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
                                         type="number"
@@ -10791,7 +10949,7 @@ return (
                                       formatINR(bEmployerPfMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
                                         type="number"
@@ -10818,8 +10976,8 @@ return (
 
                                 {/* Insurance */}
                                 <tr>
-                                  <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Insurance</td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2.5px 8px', border: '1px solid #000000' }}>Insurance</td>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
                                         type="number"
@@ -10835,7 +10993,7 @@ return (
                                       formatINR(bInsuranceMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
                                         type="number"
@@ -10855,8 +11013,8 @@ return (
 
                                 {hasVarPay && (
                                   <tr>
-                                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Variable Pay</td>
-                                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                    <td style={{ padding: '2.5px 8px', border: '1px solid #000000' }}>Variable Pay</td>
+                                    <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                       {isEditingBreakdown ? (
                                         <input
                                           type="number"
@@ -10872,7 +11030,7 @@ return (
                                         formatINR(bVariablePayMonthly)
                                       )}
                                     </td>
-                                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                    <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                       {isEditingBreakdown ? (
                                         <input
                                           type="number"
@@ -10893,8 +11051,8 @@ return (
 
                                 {/* Total Amount (CTC) */}
                                 <tr style={{ fontWeight: 'bold', background: !withGross ? '#f0fdf4' : 'transparent' }}>
-                                  <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Total Amount (CTC)</td>
-                                  <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2.5px 8px', border: '1px solid #000000' }}>Total Amount (CTC)</td>
+                                  <td style={{ padding: '2.5px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown && !withGross ? (
                                       <input
                                         type="number"
@@ -10910,7 +11068,7 @@ return (
                                       formatINR(bCtcMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown && !withGross ? (
                                       <input
                                         type="number"
@@ -10930,15 +11088,15 @@ return (
 
                                 {/* Section 2: DEDUCTIONS */}
                                 <tr style={{ background: '#009a49', color: '#ffffff', textAlign: 'center', fontWeight: 'bold' }}>
-                                  <td colSpan={3} style={{ padding: '8px 12px', fontSize: '0.85rem', letterSpacing: '0.5px', textTransform: 'uppercase', border: '1.5px solid #000000' }}>
+                                  <td colSpan={3} style={{ padding: '3px 8px', fontSize: '0.85rem', letterSpacing: '0.5px', textTransform: 'uppercase', border: '1.5px solid #000000' }}>
                                     DEDUCTIONS
                                   </td>
                                 </tr>
 
                                 {/* Professional Tax */}
                                 <tr>
-                                  <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Professional Tax</td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2.5px 8px', border: '1px solid #000000' }}>Professional Tax</td>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
                                         type="number"
@@ -10954,7 +11112,7 @@ return (
                                       formatINR(bPtMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
                                         type="number"
@@ -10974,8 +11132,8 @@ return (
 
                                 {/* EPF (Deductions: Basic Salary * 12%) */}
                                 <tr>
-                                  <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>EPF</td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2.5px 8px', border: '1px solid #000000' }}>EPF</td>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
                                         type="number"
@@ -10996,7 +11154,7 @@ return (
                                       formatINR(bEpfMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
                                         type="number"
@@ -11021,7 +11179,7 @@ return (
 
                                 {/* Insurance (Deductions) */}
                                 <tr style={{ background: (bDedInsuranceMonthly === 0 && bDedInsuranceYearly === 0) ? '#fefce8' : 'transparent' }}>
-                                  <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2.5px 8px', border: '1px solid #000000' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                       <span>
                                         Insurance
@@ -11084,7 +11242,7 @@ return (
                                       )}
                                     </div>
                                   </td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
                                         type="number"
@@ -11100,7 +11258,7 @@ return (
                                       formatINR(bDedInsuranceMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
                                         type="number"
@@ -11120,8 +11278,8 @@ return (
 
                                 {/* Other Deductions */}
                                 <tr>
-                                  <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Other Deductions</td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2.5px 8px', border: '1px solid #000000' }}>Other Deductions</td>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
                                         type="number"
@@ -11137,7 +11295,7 @@ return (
                                       formatINR(bOtherDedMonthly)
                                     )}
                                   </td>
-                                  <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {isEditingBreakdown ? (
                                       <input
                                         type="number"
@@ -11157,7 +11315,7 @@ return (
 
                                 {hasVarPay && (
                                   <tr style={{ background: (bDedVariablePayMonthly === 0 && bDedVariablePayYearly === 0) ? '#fefce8' : 'transparent' }}>
-                                    <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>
+                                    <td style={{ padding: '2.5px 8px', border: '1px solid #000000' }}>
                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <span>
                                           Variable Pay
@@ -11220,7 +11378,7 @@ return (
                                         )}
                                       </div>
                                     </td>
-                                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                    <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                       {isEditingBreakdown ? (
                                         <input
                                           type="number"
@@ -11236,7 +11394,7 @@ return (
                                         formatINR(bDedVariablePayMonthly)
                                       )}
                                     </td>
-                                    <td style={{ padding: '4px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                    <td style={{ padding: '2px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                       {isEditingBreakdown ? (
                                         <input
                                           type="number"
@@ -11257,39 +11415,39 @@ return (
 
                                 {/* Total Deductions */}
                                 <tr style={{ fontWeight: 'bold' }}>
-                                  <td style={{ padding: '6px 12px', border: '1px solid #000000' }}>Total Deductions</td>
-                                  <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2.5px 8px', border: '1px solid #000000' }}>Total Deductions</td>
+                                  <td style={{ padding: '2.5px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {formatINR(bTotalDeductMonthly)}
                                   </td>
-                                  <td style={{ padding: '6px 12px', textAlign: 'right', border: '1px solid #000000' }}>
+                                  <td style={{ padding: '2.5px 8px', textAlign: 'right', border: '1px solid #000000' }}>
                                     {formatINR(bTotalDeductYearly)}
                                   </td>
                                 </tr>
 
                                 {/* Net Take-Home Salary (In-Hand) */}
                                 <tr style={{ background: '#e0f2fe', fontWeight: 'bold', fontSize: '0.85rem' }}>
-                                  <td style={{ padding: '8px 12px', border: '1.5px solid #000000', color: '#0f172a' }}>Net Take-Home Salary (In-Hand)</td>
-                                  <td style={{ padding: '8px 12px', textAlign: 'right', border: '1.5px solid #000000', color: '#0f172a' }}>
+                                  <td style={{ padding: '3px 8px', border: '1.5px solid #000000', color: '#0f172a' }}>Net Take-Home Salary (In-Hand)</td>
+                                  <td style={{ padding: '3px 8px', textAlign: 'right', border: '1.5px solid #000000', color: '#0f172a' }}>
                                     ₹{formatINR(bNetMonthly)}
                                   </td>
-                                  <td style={{ padding: '8px 12px', textAlign: 'right', border: '1.5px solid #000000', color: '#0f172a' }}>
+                                  <td style={{ padding: '3px 8px', textAlign: 'right', border: '1.5px solid #000000', color: '#0f172a' }}>
                                     ₹{formatINR(bNetYearly)}
                                   </td>
                                 </tr>
                               </tbody>
                             </table>
 
-                            {/* Net Disbursed Salary for the Month (In Words) Banner */}
-                            <div style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', border: '1.5px solid #86efac', borderRadius: '8px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                              <div>
-                                <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                  Net Disbursed Salary for the Month
-                                </div>
-                                <div style={{ fontSize: '0.76rem', color: '#15803d', fontStyle: 'italic', marginTop: '2px' }}>
+                            {/* Net Disbursed Salary for the Month (In Words) Compact Banner */}
+                            <div style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', border: '1px solid #86efac', borderRadius: '6px', padding: '6px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', marginTop: '4px' }}>
+                              <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                                  Net Disbursed:
+                                </span>
+                                <span style={{ fontSize: '0.7rem', color: '#15803d', fontStyle: 'italic' }}>
                                   ({numberToWordsINR(bNetMonthly)})
-                                </div>
+                                </span>
                               </div>
-                              <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#14532d' }}>
+                              <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#14532d' }}>
                                 ₹{formatINR(bNetMonthly)}
                               </div>
                             </div>
@@ -11482,10 +11640,9 @@ return (
                             </div>
                           )}
                         </div>
-                      );
-                    })
-                  )}
-                </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}
@@ -13937,7 +14094,7 @@ return (
                     const candForm = candidateOfferForms[previewOfferCandidate.id] || (previewOfferCandidate.email ? candidateOfferForms[previewOfferCandidate.email] : undefined) || (previewOfferCandidate.email ? candidateOfferForms[previewOfferCandidate.email.toLowerCase().trim()] : undefined) || {};
                     const annualCtcNum = candForm.annualCtc ? Number(candForm.annualCtc) : (previewOfferCandidate.offerSalary ? (previewOfferCandidate.offerSalary > 100000 ? previewOfferCandidate.offerSalary : previewOfferCandidate.offerSalary * 12) : 420000);
                     const joiningDate = candForm.joiningDate || previewOfferCandidate.offerJoiningDate;
-                    handleDownloadFormalOfferLetter(previewOfferCandidate, annualCtcNum, joiningDate, candForm.designation, candForm.referenceNo, candForm.venue, candForm.candidateName, previewOfferWithTraining);
+                    handleDownloadFormalOfferLetter(previewOfferCandidate, annualCtcNum, joiningDate, candForm.designation, candForm.referenceNo, candForm.venue, candForm.candidateName, previewOfferWithTraining, candForm.customBreakdown, candForm.variablePay);
                   }}
                   className="rec-btn-outline"
                   style={{ fontSize: '0.72rem', height: '30px', padding: '0 12px', gap: '5px', background: 'rgba(249,115,22,0.25)', borderColor: 'rgba(251,146,60,0.5)', color: '#ffffff', fontWeight: 800 }}
@@ -14070,7 +14227,7 @@ return (
                   const candForm = candidateOfferForms[previewOfferCandidate.id] || (previewOfferCandidate.email ? candidateOfferForms[previewOfferCandidate.email] : undefined) || (previewOfferCandidate.email ? candidateOfferForms[previewOfferCandidate.email.toLowerCase().trim()] : undefined) || {};
                   const annualCtcNum = candForm.annualCtc ? Number(candForm.annualCtc) : (previewOfferCandidate.offerSalary ? (previewOfferCandidate.offerSalary > 100000 ? previewOfferCandidate.offerSalary : previewOfferCandidate.offerSalary * 12) : 720000);
                   const joiningDate = candForm.joiningDate || previewOfferCandidate.offerJoiningDate;
-                  handleDownloadFormalOfferLetter(previewOfferCandidate, annualCtcNum, joiningDate, candForm.designation, candForm.referenceNo, candForm.venue, candForm.candidateName);
+                  handleDownloadFormalOfferLetter(previewOfferCandidate, annualCtcNum, joiningDate, candForm.designation, candForm.referenceNo, candForm.venue, candForm.candidateName, previewOfferWithTraining, candForm.customBreakdown, candForm.variablePay);
                 }}
                 className="rec-btn-outline"
                 style={{ fontSize: '0.75rem', height: '36px', padding: '0 16px', fontWeight: 700, gap: '6px', color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff' }}
