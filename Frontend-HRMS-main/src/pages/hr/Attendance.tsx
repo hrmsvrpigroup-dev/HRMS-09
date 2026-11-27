@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Download, RefreshCw } from 'lucide-react'
 import { attendanceApi, AttendanceItem } from '../../api/attendance.api'
+import { employeeApi, Employee } from '../../api/employee.api'
 import { LoadingSpinner } from '../../components/shared/LoadingSpinner'
 
 function getIdleBadge(idleMinutes: number) {
@@ -201,9 +202,26 @@ function FaceModal({ log, onClose }: { log: AttendanceItem; onClose: () => void 
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function Attendance() {
-  const [logs, setLogs] = useState<AttendanceItem[]>([])
-  const [filteredLogs, setFilteredLogs] = useState<AttendanceItem[]>([])
-  const [loading, setLoading] = useState(true)   // only for initial page load
+  const readCachedLogs = (): AttendanceItem[] => {
+    try {
+      const raw = localStorage.getItem('hrms_cached_attendance_v1')
+      return raw ? JSON.parse(raw) : []
+    } catch {
+      return []
+    }
+  }
+
+  const [logs, setLogs] = useState<AttendanceItem[]>(readCachedLogs)
+  const [filteredLogs, setFilteredLogs] = useState<AttendanceItem[]>(readCachedLogs)
+  const [employees, setEmployees] = useState<Employee[]>(() => {
+    try {
+      const raw = localStorage.getItem('hrms_cached_employees_v2') || sessionStorage.getItem('hrms_cached_employees_v2')
+      return raw ? JSON.parse(raw) : []
+    } catch {
+      return []
+    }
+  })
+  const [loading, setLoading] = useState(() => readCachedLogs().length === 0)   // only when no cached rows exist
   const [error, setError] = useState('')
 
   // Per-row loading: tracks which attendance IDs have an action in-flight
@@ -248,8 +266,15 @@ export default function Attendance() {
       setLogs(data)
       setFilteredLogs(data)
       setError('')
+      if (!targetDate) {
+        try {
+          localStorage.setItem('hrms_cached_attendance_v1', JSON.stringify(data))
+        } catch {}
+      }
     } catch {
-      setError('Could not retrieve company attendance log sheets.')
+      if (logs.length === 0) {
+        setError('Could not retrieve company attendance log sheets.')
+      }
     } finally {
       setLoading(false)
     }
@@ -313,14 +338,54 @@ export default function Attendance() {
     }
   }
 
+  // Load active employee roster once for Absent detection (cached + background refresh)
+  useEffect(() => {
+    employeeApi.list()
+      .then((res) => {
+        const list = res.data?.data || []
+        setEmployees(list)
+        try {
+          localStorage.setItem('hrms_cached_employees_v2', JSON.stringify(list))
+        } catch {}
+      })
+      .catch(() => {})
+  }, [])
+
   // Re-query backend whenever dateFilter changes (e.g. user selects any past date or resets)
   useEffect(() => {
     fetchLogs(dateFilter, logs.length > 0)
   }, [dateFilter])
 
-  // Handle local text search and status filter
+  // Handle local text search, status filter, and virtual ABSENT rows for active employees without logs
   useEffect(() => {
     let result = [...logs]
+    const effectiveDate = dateFilter || (statusFilter === 'ABSENT' ? new Date().toLocaleDateString('en-CA') : '')
+
+    if (effectiveDate && employees.length > 0 && (dateFilter !== '' || statusFilter === 'ABSENT')) {
+      const logsForDate = result.filter(item => String(item.date).startsWith(effectiveDate))
+      const presentEmpIds = new Set(logsForDate.map(l => l.employeeId))
+      const presentCodes = new Set(logsForDate.map(l => l.employee?.employeeCode).filter(Boolean))
+
+      const absentRows: AttendanceItem[] = employees
+        .filter(emp => emp.status !== 'INACTIVE' && emp.status !== 'TERMINATED')
+        .filter(emp => !presentEmpIds.has(emp.id) && (!emp.employeeCode || !presentCodes.has(emp.employeeCode)))
+        .map(emp => ({
+          id: `absent-${emp.id}-${effectiveDate}`,
+          employeeId: emp.id,
+          date: `${effectiveDate}T00:00:00.000Z`,
+          status: 'ABSENT' as const,
+          idleMinutes: 0,
+          employee: {
+            firstName: emp.firstName,
+            lastName: emp.lastName,
+            employeeCode: emp.employeeCode,
+            email: emp.email,
+          },
+        }))
+
+      result = [...result, ...absentRows]
+    }
+
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase().trim()
       result = result.filter(item =>
@@ -330,9 +395,9 @@ export default function Attendance() {
       )
     }
     if (statusFilter !== 'ALL') result = result.filter(item => item.status === statusFilter)
-    if (dateFilter) result = result.filter(item => String(item.date).startsWith(dateFilter))
+    if (effectiveDate) result = result.filter(item => String(item.date).startsWith(effectiveDate))
     setFilteredLogs(result)
-  }, [searchTerm, statusFilter, dateFilter, logs])
+  }, [searchTerm, statusFilter, dateFilter, logs, employees])
 
   const totalIdleToday = filteredLogs.reduce((s, l) => s + (l.idleMinutes ?? 0), 0)
   const totalActiveHrs = filteredLogs.reduce((s, l) => {
@@ -601,22 +666,26 @@ export default function Attendance() {
                       )}
                     </td>
                     <td className="no-print">
-                      <button 
-                        onClick={() => handleReset(log.id)}
-                        disabled={actionLoading.has(log.id)}
-                        className="btn-secondary" 
-                        style={{
-                          padding: '4px 8px', fontSize: '0.75rem',
-                          color: actionLoading.has(log.id) ? '#94a3b8' : '#ef4444',
-                          borderColor: actionLoading.has(log.id) ? '#94a3b8' : '#ef4444',
-                          background: 'transparent',
-                          cursor: actionLoading.has(log.id) ? 'not-allowed' : 'pointer',
-                          opacity: actionLoading.has(log.id) ? 0.6 : 1,
-                        }}
-                        title="Reset Shift"
-                      >
-                        {actionLoading.has(log.id) ? '...' : 'Reset'}
-                      </button>
+                      {!String(log.id).startsWith('absent-') ? (
+                        <button 
+                          onClick={() => handleReset(log.id)}
+                          disabled={actionLoading.has(log.id)}
+                          className="btn-secondary" 
+                          style={{
+                            padding: '4px 8px', fontSize: '0.75rem',
+                            color: actionLoading.has(log.id) ? '#94a3b8' : '#ef4444',
+                            borderColor: actionLoading.has(log.id) ? '#94a3b8' : '#ef4444',
+                            background: 'transparent',
+                            cursor: actionLoading.has(log.id) ? 'not-allowed' : 'pointer',
+                            opacity: actionLoading.has(log.id) ? 0.6 : 1,
+                          }}
+                          title="Reset Shift"
+                        >
+                          {actionLoading.has(log.id) ? '...' : 'Reset'}
+                        </button>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>—</span>
+                      )}
                     </td>
                   </tr>
                 )

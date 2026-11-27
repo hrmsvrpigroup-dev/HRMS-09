@@ -8,29 +8,25 @@ import { downloadEmployeeExcel } from '../../utils/excelExport'
 
 export default function Employees() {
   const navigate = useNavigate()
-  const [employees, setEmployees] = useState<Employee[]>(() => {
+  const readCachedEmployees = (): Employee[] => {
     try {
-      const cached = sessionStorage.getItem('hrms_cached_employees_v2')
-      return cached ? JSON.parse(cached) : []
+      const raw = localStorage.getItem('hrms_cached_employees_v2') || sessionStorage.getItem('hrms_cached_employees_v2')
+      return raw ? JSON.parse(raw) : []
     } catch {
       return []
     }
-  })
-  const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>(() => {
+  }
+  const writeCachedEmployees = (data: Employee[]) => {
     try {
-      const cached = sessionStorage.getItem('hrms_cached_employees_v2')
-      return cached ? JSON.parse(cached) : []
-    } catch {
-      return []
-    }
-  })
-  const [loading, setLoading] = useState(() => {
-    try {
-      return !sessionStorage.getItem('hrms_cached_employees_v2')
-    } catch {
-      return true
-    }
-  })
+      const serialized = JSON.stringify(data)
+      localStorage.setItem('hrms_cached_employees_v2', serialized)
+      sessionStorage.setItem('hrms_cached_employees_v2', serialized)
+    } catch {}
+  }
+
+  const [employees, setEmployees] = useState<Employee[]>(readCachedEmployees)
+  const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>(readCachedEmployees)
+  const [loading, setLoading] = useState(() => readCachedEmployees().length === 0)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [showAddEmployee, setShowAddEmployee] = useState(false)
@@ -49,11 +45,11 @@ export default function Employees() {
       setError('')
       setEmployees(data)
       setFilteredEmployees(data)
-      try {
-        sessionStorage.setItem('hrms_cached_employees_v2', JSON.stringify(data))
-      } catch {}
+      writeCachedEmployees(data)
     } catch {
-      setError('Could not retrieve workspace employee rosters.')
+      if (employees.length === 0) {
+        setError('Could not retrieve workspace employee rosters.')
+      }
     } finally {
       setLoading(false)
     }
@@ -67,9 +63,7 @@ export default function Employees() {
       const updated = employees.filter((emp) => emp.id !== id)
       setEmployees(updated)
       setFilteredEmployees((prev) => prev.filter((emp) => emp.id !== id))
-      try {
-        sessionStorage.setItem('hrms_cached_employees_v2', JSON.stringify(updated))
-      } catch {}
+      writeCachedEmployees(updated)
       await fetchEmployees(true)
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to delete employee')

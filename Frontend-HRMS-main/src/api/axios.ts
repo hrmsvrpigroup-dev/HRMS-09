@@ -42,15 +42,18 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    // 1. Retry network errors, 502, 503, 504 (e.g. Render waking up from cold start)
+    // 1. Retry network errors, 502, 503, 504 (e.g. Render waking up from cold start),
+    // but never retry 429 rate-limit / anti-bot responses and cap retries to avoid flooding.
+    const isRateLimited = error.response?.status === 429
     const isNetworkOrGatewayError =
-      !error.response ||
-      error.code === 'ERR_NETWORK' ||
-      [502, 503, 504].includes(error.response?.status)
+      !isRateLimited &&
+      (!error.response ||
+        error.code === 'ERR_NETWORK' ||
+        [502, 503, 504].includes(error.response?.status))
 
-    if (isNetworkOrGatewayError && (originalRequest._retryCount || 0) < 4) {
+    if (isNetworkOrGatewayError && (originalRequest._retryCount || 0) < 2) {
       originalRequest._retryCount = (originalRequest._retryCount || 0) + 1
-      const delayMs = originalRequest._retryCount * 2000
+      const delayMs = originalRequest._retryCount * 3000
       await new Promise((resolve) => setTimeout(resolve, delayMs))
       return api(originalRequest)
     }

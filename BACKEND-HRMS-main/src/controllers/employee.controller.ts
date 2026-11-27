@@ -6,6 +6,21 @@ import { hashPassword } from '../utils/password.utils'
 import { UserRole, EmployeeStatus, CreditType, EmploymentType, AttendanceType } from '@prisma/client'
 import { EMPLOYEE_CREATION_COST } from '../services/tenant.service'
 
+const EMPLOYEE_LIST_CACHE_TTL_MS = 30_000
+const employeeListCache = new Map<string, { data: any[]; expiresAt: number }>()
+
+export const invalidateEmployeeListCache = (tenantId?: string) => {
+  if (!tenantId) {
+    employeeListCache.clear()
+    return
+  }
+  for (const key of employeeListCache.keys()) {
+    if (key.startsWith(`${tenantId}:`)) {
+      employeeListCache.delete(key)
+    }
+  }
+}
+
 export const employeeController = {
   async getProfile(req: AuthRequest, res: Response) {
     const tenantId = req.tenantId ?? req.user?.tenantId
@@ -413,6 +428,14 @@ export const employeeController = {
     }
 
     try {
+      const cacheKey = `${tenantId}:${JSON.stringify(req.query || {})}`
+      if (req.query.includeMedia !== 'true') {
+        const cached = employeeListCache.get(cacheKey)
+        if (cached && cached.expiresAt > Date.now()) {
+          return sendSuccess(res, cached.data)
+        }
+      }
+
       const whereClause: any = { tenantId }
 
       // Support optional query filters and pagination if specified
@@ -478,6 +501,12 @@ export const employeeController = {
         ...(takeNum ? { take: takeNum } : {}),
         ...(skipNum ? { skip: skipNum } : {}),
       })
+
+      if (req.query.includeMedia !== 'true') {
+        if (employeeListCache.size > 100) employeeListCache.clear()
+        const cacheKey = `${tenantId}:${JSON.stringify(req.query || {})}`
+        employeeListCache.set(cacheKey, { data: employees, expiresAt: Date.now() + EMPLOYEE_LIST_CACHE_TTL_MS })
+      }
 
       return sendSuccess(res, employees)
     } catch (error: any) {
@@ -764,6 +793,7 @@ export const employeeController = {
         }
       }
 
+      invalidateEmployeeListCache(tenantId)
       return sendSuccess(res, result, 'Employee profile provisioned successfully', 201)
     } catch (error: any) {
       return sendError(res, error.message || 'Failed to onboard employee', 500)
@@ -1051,6 +1081,7 @@ export const employeeController = {
         return emp
       })
 
+      invalidateEmployeeListCache(tenantId)
       return sendSuccess(res, updated, 'Employee updated successfully')
     } catch (error: any) {
       console.error('[updateEmployee error]', error)
@@ -1110,6 +1141,7 @@ export const employeeController = {
         { timeout: 60000, maxWait: 15000 }
       )
 
+      invalidateEmployeeListCache(tenantId)
       return sendSuccess(res, null, 'Employee deleted successfully')
     } catch (error: any) {
       return sendError(res, error.message || 'Failed to delete employee', 500)
@@ -1139,6 +1171,7 @@ export const employeeController = {
         data: { shift: shift || null }
       })
 
+      invalidateEmployeeListCache(tenantId)
       return sendSuccess(res, updated, 'Employee shift updated successfully')
     } catch (error: any) {
       return sendError(res, error.message || 'Failed to update employee shift', 500)
@@ -1198,6 +1231,7 @@ export const employeeController = {
         })
       })
 
+      invalidateEmployeeListCache(tenantId)
       return sendSuccess(
         res,
         updated,
