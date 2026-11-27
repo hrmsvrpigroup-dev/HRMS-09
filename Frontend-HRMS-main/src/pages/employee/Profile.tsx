@@ -341,16 +341,18 @@ export default function Profile() {
     }
   }, [user?.role])
 
-  // Sync default card data for HR
+  // Sync default card data for HR / Employee (DB is authoritative for Employees)
   useEffect(() => {
     if (selectedEmployeeId === 'ME') {
-      const savedCustom = localStorage.getItem(`hrms_custom_idcard_ME`)
-      if (savedCustom) {
-        try {
-          const parsed = JSON.parse(savedCustom)
-          setLiveCardData(parsed)
-          return
-        } catch (e) {}
+      if (user?.role === 'HR') {
+        const savedCustom = localStorage.getItem(`hrms_custom_idcard_ME`)
+        if (savedCustom) {
+          try {
+            const parsed = JSON.parse(savedCustom)
+            setLiveCardData(parsed)
+            return
+          } catch (e) {}
+        }
       }
 
       const hrEmpCode = user?.role === 'HR' ? 'HR-0001' : (profile.manualEmployeeId || 'EMP-1001')
@@ -653,10 +655,35 @@ export default function Profile() {
     e.target.value = ''
   }
 
-  const handleSaveLiveCard = () => {
+  const handleSaveLiveCard = async () => {
     try {
       localStorage.setItem(`hrms_custom_idcard_${selectedEmployeeId}`, JSON.stringify(liveCardData))
-      if (selectedEmployeeId === 'ME' && user?.id) {
+      if (selectedEmployeeId !== 'ME') {
+        const res = await employeeApi.updateIdCard(selectedEmployeeId, {
+          fullName: liveCardData.fullName,
+          designation: liveCardData.designation,
+          employeeCode: liveCardData.employeeCode,
+          phone: liveCardData.phone,
+          bloodGroup: liveCardData.bloodGroup,
+          photo: liveCardData.photo || '',
+          signature: liveCardData.signature || '',
+        })
+        const updatedEmp = res.data?.data
+        if (updatedEmp) {
+          setEmployees(prev => prev.map(emp => (emp.id === selectedEmployeeId ? { ...emp, ...updatedEmp } : emp)))
+        }
+      } else if (selectedEmployeeId === 'ME' && user?.id) {
+        if (employeeDetails?.id) {
+          await employeeApi.updateIdCard(employeeDetails.id, {
+            fullName: liveCardData.fullName,
+            designation: liveCardData.designation,
+            employeeCode: liveCardData.employeeCode,
+            phone: liveCardData.phone,
+            bloodGroup: liveCardData.bloodGroup,
+            photo: liveCardData.photo || '',
+            signature: liveCardData.signature || '',
+          }).catch(() => {})
+        }
         setProfile(prev => ({
           ...prev,
           manualEmployeeId: liveCardData.employeeCode,
@@ -677,10 +704,11 @@ export default function Profile() {
         }
       }
       setCardSaveSuccess(true)
-      triggerHrNotification(`ID Card for ${liveCardData.fullName} (${liveCardData.employeeCode}) was customized and saved.`)
+      triggerHrNotification(`ID Card for ${liveCardData.fullName} (${liveCardData.employeeCode}) was updated and synced to employee portal.`)
       setTimeout(() => setCardSaveSuccess(false), 3500)
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to save ID card customization', err)
+      alert(err?.response?.data?.message || 'Failed to sync ID card changes to employee portal.')
     }
   }
 

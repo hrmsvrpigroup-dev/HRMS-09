@@ -49,7 +49,7 @@ async function fetchWithRetry(url: string, options: any, retries = 3, backoffMs 
  * Header Columns:
  * Code | Employee Name | Shift Date | Clock In | Clock Out | Total Hours | Active Hours | Idle Time | Status | Continue | Actions
  */
-export async function syncAttendanceToGoogleSheet(attendanceId: string): Promise<void> {
+export async function syncAttendanceToGoogleSheet(attendanceId: string): Promise<boolean> {
   try {
     const record = await prisma.attendance.findUnique({
       where: { id: attendanceId },
@@ -60,7 +60,7 @@ export async function syncAttendanceToGoogleSheet(attendanceId: string): Promise
 
     if (!record || !record.employee) {
       console.warn(`[GOOGLE_SHEET_SYNC] Attendance record or employee not found for ID: ${attendanceId}`)
-      return
+      return false
     }
 
     const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL
@@ -112,11 +112,14 @@ export async function syncAttendanceToGoogleSheet(attendanceId: string): Promise
       actionsStr,
     ]
 
+    let syncedAny = false
+
     // 1. Google Apps Script Webhook Sync (if GOOGLE_SHEET_WEBHOOK_URL is provided)
-    if (webhookUrl && webhookUrl.trim().length > 0) {
+    if (webhookUrl && webhookUrl.trim().length > 0 && webhookUrl.trim() !== 'value') {
       try {
         const response = await fetchWithRetry(webhookUrl, {
           method: 'POST',
+          redirect: 'follow',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'upsert_attendance',
@@ -125,6 +128,7 @@ export async function syncAttendanceToGoogleSheet(attendanceId: string): Promise
             row: rowData,
           }),
         }, 3, 500)
+        syncedAny = true
         console.log(`[GOOGLE_SHEET_WEBHOOK] Synced employee ${code} for tab ${shiftDateTabName}, status: ${response.status}`)
       } catch (webhookErr: any) {
         console.error(`[GOOGLE_SHEET_WEBHOOK_ERROR] Failed after retries: ${webhookErr.message}`)
@@ -225,6 +229,7 @@ export async function syncAttendanceToGoogleSheet(attendanceId: string): Promise
               values: [rowData],
             },
           })
+          syncedAny = true
           console.log(`[GOOGLE_SHEET_SYNC] Updated employee ${code} row ${existingRowIndex} in tab '${shiftDateTabName}'.`)
         } else {
           // Append new row
@@ -237,14 +242,17 @@ export async function syncAttendanceToGoogleSheet(attendanceId: string): Promise
               values: [rowData],
             },
           })
+          syncedAny = true
           console.log(`[GOOGLE_SHEET_SYNC] Appended employee ${code} to tab '${shiftDateTabName}'.`)
         }
       } catch (apiErr: any) {
         console.error(`[GOOGLE_SHEETS_API_ERROR] ${apiErr.message}`)
       }
     }
+    return syncedAny
   } catch (error: any) {
     console.error(`[GOOGLE_SHEETS_SYNC_GLOBAL_ERROR] ${error.message}`)
+    return false
   }
 }
 
@@ -274,11 +282,11 @@ export async function syncAllAttendanceToGoogleSheet(tenantId?: string): Promise
     const whereClause: any = {}
     if (tenantId) whereClause.tenantId = tenantId
 
-    // When running general sync without specific tenantId, sync recent records (last 7 days)
-    // to prevent memory exhaustion and rate limiting on 6,800+ historical records.
+    // When running general sync without specific tenantId, sync recent records (last 14 days)
+    // to prevent memory exhaustion and rate limiting on 6,800+ historical records while catching missed days.
     if (!tenantId) {
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-      whereClause.date = { gte: sevenDaysAgo }
+      const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
+      whereClause.date = { gte: fourteenDaysAgo }
     }
 
     const records = await prisma.attendance.findMany({
@@ -293,9 +301,17 @@ export async function syncAllAttendanceToGoogleSheet(tenantId?: string): Promise
 
     for (const rec of records) {
       try {
-        await syncAttendanceToGoogleSheet(rec.id)
-        synced++
-        consecutiveErrors = 0
+        const ok = await syncAttendanceToGoogleSheet(rec.id)
+        if (ok) {
+          synced++
+          consecutiveErrors = 0
+        } else {
+          consecutiveErrors++
+          if (consecutiveErrors >= 5) {
+            console.warn('[GOOGLE_SHEETS_BACKFILL] Aborting backfill loop after 5 consecutive failures to maintain service health.')
+            break
+          }
+        }
         // Small delay to prevent hitting Google API quotas
         await new Promise((resolve) => setTimeout(resolve, 50))
       } catch (err: any) {

@@ -11,13 +11,18 @@ export default function LeaveApprovals() {
   // Filter State
   const [statusFilter, setStatusFilter] = useState('PENDING')
 
-  const fetchRequests = async () => {
+  const fetchRequests = async (attempt = 0) => {
     try {
       setLoading(true)
+      setError('')
       const res = await leaveApi.list()
-      setRequests(res.data.data)
-    } catch {
-      setError('Could not retrieve workforce leave requests.')
+      setRequests(res.data?.data || [])
+    } catch (err: any) {
+      if (attempt < 1) {
+        setTimeout(() => fetchRequests(attempt + 1), 600)
+        return
+      }
+      setError(err?.response?.data?.message || 'Could not retrieve workforce leave requests.')
     } finally {
       setLoading(false)
     }
@@ -132,7 +137,15 @@ export default function LeaveApprovals() {
 
       {error ? (
         <div className="card" style={{ textAlign: 'center', padding: '2rem', color: 'var(--error)' }}>
-          {error}
+          <div style={{ marginBottom: '0.75rem', fontWeight: 600 }}>{error}</div>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => fetchRequests(0)}
+            style={{ padding: '0.45rem 1.1rem', fontSize: '0.85rem' }}
+          >
+            Retry
+          </button>
         </div>
       ) : (
         <div className="card table-container" style={{ marginTop: 0 }}>
@@ -173,13 +186,12 @@ export default function LeaveApprovals() {
                   <td>{item.reason}</td>
                   <td>
                     <span
-                      className={`badge ${
-                        item.status === 'APPROVED'
+                      className={`badge ${item.status === 'APPROVED'
                           ? 'badge-success'
                           : item.status === 'PENDING'
-                          ? 'badge-warning'
-                          : 'badge-danger'
-                      }`}
+                            ? 'badge-warning'
+                            : 'badge-danger'
+                        }`}
                     >
                       {item.status}
                     </span>

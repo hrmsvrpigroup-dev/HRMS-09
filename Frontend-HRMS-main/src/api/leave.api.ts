@@ -26,6 +26,7 @@ export type LeaveItem = {
 
 export const leaveApi = {
   list: () => api.get<{ success: boolean; data: LeaveItem[] }>('/leaves'),
+  getNotifications: () => api.get<{ success: boolean; data: LeaveItem[] }>('/leaves/notifications'),
   create: (data: { type: string; fromDate: string; toDate: string; reason: string }) =>
     api.post<{ success: boolean; data: LeaveItem }>('/leaves', data),
   approve: (id: string, status: 'APPROVED' | 'REJECTED') =>

@@ -84,20 +84,25 @@ export const hrController = {
       const startDate = new Date(Number(year), Number(month) - 1, 1)
       const endDate = new Date(Number(year), Number(month), 1)
 
-      const attendances = await prisma.attendance.findMany({
-        where: { tenantId, date: { gte: startDate, lt: endDate }, status: 'PRESENT' }
-      })
-
-      const leaves = await prisma.leave.findMany({
-        where: {
-          tenantId, status: 'APPROVED',
-          OR: [
-            { fromDate: { gte: startDate, lt: endDate } },
-            { toDate: { gte: startDate, lt: endDate } },
-            { fromDate: { lt: startDate }, toDate: { gte: endDate } }
-          ]
-        }
-      })
+      const [attendanceCounts, leaves] = await Promise.all([
+        prisma.attendance.groupBy({
+          by: ['date'],
+          where: { tenantId, date: { gte: startDate, lt: endDate }, status: 'PRESENT' },
+          _count: { _all: true },
+        }),
+        prisma.leave.findMany({
+          where: {
+            tenantId,
+            status: 'APPROVED',
+            OR: [
+              { fromDate: { gte: startDate, lt: endDate } },
+              { toDate: { gte: startDate, lt: endDate } },
+              { fromDate: { lt: startDate }, toDate: { gte: endDate } },
+            ],
+          },
+          select: { fromDate: true, toDate: true },
+        }),
+      ])
 
       const summary: Record<string, { activeCount: number; leaveCount: number }> = {}
       const daysInMonth = new Date(Number(year), Number(month), 0).getDate()
@@ -106,9 +111,9 @@ export const hrController = {
         summary[d.toISOString().split('T')[0]] = { activeCount: 0, leaveCount: 0 }
       }
 
-      attendances.forEach(att => {
-        const key = att.date.toISOString().split('T')[0]
-        if (summary[key]) summary[key].activeCount += 1
+      attendanceCounts.forEach((row) => {
+        const key = row.date.toISOString().split('T')[0]
+        if (summary[key]) summary[key].activeCount += row._count._all
       })
 
       leaves.forEach(leave => {

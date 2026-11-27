@@ -8,6 +8,7 @@ const router = Router()
 
 router.use(authenticate, authorize('ADMIN', 'HR', 'EMPLOYEE'), tenantIsolation)
 
+router.get('/notifications', authorize('ADMIN', 'HR', 'SUPER_ADMIN'), leaveController.getNotifications)
 router.get('/', leaveController.list)
 router.post('/', leaveController.create)
 router.patch('/:id', leaveController.approve)

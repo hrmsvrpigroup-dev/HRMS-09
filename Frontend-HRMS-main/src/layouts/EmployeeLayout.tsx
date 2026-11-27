@@ -36,6 +36,7 @@ export default function EmployeeLayout() {
   const searchPages = [
     { label: 'Dashboard', to: '/employee' },
     { label: 'My Attendance Calendar', to: '/employee/attendance' },
+    { label: 'Company Holidays & Calendar', to: '/employee/calendar' },
     { label: 'Apply Leave Request', to: '/employee/leave' },
     { label: 'Attendance History Table', to: '/employee/history' },
     { label: 'Download Payslips', to: '/employee/payslips' },
@@ -49,6 +50,7 @@ export default function EmployeeLayout() {
   const navItems = [
     { to: '/employee', label: 'Dashboard', icon: Home, end: true },
     { to: '/employee/attendance', label: 'My Attendance', icon: Calendar },
+    { to: '/employee/calendar', label: 'Calendar', icon: Calendar },
     { to: '/employee/leave', label: 'Apply Leave', icon: Edit3 },
     { to: '/employee/history', label: 'Attendance History', icon: Clock },
     { to: '/employee/payslips', label: 'Payslips', icon: FileText },

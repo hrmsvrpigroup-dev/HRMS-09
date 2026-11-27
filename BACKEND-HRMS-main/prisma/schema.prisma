@@ -43,6 +43,9 @@ model Tenant {
   plan              SubscriptionPlan? @relation(fields: [planId], references: [id])
   invoices          Invoice[]
   paymentTransactions PaymentTransaction[]
+  workSchedule      WorkSchedule?
+  calendarHolidays  CalendarHoliday[]
+  trainingSessions  TrainingSession[]
   companySetting    CompanySetting?
   branches          Branch[]
   roles             Role[]
@@ -192,6 +195,7 @@ model Employee {
   salaryAdvances SalaryAdvance[]
   mobileLoginSessions MobileLoginSession[]
   employeeRequests EmployeeRequest[]
+  trainingParticipations TrainingParticipant[]
 
   @@unique([tenantId, employeeCode])
   @@index([tenantId, departmentId])
@@ -963,4 +967,116 @@ model TenantDocument {
   tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
+}
+
+enum CalendarHolidayType {
+  PUBLIC_HOLIDAY
+  COMPANY_HOLIDAY
+  CUSTOM_HOLIDAY
+  SPECIAL_WORKING
+}
+
+model WorkSchedule {
+  id          String   @id @default(cuid())
+  tenantId    String   @unique
+  monday      Boolean  @default(true)
+  tuesday     Boolean  @default(true)
+  wednesday   Boolean  @default(true)
+  thursday    Boolean  @default(true)
+  friday      Boolean  @default(true)
+  saturday    Boolean  @default(false)
+  sunday      Boolean  @default(false)
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model CalendarHoliday {
+  id          String              @id @default(cuid())
+  tenantId    String
+  date        DateTime            @db.Date
+  title       String
+  type        CalendarHolidayType @default(PUBLIC_HOLIDAY)
+  description String?
+  isOptional  Boolean             @default(false)
+  createdById String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, date])
+  @@index([tenantId, date])
+}
+
+enum TrainingSessionType {
+  TRAINING
+  MEETING
+}
+
+enum TrainingSessionStatus {
+  SCHEDULED
+  CANCELLED
+}
+
+enum TrainingParticipantStatus {
+  PENDING
+  ATTENDED
+  ABSENT
+}
+
+enum AttendanceOverrideMode {
+  NONE
+  SESSION_ONLY
+  HALF_DAY
+  FULL_DAY
+}
+
+model TrainingSession {
+  id           String                @id @default(cuid())
+  tenantId     String
+  sessionType  TrainingSessionType   @default(TRAINING)
+  title        String
+  trainerName  String
+  sessionDate  DateTime              @db.Date
+  timeSlot     String
+  duration     String
+  teamsUrl     String?
+  meetingId    String?
+  passcode     String?
+  agenda       String?               @db.Text
+  status       TrainingSessionStatus @default(SCHEDULED)
+  cancelledAt  DateTime?
+  cancelReason String?
+  createdById  String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  participants TrainingParticipant[]
+
+  @@index([tenantId, sessionDate])
+}
+
+model TrainingParticipant {
+  id               String                    @id @default(cuid())
+  sessionId        String
+  tenantId         String
+  employeeId       String
+  attendanceStatus TrainingParticipantStatus @default(PENDING)
+  overrideMode     AttendanceOverrideMode    @default(NONE)
+  deductedMinutes  Int                       @default(0)
+  hrNotes          String?
+  markedById       String?
+  markedAt         DateTime?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+
+  session          TrainingSession           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  employee         Employee                  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, employeeId])
+  @@index([tenantId, employeeId])
 }

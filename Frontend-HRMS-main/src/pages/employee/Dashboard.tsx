@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { io as ioClient } from 'socket.io-client'
 import { attendanceApi, AttendanceItem } from '../../api/attendance.api'
+import { trainingApi, MyTrainingSessionItem } from '../../api/training.api'
 import { LoadingSpinner } from '../../components/shared/LoadingSpinner'
 import { useAuthStore } from '../../store/auth.store'
 import { triggerHrNotification } from '../../utils/notif'
@@ -10,7 +11,7 @@ import {
   CalendarDays, Clock, PlayCircle, StopCircle, Coffee, Utensils,
   Briefcase, Timer, Sparkles, CheckCircle2, AlertCircle, CheckSquare,
   UserCircle, Rocket, ChevronRight, Bell, Calendar as CalIcon, Users, Star, X, Info, ShieldAlert,
-  Camera, QrCode, ScanLine, RefreshCw, Smartphone, Wifi
+  Camera, QrCode, ScanLine, RefreshCw, Smartphone, Wifi, Video, ExternalLink
 } from 'lucide-react'
 
 interface ShiftConfig {
@@ -120,6 +121,10 @@ export default function Dashboard() {
   const user = useAuthStore(state => state.user)
   const fullName = user ? `${user.firstName} ${user.lastName}` : 'Employee'
   const [todayStatus, setTodayStatus] = useState<AttendanceItem | null>(null)
+  const [todaySessions, setTodaySessions] = useState<MyTrainingSessionItem[]>([])
+  const [upcomingSessions, setUpcomingSessions] = useState<MyTrainingSessionItem[]>([])
+  const [dismissedSessionBanner, setDismissedSessionBanner] = useState(false)
+  const [dismissedCancelBanner, setDismissedCancelBanner] = useState(false)
   const [loading, setLoading] = useState(true)
   const [clocking, setClocking] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
@@ -682,6 +687,21 @@ export default function Dashboard() {
     qrSocketRef.current = null
   }
 
+  useEffect(() => {
+    const now = new Date()
+    Promise.all([
+      trainingApi.getMySessions({ today: true }),
+      trainingApi.getMySessions({ year: now.getFullYear(), month: now.getMonth() + 1 })
+    ])
+      .then(([todayRes, monthRes]) => {
+        setTodaySessions(todayRes.data?.data || [])
+        const todayStr = now.toISOString().split('T')[0]
+        const future = (monthRes.data?.data || []).filter((s) => s.sessionDate >= todayStr)
+        setUpcomingSessions(future.slice(0, 4))
+      })
+      .catch(() => {})
+  }, [])
+
   if (loading) return <LoadingSpinner />
 
   const isClockedIn = !!todayStatus?.clockIn
@@ -699,12 +719,99 @@ export default function Dashboard() {
           <h1>Employee Self Service</h1>
           <p>Clock in/out shifts, request leaves, review worksheets, and check tasks.</p>
         </div>
-        <div className="emp-date-picker" onClick={() => navigate('/employee/attendance')}>
+        <div className="emp-date-picker" onClick={() => navigate('/employee/calendar')}>
           <CalendarDays size={18} className="text-gray-500" />
           <span>{currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</span>
           <ChevronRight size={16} className="text-gray-400 rotate-90 ml-2" />
         </div>
       </div>
+
+      {upcomingSessions.some(s => s.status === 'CANCELLED') && !dismissedCancelBanner && (
+        <div
+          style={{
+            marginBottom: '14px',
+            padding: '14px 18px',
+            borderRadius: '14px',
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '14px',
+            flexWrap: 'wrap'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#dc2626', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <AlertCircle size={18} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, color: '#991b1b', fontSize: '0.92rem' }}>
+                Scheduled Session Cancelled by HR
+              </div>
+              <div style={{ fontSize: '0.82rem', color: '#b91c1c', marginTop: '2px' }}>
+                {upcomingSessions
+                  .filter(s => s.status === 'CANCELLED')
+                  .map(s => `${s.sessionType === 'MEETING' ? 'Meeting' : 'Training'}: ${s.title} (${s.sessionDate} • ${s.timeSlot})${s.cancelReason ? ` — ${s.cancelReason}` : ''}`)
+                  .join('  |  ')}
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setDismissedCancelBanner(true)}
+            aria-label="Dismiss cancellation alert"
+            style={{ background: 'transparent', border: 'none', color: '#dc2626', cursor: 'pointer', padding: '4px' }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {todaySessions.filter(s => s.status !== 'CANCELLED').length > 0 && !dismissedSessionBanner && (
+        <div
+          style={{
+            marginBottom: '18px',
+            padding: '14px 18px',
+            borderRadius: '14px',
+            background: 'linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%)',
+            border: '1px solid #c7d2fe',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '14px',
+            flexWrap: 'wrap'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#4f46e5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Bell size={18} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, color: '#1e1b4b', fontSize: '0.92rem' }}>
+                You have {todaySessions.length} scheduled {todaySessions.length === 1 ? 'session' : 'sessions'} today!
+              </div>
+              <div style={{ fontSize: '0.82rem', color: '#4338ca', marginTop: '2px' }}>
+                {todaySessions.map(s => `${s.sessionType === 'MEETING' ? '📅 Meeting' : '🎓 Training'}: ${s.title} (${s.timeSlot})`).join('  •  ')}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={() => navigate('/employee/calendar')}
+              style={{ padding: '7px 12px', borderRadius: '8px', background: '#4f46e5', color: '#fff', border: 'none', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
+            >
+              Open Calendar
+            </button>
+            <button
+              onClick={() => setDismissedSessionBanner(true)}
+              aria-label="Dismiss notification"
+              style={{ background: 'transparent', border: 'none', color: '#6366f1', cursor: 'pointer', padding: '4px' }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="emp-grid">
         {/* LEFT COLUMN */}
@@ -917,6 +1024,93 @@ export default function Dashboard() {
 
         {/* RIGHT COLUMN */}
         <div className="emp-side-col">
+
+          {/* Today's Tasks: Scheduled Trainings & Important Meetings */}
+          <div className="panel">
+            <div className="panel-header" style={{ marginBottom: '10px' }}>
+              <h3 className="panel-title flex items-center gap-2" style={{ margin: 0 }}>
+                <CheckSquare size={18} className="text-indigo-600" /> Today's Tasks & Meetings
+              </h3>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', background: todaySessions.length > 0 ? '#eef2ff' : '#f1f5f9', color: todaySessions.length > 0 ? '#4f46e5' : '#64748b' }}>
+                {todaySessions.length} Today
+              </span>
+            </div>
+            {todaySessions.length === 0 ? (
+              <p className="panel-desc" style={{ marginBottom: '6px' }}>
+                No trainings or important meetings scheduled for today.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '8px' }}>
+                {todaySessions.map((session) => {
+                  const isMeeting = session.sessionType === 'MEETING'
+                  return (
+                    <div
+                      key={session.id}
+                      style={{
+                        padding: '12px',
+                        borderRadius: '12px',
+                        background: isMeeting ? '#faf5ff' : '#eef2ff',
+                        border: `1px solid ${isMeeting ? '#e9d5ff' : '#c7d2fe'}`,
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <span style={{
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          padding: '2px 7px',
+                          borderRadius: '6px',
+                          background: isMeeting ? '#7c3aed' : '#4f46e5',
+                          color: '#fff'
+                        }}>
+                          {isMeeting ? 'Important Meeting' : 'Training'}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Clock size={12} /> {session.timeSlot}
+                        </span>
+                      </div>
+                      <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', marginBottom: '2px', textDecoration: session.status === 'CANCELLED' ? 'line-through' : 'none' }}>
+                        {session.title}
+                      </div>
+                      {session.status === 'CANCELLED' && (
+                        <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#dc2626', marginBottom: '4px' }}>
+                          CANCELLED{session.cancelReason ? `: ${session.cancelReason}` : ''}
+                        </div>
+                      )}
+                      <div style={{ fontSize: '0.76rem', color: '#475569', marginBottom: session.teamsUrl && session.status !== 'CANCELLED' ? '8px' : '0' }}>
+                        Host: {session.trainerName} • {session.duration}
+                      </div>
+                      {session.teamsUrl && session.status !== 'CANCELLED' && (
+                        <a
+                          href={session.teamsUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            fontSize: '0.76rem',
+                            fontWeight: 600,
+                            padding: '5px 10px',
+                            borderRadius: '7px',
+                            background: '#ffffff',
+                            color: isMeeting ? '#6d28d9' : '#4338ca',
+                            border: `1px solid ${isMeeting ? '#d8b4fe' : '#a5b4fc'}`,
+                            textDecoration: 'none'
+                          }}
+                        >
+                          <Video size={13} /> Join Teams <ExternalLink size={11} />
+                        </a>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            <button className="link-blue text-sm mt-2 inline-block font-semibold" onClick={() => navigate('/employee/calendar')}>
+              View Full Schedule on Calendar
+            </button>
+          </div>
           
           <div className="panel">
             <h3 className="panel-title">Employee Self Operations</h3>
@@ -961,23 +1155,37 @@ export default function Dashboard() {
           <div className="panel">
             <h3 className="panel-title mb-4 flex items-center gap-2"><CalendarDays size={18} /> My Upcoming</h3>
             <div className="upcoming-list">
-              <div className="upcoming-item">
-                <div className="up-icon green-icon"><Briefcase size={16} /></div>
-                <span className="up-title">Salary Credit</span>
-                <span className="up-date">May 31, 2026</span>
-              </div>
-              <div className="upcoming-item">
-                <div className="up-icon blue-icon"><Users size={16} /></div>
-                <span className="up-title">Team Meeting</span>
-                <span className="up-date">May 30, 2026 | 11:00 AM</span>
-              </div>
-              <div className="upcoming-item">
-                <div className="up-icon purple-icon"><Star size={16} /></div>
-                <span className="up-title">Performance Review</span>
-                <span className="up-date">June 05, 2026</span>
-              </div>
+              {upcomingSessions.length > 0 ? (
+                upcomingSessions.map((sess) => (
+                  <div className="upcoming-item" key={sess.id} onClick={() => navigate('/employee/calendar')} style={{ cursor: 'pointer' }}>
+                    <div className={`up-icon ${sess.sessionType === 'MEETING' ? 'purple-icon' : 'blue-icon'}`}>
+                      {sess.sessionType === 'MEETING' ? <Users size={16} /> : <Video size={16} />}
+                    </div>
+                    <span className="up-title">{sess.title}</span>
+                    <span className="up-date">{sess.sessionDate} | {sess.timeSlot}</span>
+                  </div>
+                ))
+              ) : (
+                <>
+                  <div className="upcoming-item">
+                    <div className="up-icon green-icon"><Briefcase size={16} /></div>
+                    <span className="up-title">Salary Credit</span>
+                    <span className="up-date">May 31, 2026</span>
+                  </div>
+                  <div className="upcoming-item">
+                    <div className="up-icon blue-icon"><Users size={16} /></div>
+                    <span className="up-title">Team Meeting</span>
+                    <span className="up-date">May 30, 2026 | 11:00 AM</span>
+                  </div>
+                  <div className="upcoming-item">
+                    <div className="up-icon purple-icon"><Star size={16} /></div>
+                    <span className="up-title">Performance Review</span>
+                    <span className="up-date">June 05, 2026</span>
+                  </div>
+                </>
+              )}
             </div>
-            <button className="link-blue text-sm mt-4 inline-block font-semibold" onClick={() => navigate('/employee/attendance')}>
+            <button className="link-blue text-sm mt-4 inline-block font-semibold" onClick={() => navigate('/employee/calendar')}>
               View Calendar
             </button>
           </div>

@@ -591,25 +591,29 @@ export const adminController = {
       const startDate = new Date(Number(year), Number(month) - 1, 1)
       const endDate = new Date(Number(year), Number(month), 1)
 
-      const attendances = await prisma.attendance.findMany({
-        where: {
-          tenantId,
-          date: { gte: startDate, lt: endDate },
-          status: 'PRESENT'
-        }
-      })
-
-      const leaves = await prisma.leave.findMany({
-        where: {
-          tenantId,
-          status: 'APPROVED',
-          OR: [
-            { fromDate: { gte: startDate, lt: endDate } },
-            { toDate: { gte: startDate, lt: endDate } },
-            { fromDate: { lt: startDate }, toDate: { gte: endDate } }
-          ]
-        }
-      })
+      const [attendanceCounts, leaves] = await Promise.all([
+        prisma.attendance.groupBy({
+          by: ['date'],
+          where: {
+            tenantId,
+            date: { gte: startDate, lt: endDate },
+            status: 'PRESENT',
+          },
+          _count: { _all: true },
+        }),
+        prisma.leave.findMany({
+          where: {
+            tenantId,
+            status: 'APPROVED',
+            OR: [
+              { fromDate: { gte: startDate, lt: endDate } },
+              { toDate: { gte: startDate, lt: endDate } },
+              { fromDate: { lt: startDate }, toDate: { gte: endDate } },
+            ],
+          },
+          select: { fromDate: true, toDate: true },
+        }),
+      ])
 
       const summary: Record<string, { activeCount: number, leaveCount: number }> = {}
       
@@ -620,10 +624,10 @@ export const adminController = {
         summary[dateStr] = { activeCount: 0, leaveCount: 0 }
       }
 
-      attendances.forEach(att => {
-        const dateStr = att.date.toISOString().split('T')[0]
+      attendanceCounts.forEach(row => {
+        const dateStr = row.date.toISOString().split('T')[0]
         if (summary[dateStr]) {
-          summary[dateStr].activeCount += 1
+          summary[dateStr].activeCount += row._count._all
         }
       })
 

@@ -38,11 +38,68 @@ export default function ApplyLeave() {
     fetchRequests()
   }, [])
 
+  const getLeaveLabel = (type: string) => {
+    if (type === 'SICK') return 'Emergency / Sick Leave'
+    if (type === 'CASUAL') return 'Casual Leave'
+    if (type === 'MATERNITY') return 'Maternity Leave'
+    return type
+  }
+
+  const validateLeaveRequest = (): string | null => {
+    const { type, fromDate, toDate } = formData
+    if (!['CASUAL', 'SICK', 'MATERNITY'].includes(type)) {
+      return 'Only Casual Leave, Emergency Leave / Sick Leave, and Maternity Leave are allowed.'
+    }
+    if (!fromDate || !toDate) return 'Please select both Start Date and End Date.'
+
+    const from = new Date(`${fromDate}T00:00:00Z`)
+    const to = new Date(`${toDate}T00:00:00Z`)
+    if (to < from) return 'End Date cannot be earlier than Start Date.'
+
+    const diffDays = Math.round((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)) + 1
+
+    if (type === 'CASUAL') {
+      if (diffDays > 1) return 'Casual Leave is allowed for only 1 day per month.'
+      const dow = from.getUTCDay()
+      if (dow === 1 || dow === 5) return 'Casual Leave is not allowed on Monday or Friday.'
+    }
+
+    if (type === 'SICK' && diffDays > 1) {
+      return 'Emergency Leave / Sick Leave is allowed for only 1 day per month.'
+    }
+
+    if (type === 'CASUAL' || type === 'SICK') {
+      const targetYear = from.getUTCFullYear()
+      const targetMonth = from.getUTCMonth()
+      const usedDays = requests
+        .filter((r) => {
+          if (r.type !== type) return false
+          if (r.status === 'REJECTED' || r.status === 'CANCELLED') return false
+          const d = new Date(r.fromDate)
+          return d.getUTCFullYear() === targetYear && d.getUTCMonth() === targetMonth
+        })
+        .reduce((sum, r) => sum + (r.days || 1), 0)
+
+      if (usedDays + diffDays > 1) {
+        return `${getLeaveLabel(type)} limit reached: only 1 day per month is allowed.`
+      }
+    }
+
+    return null
+  }
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
-    setSubmitting(true)
     setFormError('')
     setFormSuccess('')
+
+    const validationError = validateLeaveRequest()
+    if (validationError) {
+      setFormError(validationError)
+      return
+    }
+
+    setSubmitting(true)
 
     try {
       const res = await leaveApi.create(formData)
@@ -76,9 +133,9 @@ export default function ApplyLeave() {
         </div>
       </div>
 
-      <div className="dashboard-grid">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
         {/* Leave application form */}
-        <div className="card">
+        <div className="card" style={{ maxWidth: '720px', width: '100%' }}>
           <h3 style={{ fontSize: '1.25rem', fontFamily: 'var(--font-heading)', marginBottom: '1.25rem' }}>
             Submit Timeoff Request
           </h3>
@@ -124,12 +181,14 @@ export default function ApplyLeave() {
                 required
               >
                 <option value="CASUAL">Casual Leave</option>
-                <option value="SICK">Sick Leave</option>
-                <option value="EARNED">Earned Leave</option>
+                <option value="SICK">Emergency Leave / Sick Leave</option>
                 <option value="MATERNITY">Maternity Leave</option>
-                <option value="PATERNITY">Paternity Leave</option>
-                <option value="UNPAID">Unpaid Leave</option>
               </select>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.35rem', display: 'block' }}>
+                {formData.type === 'CASUAL' && 'Allowed: 1 day per month. Not allowed on Monday or Friday.'}
+                {formData.type === 'SICK' && 'Allowed: 1 day per month.'}
+                {formData.type === 'MATERNITY' && 'Maternity Leave policy applies.'}
+              </span>
             </label>
 
             <div style={{ display: 'flex', gap: '1rem' }}>
@@ -171,68 +230,92 @@ export default function ApplyLeave() {
           </form>
         </div>
 
-        {/* Historic logs list */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <h3 style={{ fontSize: '1.25rem', fontFamily: 'var(--font-heading)', paddingLeft: '0.5rem' }}>
-            Request History Logs
-          </h3>
+        {/* Historic logs list (Full Width Professional View) */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <h3 style={{ fontSize: '1.25rem', fontFamily: 'var(--font-heading)', margin: 0 }}>
+              Request History Logs
+            </h3>
+            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b', background: '#f1f5f9', padding: '4px 12px', borderRadius: '999px' }}>
+              Total Requests: {requests.length}
+            </span>
+          </div>
 
           {error ? (
             <div className="card" style={{ textAlign: 'center', padding: '2rem', color: 'var(--error)' }}>
               {error}
             </div>
           ) : (
-            <div className="card table-container" style={{ margin: 0 }}>
-              <table>
+            <div className="card table-container" style={{ margin: 0, width: '100%', overflowX: 'auto', padding: 0 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '680px' }}>
                 <thead>
-                  <tr>
-                    <th>Type</th>
-                    <th>Interval</th>
-                    <th>Days</th>
-                    <th>Reason</th>
-                    <th>Decision Status / Signatory</th>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                    <th style={{ padding: '0.9rem 1.15rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Type</th>
+                    <th style={{ padding: '0.9rem 1.15rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Leave Dates</th>
+                    <th style={{ padding: '0.9rem 1.15rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Days</th>
+                    <th style={{ padding: '0.9rem 1.15rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Reason</th>
+                    <th style={{ padding: '0.9rem 1.15rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Decision Status / Signatory</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {requests.map((item) => (
-                    <tr key={item.id}>
-                      <td>
-                        <span className="badge badge-info">{item.type}</span>
-                      </td>
-                      <td>
-                        <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>
-                          {new Date(item.fromDate).toLocaleDateString()}
-                        </div>
-                        <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-                          to {new Date(item.toDate).toLocaleDateString()}
-                        </div>
-                      </td>
-                      <td style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{item.days}</td>
-                      <td style={{ fontSize: '0.85rem' }}>{item.reason}</td>
-                      <td>
-                        <span
-                          className={`badge ${
-                            item.status === 'APPROVED'
-                              ? 'badge-success'
-                              : item.status === 'PENDING'
-                              ? 'badge-warning'
-                              : 'badge-danger'
-                          }`}
-                        >
-                          {item.status}
-                        </span>
-                        {item.approvedBy && (
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                            by {item.approvedBy.firstName}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {requests.map((item) => {
+                    const typeStyle =
+                      item.type === 'CASUAL'
+                        ? { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' }
+                        : item.type === 'SICK'
+                        ? { bg: '#fff7ed', color: '#c2410c', border: '#fed7aa' }
+                        : { bg: '#fdf2f8', color: '#be185d', border: '#fbcfe8' }
+
+                    const statusStyle =
+                      item.status === 'APPROVED'
+                        ? { bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' }
+                        : item.status === 'PENDING'
+                        ? { bg: '#fffbeb', color: '#b45309', border: '#fde68a' }
+                        : { bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' }
+
+                    const fromFormatted = new Date(item.fromDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                    const toFormatted = new Date(item.toDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+
+                    return (
+                      <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '0.95rem 1.15rem', whiteSpace: 'nowrap' }}>
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', padding: '4px 10px', borderRadius: '999px',
+                            fontSize: '0.75rem', fontWeight: 700, background: typeStyle.bg, color: typeStyle.color, border: `1px solid ${typeStyle.border}`,
+                          }}>
+                            {getLeaveLabel(item.type)}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.95rem 1.15rem', whiteSpace: 'nowrap', fontSize: '0.86rem', fontWeight: 600, color: '#0f172a' }}>
+                          {fromFormatted === toFormatted ? fromFormatted : `${fromFormatted} → ${toFormatted}`}
+                        </td>
+                        <td style={{ padding: '0.95rem 1.15rem', textAlign: 'center', fontWeight: 800, color: '#0f172a', fontSize: '0.88rem' }}>
+                          {item.days} {item.days === 1 ? 'day' : 'days'}
+                        </td>
+                        <td style={{ padding: '0.95rem 1.15rem', fontSize: '0.86rem', color: '#334155', maxWidth: '320px' }}>
+                          {item.reason}
+                        </td>
+                        <td style={{ padding: '0.95rem 1.15rem', whiteSpace: 'nowrap' }}>
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', padding: '4px 10px', borderRadius: '999px',
+                            fontSize: '0.74rem', fontWeight: 700, letterSpacing: '0.03em',
+                            background: statusStyle.bg, color: statusStyle.color, border: `1px solid ${statusStyle.border}`,
+                          }}>
+                            {item.status}
+                          </span>
+                          {item.approvedBy && (
+                            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.25rem', fontWeight: 500 }}>
+                              by {item.approvedBy.firstName} {item.approvedBy.lastName || ''}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
                   {requests.length === 0 && (
                     <tr>
-                      <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
-                        No leave requests submitted yet. Use the form on the left to apply.
+                      <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2.5rem' }}>
+                        No leave requests submitted yet. Use the form above to apply.
                       </td>
                     </tr>
                   )}

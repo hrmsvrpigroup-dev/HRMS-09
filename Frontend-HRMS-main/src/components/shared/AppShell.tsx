@@ -1,12 +1,61 @@
 import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { History, Bell, Mail, PanelLeftClose, PanelLeftOpen, Menu } from 'lucide-react'
+import {
+  History,
+  Bell,
+  Mail,
+  PanelLeftClose,
+  PanelLeftOpen,
+  LayoutDashboard,
+  Users,
+  Clock,
+  CalendarCheck,
+  UserCheck,
+  CalendarDays,
+  FileBarChart2,
+  ClipboardCheck,
+  Briefcase,
+  CheckSquare,
+  GraduationCap,
+  Banknote,
+  FileText,
+  Wallet,
+  UserCircle,
+  Building2,
+  Settings,
+  ShieldCheck,
+  LogOut,
+  Sparkles,
+} from 'lucide-react'
 
 import { useAuthStore } from '../../store/auth.store'
+import { leaveApi } from '../../api/leave.api'
 
 type NavItem = {
   to: string
   label: string
+}
+
+const getNavIcon = (to: string, label: string) => {
+  const key = `${to} ${label}`.toLowerCase()
+  if (key.includes('dashboard') || to === '/hr' || to === '/admin' || to === '/superadmin') return <LayoutDashboard size={17} />
+  if (key.includes('shift')) return <Clock size={17} />
+  if (key.includes('manual')) return <UserCheck size={17} />
+  if (key.includes('attendance')) return <CalendarCheck size={17} />
+  if (key.includes('calendar')) return <CalendarDays size={17} />
+  if (key.includes('monthly') || key.includes('report') || key.includes('analytics')) return <FileBarChart2 size={17} />
+  if (key.includes('leave')) return <ClipboardCheck size={17} />
+  if (key.includes('recruit')) return <Briefcase size={17} />
+  if (key.includes('task')) return <CheckSquare size={17} />
+  if (key.includes('train')) return <GraduationCap size={17} />
+  if (key.includes('salary') || key.includes('payroll')) return <Banknote size={17} />
+  if (key.includes('document')) return <FileText size={17} />
+  if (key.includes('wallet') || key.includes('credit')) return <Wallet size={17} />
+  if (key.includes('profile')) return <UserCircle size={17} />
+  if (key.includes('compan') || key.includes('department')) return <Building2 size={17} />
+  if (key.includes('setting')) return <Settings size={17} />
+  if (key.includes('employee') || key.includes('hr')) return <Users size={17} />
+  return <ShieldCheck size={17} />
 }
 
 type Props = {
@@ -20,7 +69,7 @@ export default function AppShell({ title, navItems }: Props) {
   const logout = useAuthStore((state) => state.logout)
   const user = useAuthStore((state) => state.user)
   const initials = user ? `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}`.toUpperCase() : 'U'
-  
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     try {
@@ -36,7 +85,7 @@ export default function AppShell({ title, navItems }: Props) {
       const next = !prev
       try {
         localStorage.setItem('hrms_sidebar_open', String(next))
-      } catch {}
+      } catch { }
       return next
     })
   }
@@ -44,32 +93,91 @@ export default function AppShell({ title, navItems }: Props) {
   const [showMessages, setShowMessages] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [selectedNotif, setSelectedNotif] = useState<any | null>(null)
-  
+
   const [notifications, setNotifications] = useState<any[]>([])
   const [messages, setMessages] = useState<any[]>([])
 
   const unreadNotifCount = notifications.filter(n => !n.read).length
   const unreadMsgCount = messages.filter(m => m.unread).length
 
-  // Load notifications from localStorage
-  const loadNotifications = () => {
+  const [serverLeaveNotifs, setServerLeaveNotifs] = useState<any[]>([])
+
+  const isLoginOrLogoutNotif = (text: string) => {
+    const t = text.toLowerCase()
+    return t.includes('clocked in') || t.includes('clocked out') || t.includes('logged in') || t.includes('logged out') || t.includes('login') || t.includes('logout')
+  }
+
+  const getReadSet = (): Set<string> => {
+    try { return new Set(JSON.parse(localStorage.getItem('hrms_hr_notif_read_ids') || '[]')) } catch { return new Set() }
+  }
+  const getClearedSet = (): Set<string> => {
+    try { return new Set(JSON.parse(localStorage.getItem('hrms_hr_notif_cleared_ids') || '[]')) } catch { return new Set() }
+  }
+
+  // Load notifications from localStorage + all-employee leave requests from backend
+  const loadNotifications = (overrideServerLeaves?: any[]) => {
     try {
+      const readIds = getReadSet()
+      const clearedIds = getClearedSet()
       const raw = localStorage.getItem('hrms_hr_notifications')
-      if (raw) {
-        let allNotifs = JSON.parse(raw)
-        
-        // Super Admin should only see credit-related notifications
-        if (user?.role === 'SUPER_ADMIN') {
-          allNotifs = allNotifs.filter((n: any) => {
-            const text = n.text.toLowerCase()
-            return text.includes('credit') || text.includes('paid') || text.includes('payment')
-          })
-        }
-        
-        setNotifications(allNotifs)
-      } else {
-        setNotifications([])
+      let localNotifs: any[] = raw ? JSON.parse(raw) : []
+
+      if (user?.role === 'SUPER_ADMIN') {
+        localNotifs = localNotifs.filter((n: any) => {
+          const text = String(n.text || '').toLowerCase()
+          return text.includes('credit') || text.includes('paid') || text.includes('payment')
+        })
+        setNotifications(localNotifs)
+        return
       }
+
+      // Exclude login/logout/clock-in/clock-out notifications; keep emergency & leave requests
+      localNotifs = localNotifs.filter((n: any) => !isLoginOrLogoutNotif(String(n.text || '')))
+
+      const leaveSource = overrideServerLeaves ?? serverLeaveNotifs
+      const mappedLeaves = leaveSource
+        .filter((l: any) => !clearedIds.has(`leave-${l.id}`))
+        .map((l: any) => {
+          const empName = l.employee ? `${l.employee.firstName || ''} ${l.employee.lastName || ''}`.trim() : 'Employee'
+          const isEmergency = l.type === 'SICK'
+          const typeLabel = isEmergency ? 'Emergency / Sick Leave' : l.type === 'CASUAL' ? 'Casual Leave' : l.type === 'MATERNITY' ? 'Maternity Leave' : l.type
+          const fromStr = new Date(l.fromDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+          const toStr = new Date(l.toDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+          const dateRange = fromStr === toStr ? fromStr : `${fromStr} - ${toStr}`
+          const id = `leave-${l.id}`
+          return {
+            id,
+            text: `${isEmergency ? '🚨 Emergency Leave' : 'Leave Request'} (${typeLabel}): ${empName} (${dateRange}) — ${l.reason}`,
+            time: new Date(l.createdAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+            read: readIds.has(id),
+            createdAt: l.createdAt,
+            details: {
+              employeeName: empName,
+              action: `${typeLabel} Request (${l.days} day${l.days > 1 ? 's' : ''})`,
+              timestamp: l.createdAt,
+              changes: [
+                `Employee: ${empName}${l.employee?.employeeCode ? ` (${l.employee.employeeCode})` : ''}`,
+                `Leave Type: ${typeLabel}`,
+                `Dates: ${dateRange}`,
+                `Reason: ${l.reason}`,
+                `Status: ${l.status}`,
+              ],
+            },
+          }
+        })
+
+      // Avoid duplicating localStorage leave notif if same employee+reason already came from server
+      const serverLeaveTexts = new Set(mappedLeaves.map((m) => m.text.toLowerCase()))
+      const filteredLocal = localNotifs.filter((n: any) => {
+        const t = String(n.text || '').toLowerCase()
+        if (t.includes('applied for leave') && serverLeaveTexts.size > 0) return false
+        return !clearedIds.has(n.id)
+      })
+
+      const combined = [...mappedLeaves, ...filteredLocal].sort(
+        (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+      )
+      setNotifications(combined)
     } catch (e) {
       console.error(e)
     }
@@ -78,10 +186,11 @@ export default function AppShell({ title, navItems }: Props) {
   const handleMarkAllNotificationsRead = () => {
     const updated = notifications.map(n => ({ ...n, read: true }))
     setNotifications(updated)
-    // NOTE: This will only mark the visible ones as read for Super Admin, which is fine.
-    // If they were to save back, they'd overwrite the main list if not careful.
-    // To be safe, we fetch the raw list, update only the matched IDs, and save back.
     try {
+      const readIds = getReadSet()
+      updated.forEach(n => readIds.add(n.id))
+      localStorage.setItem('hrms_hr_notif_read_ids', JSON.stringify(Array.from(readIds)))
+
       const raw = localStorage.getItem('hrms_hr_notifications')
       if (raw) {
         let allNotifs = JSON.parse(raw)
@@ -95,13 +204,18 @@ export default function AppShell({ title, navItems }: Props) {
   }
 
   const handleClearAllNotifications = () => {
+    const currentIds = notifications.map(n => n.id)
     setNotifications([])
     try {
+      const clearedIds = getClearedSet()
+      currentIds.forEach(id => clearedIds.add(id))
+      localStorage.setItem('hrms_hr_notif_cleared_ids', JSON.stringify(Array.from(clearedIds)))
+
       const raw = localStorage.getItem('hrms_hr_notifications')
       if (raw) {
         let allNotifs = JSON.parse(raw)
-        const currentIds = new Set(notifications.map(n => n.id))
-        allNotifs = allNotifs.filter((n: any) => !currentIds.has(n.id))
+        const idSet = new Set(currentIds)
+        allNotifs = allNotifs.filter((n: any) => !idSet.has(n.id))
         localStorage.setItem('hrms_hr_notifications', JSON.stringify(allNotifs))
       }
     } catch (e) {
@@ -113,16 +227,34 @@ export default function AppShell({ title, navItems }: Props) {
     setMessages(messages.map(m => ({ ...m, unread: false })))
   }
 
-  // Load and listen to storage
+  // Load and listen to storage + poll all-employee leave requests for HR/ADMIN
   useEffect(() => {
     loadNotifications()
-    window.addEventListener('storage', loadNotifications)
-    const interval = setInterval(loadNotifications, 3000)
-    return () => {
-      window.removeEventListener('storage', loadNotifications)
-      clearInterval(interval)
+    const onStorage = () => loadNotifications()
+    window.addEventListener('storage', onStorage)
+    const interval = setInterval(() => loadNotifications(), 3000)
+
+    let leaveInterval: ReturnType<typeof setInterval> | undefined
+    if (user?.role === 'HR' || user?.role === 'ADMIN') {
+      const fetchServerLeaves = () => {
+        leaveApi.getNotifications()
+          .then((res) => {
+            const list = res.data?.data || []
+            setServerLeaveNotifs(list)
+            loadNotifications(list)
+          })
+          .catch(() => { })
+      }
+      fetchServerLeaves()
+      leaveInterval = setInterval(fetchServerLeaves, 20000)
     }
-  }, [])
+
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      clearInterval(interval)
+      if (leaveInterval) clearInterval(leaveInterval)
+    }
+  }, [user?.role])
 
   // Close dropdowns on outside clicks
   useEffect(() => {
@@ -147,7 +279,7 @@ export default function AppShell({ title, navItems }: Props) {
         setIsMobileMenuOpen(false)
       }
     }
-    
+
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
@@ -164,7 +296,7 @@ export default function AppShell({ title, navItems }: Props) {
     <div className={`app-shell ${!isSidebarOpen ? 'sidebar-collapsed' : ''}`}>
       {/* Mobile Header */}
       <div className="mobile-header">
-        <button 
+        <button
           className={`mobile-hamburger ${isMobileMenuOpen ? 'active' : ''}`}
           onClick={toggleMobileMenu}
           aria-label="Toggle menu"
@@ -178,15 +310,172 @@ export default function AppShell({ title, navItems }: Props) {
       </div>
 
       {/* Mobile Overlay */}
-      <div 
+      <div
         className={`mobile-overlay ${isMobileMenuOpen ? 'active' : ''}`}
         onClick={closeMobileMenu}
       ></div>
 
+      {/* Premium Sidebar Scoped Overrides */}
+      <style>{`
+        .app-shell .sidebar {
+          background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+          border-right: 1px solid #e2e8f0 !important;
+          box-shadow: 4px 0 24px rgba(15, 23, 42, 0.04) !important;
+        }
+        .app-shell .sidebar-logo {
+          padding: 18px 16px 14px !important;
+          border-bottom: 1px solid #f1f5f9 !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: space-between !important;
+          gap: 10px !important;
+        }
+        .app-shell .sidebar-brand-wrap {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .app-shell .sidebar-brand-icon {
+          width: 34px;
+          height: 34px;
+          border-radius: 10px;
+          background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+          color: #ffffff;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 6px 14px -3px rgba(79, 70, 229, 0.4);
+          flex-shrink: 0;
+        }
+        .app-shell .sidebar-brand-title {
+          font-size: 1.02rem;
+          font-weight: 800;
+          color: #0f172a;
+          letter-spacing: -0.02em;
+          line-height: 1.1;
+        }
+        .app-shell .sidebar-brand-sub {
+          font-size: 0.68rem;
+          font-weight: 600;
+          color: #64748b;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+        .app-shell .sidebar nav {
+          padding: 12px 12px 16px !important;
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 4px !important;
+          scrollbar-width: thin;
+          scrollbar-color: #cbd5e1 transparent;
+        }
+        .app-shell .sidebar nav::-webkit-scrollbar {
+          width: 4px;
+        }
+        .app-shell .sidebar nav::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .app-shell .sidebar nav::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 999px;
+        }
+        .app-shell .sidebar nav a {
+          display: flex !important;
+          align-items: center !important;
+          gap: 11px !important;
+          padding: 9px 12px !important;
+          border-radius: 11px !important;
+          font-size: 0.875rem !important;
+          font-weight: 600 !important;
+          color: #475569 !important;
+          border: 1px solid transparent !important;
+          transition: all 0.16s ease !important;
+          position: relative;
+          text-decoration: none !important;
+        }
+        .app-shell .sidebar nav a .nav-icon-box {
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
+          background: #f1f5f9;
+          color: #64748b;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.16s ease;
+          flex-shrink: 0;
+        }
+        .app-shell .sidebar nav a:hover:not(.active) {
+          background: #f1f5f9 !important;
+          color: #0f172a !important;
+          transform: translateX(2px);
+        }
+        .app-shell .sidebar nav a:hover:not(.active) .nav-icon-box {
+          background: #e2e8f0;
+          color: #334155;
+        }
+        .app-shell .sidebar nav a.active {
+          background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%) !important;
+          color: #ffffff !important;
+          box-shadow: 0 8px 18px -5px rgba(79, 70, 229, 0.45) !important;
+          border-color: rgba(255, 255, 255, 0.12) !important;
+        }
+        .app-shell .sidebar nav a.active .nav-icon-box {
+          background: rgba(255, 255, 255, 0.18);
+          color: #ffffff;
+        }
+        .app-shell .sidebar-footer {
+          padding: 12px !important;
+          border-top: 1px solid #e2e8f0 !important;
+          background: #ffffff !important;
+        }
+        .app-shell .sidebar-profile {
+          padding: 9px 10px !important;
+          border-radius: 12px !important;
+          background: #f8fafc !important;
+          border: 1px solid #e2e8f0 !important;
+          margin-bottom: 8px !important;
+          transition: all 0.15s ease;
+        }
+        .app-shell .sidebar-profile:hover {
+          border-color: #c7d2fe !important;
+          background: #eef2ff !important;
+        }
+        .app-shell .sidebar-avatar {
+          background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%) !important;
+          color: #ffffff !important;
+          font-weight: 800 !important;
+        }
+        .app-shell .logout-btn {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 8px !important;
+          border-radius: 10px !important;
+          font-weight: 700 !important;
+          border: 1px solid #fecaca !important;
+          background: #fef2f2 !important;
+          color: #dc2626 !important;
+          transition: all 0.15s ease !important;
+        }
+        .app-shell .logout-btn:hover {
+          background: #fee2e2 !important;
+          border-color: #fca5a5 !important;
+        }
+      `}</style>
+
       {/* Sidebar */}
       <aside className={`sidebar ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
         <div className="sidebar-logo">
-          <span>{title}</span>
+          <div className="sidebar-brand-wrap">
+            <div className="sidebar-brand-icon">
+              <Sparkles size={17} />
+            </div>
+            <div>
+              <div className="sidebar-brand-title">{title}</div>
+              <div className="sidebar-brand-sub">Workspace</div>
+            </div>
+          </div>
           <button
             type="button"
             className="sidebar-close-btn"
@@ -205,13 +494,14 @@ export default function AppShell({ title, navItems }: Props) {
               className={({ isActive }) => (isActive ? 'active' : '')}
               end
             >
-              {item.label}
+              <span className="nav-icon-box">{getNavIcon(item.to, item.label)}</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.label}</span>
             </NavLink>
           ))}
         </nav>
         <div className="sidebar-footer">
-          <div 
-            className="sidebar-profile" 
+          <div
+            className="sidebar-profile"
             style={{ cursor: 'pointer' }}
             onClick={() => navigate(title === 'HR' ? '/hr/profile' : title === 'Employee' ? '/employee/profile' : '')}
             title="View Profile"
@@ -231,7 +521,8 @@ export default function AppShell({ title, navItems }: Props) {
               navigate('/login')
             }}
           >
-            Logout
+            <LogOut size={15} />
+            <span>Logout</span>
           </button>
         </div>
       </aside>
@@ -269,10 +560,10 @@ export default function AppShell({ title, navItems }: Props) {
             <button className="icon-btn" onClick={() => navigate(title === 'HR' ? '/hr/attendance' : title === 'Admin' ? '/admin/employees' : '/superadmin')} title="History / Logs">
               <History size={20} />
             </button>
-            
+
             {/* Notifications Bell */}
             <div className="dropdown-container" onClick={(e) => e.stopPropagation()}>
-              <button 
+              <button
                 className={`icon-btn ${unreadNotifCount > 0 ? 'has-badge' : ''}`}
                 onClick={() => {
                   setShowNotifications(!showNotifications)
@@ -282,7 +573,7 @@ export default function AppShell({ title, navItems }: Props) {
                 <Bell size={20} />
                 {unreadNotifCount > 0 && <span className="badge red-badge">{unreadNotifCount}</span>}
               </button>
-              
+
               {showNotifications && (
                 <div className="topbar-dropdown-tray">
                   <div className="tray-header">
@@ -299,15 +590,24 @@ export default function AppShell({ title, navItems }: Props) {
                   <div className="tray-list">
                     {notifications.length > 0 ? (
                       notifications.map(n => (
-                        <div 
-                          key={n.id} 
+                        <div
+                          key={n.id}
                           className={`tray-item ${!n.read ? 'unread' : ''}`}
                           style={{ cursor: 'pointer' }}
                           onClick={() => {
                             // Mark as read
                             const updated = notifications.map(notif => notif.id === n.id ? { ...notif, read: true } : notif)
                             setNotifications(updated)
-                            localStorage.setItem('hrms_hr_notifications', JSON.stringify(updated))
+                            try {
+                              const readIds = getReadSet()
+                              readIds.add(n.id)
+                              localStorage.setItem('hrms_hr_notif_read_ids', JSON.stringify(Array.from(readIds)))
+                              const raw = localStorage.getItem('hrms_hr_notifications')
+                              if (raw) {
+                                const parsed = JSON.parse(raw).map((notif: any) => notif.id === n.id ? { ...notif, read: true } : notif)
+                                localStorage.setItem('hrms_hr_notifications', JSON.stringify(parsed))
+                              }
+                            } catch { }
                             // Open details modal
                             setSelectedNotif(n)
                             setShowNotifications(false)
@@ -333,11 +633,11 @@ export default function AppShell({ title, navItems }: Props) {
 
             {/* User Profile */}
             <div className="dropdown-container" onClick={(e) => e.stopPropagation()} style={{ marginLeft: '12px' }}>
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '10px', 
-                paddingLeft: '16px', 
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                paddingLeft: '16px',
                 borderLeft: '1px solid rgba(0,0,0,0.1)',
                 cursor: 'pointer'
               }} onClick={() => {
@@ -368,8 +668,8 @@ export default function AppShell({ title, navItems }: Props) {
               {showProfileMenu && (
                 <div className="topbar-dropdown-tray" style={{ width: '200px' }}>
                   <div className="tray-list">
-                    <div 
-                      className="tray-item" 
+                    <div
+                      className="tray-item"
                       style={{ cursor: 'pointer', padding: '12px 16px' }}
                       onClick={() => {
                         setShowProfileMenu(false)
@@ -380,8 +680,8 @@ export default function AppShell({ title, navItems }: Props) {
                         <strong>My Profile</strong>
                       </div>
                     </div>
-                    <div 
-                      className="tray-item" 
+                    <div
+                      className="tray-item"
                       style={{ cursor: 'pointer', padding: '12px 16px', borderTop: '1px solid #f1f5f9' }}
                       onClick={() => {
                         setShowProfileMenu(false)
@@ -392,8 +692,8 @@ export default function AppShell({ title, navItems }: Props) {
                         <strong>Settings</strong>
                       </div>
                     </div>
-                    <div 
-                      className="tray-item" 
+                    <div
+                      className="tray-item"
                       style={{ cursor: 'pointer', padding: '12px 16px', borderTop: '1px solid #f1f5f9', color: '#ef4444' }}
                       onClick={() => {
                         logout()
@@ -431,7 +731,7 @@ export default function AppShell({ title, navItems }: Props) {
                 <div className="notif-meta-row">
                   <strong>Recorded:</strong> <span>{selectedNotif.details?.timestamp ? new Date(selectedNotif.details.timestamp).toLocaleString('en-IN') : 'Just now'}</span>
                 </div>
-                
+
                 <div className="notif-changes-box">
                   <h4>System Logs / Exact Changes:</h4>
                   {selectedNotif.details?.changes && selectedNotif.details.changes.length > 0 ? (

@@ -2099,6 +2099,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
   });
   const [candidateOfferForms, setCandidateOfferForms] = useState<Record<string, {
     candidateName?: string;
+    email?: string;
     annualCtc?: string;
     joiningDate?: string;
     designation?: string;
@@ -2631,6 +2632,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     candEmail: string | undefined,
     updates: Partial<{
       candidateName: string;
+      email: string;
       designation: string;
       referenceNo: string;
       annualCtc: string;
@@ -3977,6 +3979,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
     const annualCtcStr = candForm.annualCtc || (cand?.offerSalary ? (cand.offerSalary > 100000 ? cand.offerSalary.toString() : (cand.offerSalary * 12).toString()) : offerForm.salary);
     const joiningDate = candForm.joiningDate || offerForm.joiningDate || format(new Date(Date.now() + 7 * 86400000), 'yyyy-MM-dd');
     const candName = candForm.candidateName !== undefined ? candForm.candidateName : (cand?.customName || `${cand?.firstName || ''} ${cand?.lastName || ''}`.trim() || 'Candidate');
+    const candEmail = candForm.email !== undefined ? candForm.email.trim() : (cand?.email || '');
     const cleanJobTitle = (cand?.jobTitle || '')
       .replace(/\s*\([^)]*Google\s*Form[^)]*\)/gi, '')
       .replace(/\s*\(Google Form Recruitment\)/gi, '')
@@ -4002,6 +4005,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
           offerJoiningDate: joiningDate,
           offerStatus: 'SENT',
           name: candName || undefined,
+          email: candEmail || undefined,
           jobTitle: designation,
           googleMailConfig: getGoogleMailConfig()
         });
@@ -4013,6 +4017,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
         offerJoiningDate: joiningDate,
         offerStatus: 'SENT',
         customName: candName || c.customName,
+        email: candEmail || c.email,
         callLetterDesignation: designation || c.callLetterDesignation,
         callLetterReferenceNo: referenceNo || c.callLetterReferenceNo,
         callLetterVenue: venue || c.callLetterVenue,
@@ -10211,6 +10216,10 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                       ? candForm.candidateName
                       : (c.customName || `${c.firstName || ''} ${c.lastName || ''}`.trim() || 'Candidate');
 
+                    const candEmail = candForm.email !== undefined
+                      ? candForm.email
+                      : (c.email || '');
+
                     const isEditing = !!editingOfferIds[c.id];
                     const isLocked = c.offerStatus === 'SENT' && !isEditing;
                     const isEditingBreakdown = !!editingBreakdownIds[c.id];
@@ -10406,7 +10415,7 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                             <div>
                               <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>{candName}</h3>
                               <p style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>
-                                {designation} · {c.email}
+                                {designation} · {candEmail}
                               </p>
                             </div>
                             {c.offerStatus === 'SENT' && (
@@ -10439,12 +10448,15 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                               Candidate Name *
                               <input
                                 type="text"
+                                name="offer-cand-name"
+                                autoComplete="off"
+                                data-lpignore="true"
                                 disabled={isLocked}
                                 className="rec-search-input"
                                 style={{ width: '100%', paddingLeft: '0.6rem', height: '30px', fontSize: '0.78rem', fontWeight: 700, color: '#0f172a', background: isLocked ? '#f8fafc' : '#ffffff' }}
                                 value={candName}
                                 onChange={e => handleUpdateCandidateOfferForm(c.id, c.email, { candidateName: e.target.value })}
-                                placeholder="e.g. Shiva Prasad"
+                                placeholder="Name"
                               />
                             </div>
 
@@ -10452,12 +10464,15 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                               Designation *
                               <input
                                 type="text"
+                                name="offer-cand-designation"
+                                autoComplete="off"
+                                data-lpignore="true"
                                 disabled={isLocked}
                                 className="rec-search-input"
                                 style={{ width: '100%', paddingLeft: '0.6rem', height: '30px', fontSize: '0.78rem', fontWeight: 700, color: '#0f172a', background: isLocked ? '#f8fafc' : '#ffffff' }}
                                 value={designation}
                                 onChange={e => handleUpdateCandidateOfferForm(c.id, c.email, { designation: e.target.value })}
-                                placeholder="e.g. Associate Software Engineer"
+                                placeholder="Designation"
                               />
                             </div>
 
@@ -10465,21 +10480,42 @@ export default function Recruitment({ defaultTab }: RecruitmentProps = {}) {
                               Reference No. *
                               <input
                                 type="text"
+                                name="offer-cand-refno"
+                                autoComplete="off"
+                                data-lpignore="true"
                                 disabled={isLocked}
                                 className="rec-search-input"
                                 style={{ width: '100%', paddingLeft: '0.6rem', height: '30px', fontSize: '0.78rem', fontWeight: 600, color: '#0f172a', background: isLocked ? '#f8fafc' : '#ffffff' }}
                                 value={referenceNo}
                                 onChange={e => handleUpdateCandidateOfferForm(c.id, c.email, { referenceNo: e.target.value })}
-                                placeholder="e.g. 2627/0917/0001"
+                                placeholder="Reference Number"
                               />
                             </div>
                           </div>
 
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: '0.6rem', alignItems: 'flex-end' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.85fr 1.3fr', gap: '0.6rem', alignItems: 'flex-end' }}>
+                            <div className="auth-luxury-label" style={{ fontSize: '0.7rem' }}>
+                              Candidate Email *
+                              <input
+                                type="email"
+                                name="offer-cand-email"
+                                autoComplete="new-password"
+                                data-lpignore="true"
+                                disabled={isLocked}
+                                className="rec-search-input"
+                                style={{ width: '100%', paddingLeft: '0.6rem', height: '30px', fontSize: '0.78rem', fontWeight: 600, color: '#0f172a', background: isLocked ? '#f8fafc' : '#ffffff' }}
+                                value={candEmail}
+                                onChange={e => handleUpdateCandidateOfferForm(c.id, c.email, { email: e.target.value })}
+                                placeholder="Email"
+                              />
+                            </div>
+
                             <div className="auth-luxury-label" style={{ fontSize: '0.7rem' }}>
                               Joining Date *
                               <input
                                 type="date"
+                                name="offer-cand-joining-date"
+                                autoComplete="off"
                                 disabled={isLocked}
                                 className="rec-search-input"
                                 style={{ width: '100%', paddingLeft: '0.6rem', height: '30px', fontSize: '0.78rem', background: isLocked ? '#f8fafc' : '#ffffff' }}

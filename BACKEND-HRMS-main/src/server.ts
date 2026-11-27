@@ -63,10 +63,14 @@ const bootstrap = async () => {
     runAttendanceJob().catch((err) => console.error('[JOBS] Periodic run of attendance job failed:', err))
   }, 5 * 60 * 1000)
 
-  // Trigger background backfill sync to Google Sheets after startup settles to guarantee zero data loss
+  // Trigger background backfill sync to Google Sheets after startup settles, and repeat every 15 minutes
+  // so daily attendance tabs (YYYY-MM-DD) and clock-in/out updates stay synced automatically with zero data loss.
   setTimeout(() => {
     syncAllAttendanceToGoogleSheet().catch((err) => console.error('[GOOGLE_SHEETS] Startup sync failed:', err))
   }, 30 * 1000)
+  setInterval(() => {
+    syncAllAttendanceToGoogleSheet().catch((err) => console.error('[GOOGLE_SHEETS] Periodic daily sync failed:', err))
+  }, 15 * 60 * 1000)
 
   // Keep-alive self ping to prevent Render free-tier instance from sleeping (every 10 minutes)
   const KEEP_ALIVE_URL = process.env.BACKEND_PUBLIC_URL || 'https://hrms-09-1.onrender.com/api/health'

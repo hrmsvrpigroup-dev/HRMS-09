@@ -1003,6 +1003,10 @@ export const recruitmentController = {
       if (offerSalary) updateData.offerSalary = Number(offerSalary)
       if (offerJoiningDate) updateData.offerJoiningDate = new Date(offerJoiningDate)
       if (req.body.name || req.body.candidateName) updateData.name = req.body.name || req.body.candidateName
+      const targetEmail = (req.body.email && String(req.body.email).trim()) || application.email
+      if (req.body.email && String(req.body.email).trim()) {
+        updateData.email = String(req.body.email).trim()
+      }
       if (offerStatus) {
         updateData.offerStatus = offerStatus
         if (offerStatus === 'ACCEPTED') {
@@ -1016,7 +1020,7 @@ export const recruitmentController = {
       })
 
       // If offerStatus is SENT and application has an email address, dispatch the formal offer email
-      if (offerStatus === 'SENT' && application.email) {
+      if (offerStatus === 'SENT' && targetEmail) {
         try {
           const candidateName = application.name || req.body.name || 'Candidate'
           const grossNum = offerSalary ? Number(offerSalary) : (application.offerSalary || 0)
@@ -1067,7 +1071,7 @@ export const recruitmentController = {
             </html>
           `
           await notificationService.sendEmail(
-            application.email,
+            targetEmail,
             offerSubject,
             offerHtml,
             `Dear ${candidateName},\n\nWe are pleased to extend an offer of employment for ${roleTitle}.\nSalary: ${formattedGross}\nJoining Date: ${joiningDateStr}\n\nWarm regards,\n${senderDisplayName}\nVR PI Tech Solutions\n${contactEmail}\n\n---\nPlot No. 12, Cyber Gateway, HITEC City, Hyderabad, Telangana 500081`,

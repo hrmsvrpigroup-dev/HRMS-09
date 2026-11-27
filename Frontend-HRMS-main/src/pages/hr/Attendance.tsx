@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Download, RefreshCw } from 'lucide-react'
 import { attendanceApi, AttendanceItem } from '../../api/attendance.api'
 import { employeeApi, Employee } from '../../api/employee.api'
+import { calendarApi, CalendarDayInfo } from '../../api/calendar.api'
 import { LoadingSpinner } from '../../components/shared/LoadingSpinner'
 
 function getIdleBadge(idleMinutes: number) {
@@ -221,6 +222,7 @@ export default function Attendance() {
       return []
     }
   })
+  const [calendarDaysMap, setCalendarDaysMap] = useState<Record<string, CalendarDayInfo>>({})
   const [loading, setLoading] = useState(() => readCachedLogs().length === 0)   // only when no cached rows exist
   const [error, setError] = useState('')
 
@@ -356,12 +358,31 @@ export default function Attendance() {
     fetchLogs(dateFilter, logs.length > 0)
   }, [dateFilter])
 
+  // Fetch HR calendar config for the active date's month so holidays & week-offs are excluded from Absent
+  useEffect(() => {
+    const targetDate = dateFilter || (statusFilter === 'ABSENT' ? new Date().toLocaleDateString('en-CA') : '')
+    if (!targetDate) return
+    const [yStr, mStr] = targetDate.split('-')
+    const y = Number(yStr)
+    const m = Number(mStr)
+    if (!y || !m) return
+    calendarApi.getMonth(y, m)
+      .then((res) => {
+        if (res.data?.data?.days) {
+          setCalendarDaysMap((prev) => ({ ...prev, ...res.data.data.days }))
+        }
+      })
+      .catch(() => {})
+  }, [dateFilter, statusFilter])
+
   // Handle local text search, status filter, and virtual ABSENT rows for active employees without logs
   useEffect(() => {
     let result = [...logs]
     const effectiveDate = dateFilter || (statusFilter === 'ABSENT' ? new Date().toLocaleDateString('en-CA') : '')
+    const daySchedule = effectiveDate ? calendarDaysMap[effectiveDate] : undefined
+    const isWorkingDay = daySchedule ? daySchedule.isWorkingDay : true
 
-    if (effectiveDate && employees.length > 0 && (dateFilter !== '' || statusFilter === 'ABSENT')) {
+    if (effectiveDate && isWorkingDay && employees.length > 0 && (dateFilter !== '' || statusFilter === 'ABSENT')) {
       const logsForDate = result.filter(item => String(item.date).startsWith(effectiveDate))
       const presentEmpIds = new Set(logsForDate.map(l => l.employeeId))
       const presentCodes = new Set(logsForDate.map(l => l.employee?.employeeCode).filter(Boolean))
@@ -397,7 +418,7 @@ export default function Attendance() {
     if (statusFilter !== 'ALL') result = result.filter(item => item.status === statusFilter)
     if (effectiveDate) result = result.filter(item => String(item.date).startsWith(effectiveDate))
     setFilteredLogs(result)
-  }, [searchTerm, statusFilter, dateFilter, logs, employees])
+  }, [searchTerm, statusFilter, dateFilter, logs, employees, calendarDaysMap])
 
   const totalIdleToday = filteredLogs.reduce((s, l) => s + (l.idleMinutes ?? 0), 0)
   const totalActiveHrs = filteredLogs.reduce((s, l) => {

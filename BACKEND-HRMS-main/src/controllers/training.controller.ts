@@ -1,9 +1,30 @@
 import { Response } from 'express'
+import { TrainingSessionType, TrainingParticipantStatus, AttendanceOverrideMode, AttendanceStatus } from '@prisma/client'
+import { prisma } from '../config/database'
 import { AuthRequest } from '../middleware/auth.middleware'
 import { sendSuccess, sendError } from '../utils/response.utils'
 import { notificationService } from '../services/notification.service'
 import { generateTeamsMeetingLink } from '../services/interview.service'
 import nodemailer from 'nodemailer'
+
+function parseDurationMinutes(durationStr?: string): number {
+  const m = String(durationStr || '').match(/(\d+)/)
+  return m ? Math.max(15, parseInt(m[1], 10)) : 60
+}
+
+function parseSessionDateUtc(rawDate?: string, fallbackDateStr?: string): Date {
+  const candidate = (rawDate || '').trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(candidate)) {
+    return new Date(`${candidate}T00:00:00.000Z`)
+  }
+  const parsed = new Date(fallbackDateStr || Date.now())
+  if (!isNaN(parsed.getTime())) {
+    const iso = parsed.toISOString().split('T')[0]
+    return new Date(`${iso}T00:00:00.000Z`)
+  }
+  const todayIso = new Date().toISOString().split('T')[0]
+  return new Date(`${todayIso}T00:00:00.000Z`)
+}
 
 /**
  * Send an email directly using Microsoft 365 Graph API (POST /v1.0/users/{userId}/sendMail)
@@ -178,7 +199,8 @@ export const trainingController = {
         meetingDetails,
         googleMailConfig,
         teamsConfig,
-        subject: customSubject
+        subject: customSubject,
+        portalOnly = false
       } = req.body
 
       if (!Array.isArray(recipients) || recipients.length === 0) {
@@ -186,6 +208,8 @@ export const trainingController = {
       }
 
       const {
+        sessionType = 'TRAINING',
+        rawDate,
         title = 'Employee Training & Development Session',
         trainerName = 'HR Training Team',
         customSenderName = 'HR Training Academy',
@@ -202,8 +226,82 @@ export const trainingController = {
       } = meetingDetails || {}
 
       let finalMeetingLink = (meetingLink || '').trim()
-      if (!finalMeetingLink) {
+      if (!finalMeetingLink && !portalOnly) {
         finalMeetingLink = await generateTeamsMeetingLink(title, undefined, undefined, teamsConfig)
+      }
+
+      // Persist Training / Meeting Session & Selected Employees in PostgreSQL
+      const tenantId = req.tenantId ?? req.user?.tenantId
+      let savedSession: any = null
+      if (tenantId) {
+        try {
+          const parsedSessionDate = parseSessionDateUtc(rawDate, date)
+          const resolvedType: TrainingSessionType =
+            String(sessionType).toUpperCase() === 'MEETING' ? TrainingSessionType.MEETING : TrainingSessionType.TRAINING
+
+          const recipientEmails = recipients
+            .map((r: any) => String(r.email || '').trim().toLowerCase())
+            .filter(Boolean)
+          const matchedEmployees = await prisma.employee.findMany({
+            where: {
+              tenantId,
+              OR: [
+                { email: { in: recipientEmails, mode: 'insensitive' } },
+                { personalEmail: { in: recipientEmails, mode: 'insensitive' } },
+              ],
+            },
+            select: { id: true, email: true, personalEmail: true },
+          })
+
+          savedSession = await prisma.trainingSession.create({
+            data: {
+              tenantId,
+              sessionType: resolvedType,
+              title: title.trim(),
+              trainerName: trainerName.trim(),
+              sessionDate: parsedSessionDate,
+              timeSlot: time,
+              duration,
+              teamsUrl: finalMeetingLink || null,
+              meetingId: meetingId || null,
+              passcode: passcode || null,
+              agenda: agenda || null,
+              createdById: req.user?.id,
+              participants: {
+                create: matchedEmployees.map((emp) => ({
+                  tenantId,
+                  employeeId: emp.id,
+                  attendanceStatus: TrainingParticipantStatus.PENDING,
+                  overrideMode: AttendanceOverrideMode.NONE,
+                })),
+              },
+            },
+            include: {
+              participants: {
+                include: {
+                  employee: { select: { id: true, firstName: true, lastName: true, employeeCode: true, email: true } },
+                },
+              },
+            },
+          })
+        } catch (dbErr: any) {
+          console.error('[TrainingController] Non-fatal error persisting session:', dbErr.message || dbErr)
+        }
+      }
+
+      if (portalOnly) {
+        const portalCount = savedSession?.participants?.length || 0
+        return sendSuccess(
+          res,
+          {
+            sessionId: savedSession?.id || null,
+            portalCount,
+            successCount: portalCount,
+            failCount: 0,
+            results: [],
+          },
+          `Published to HRMS Portal notification, Employee Calendar, and Today's Tasks for ${portalCount} employee(s)!`
+        )
       }
 
       const senderDisplayName = customSenderName.trim() || 'HR Training Academy'
@@ -427,13 +525,331 @@ export const trainingController = {
           failCount,
           meetingLink: finalMeetingLink,
           senderEmail: isAzureMode ? azureUserId : (googleMailConfig?.email || 'System'),
+          session: savedSession,
           results
         },
-        `Microsoft Teams training invitations dispatched ${channelDesc} to ${successCount} employee${successCount === 1 ? '' : 's'}${failCount > 0 ? ` (${failCount} failed)` : ''}.`
+        `Microsoft Teams invitations dispatched ${channelDesc} to ${successCount} employee${successCount === 1 ? '' : 's'}${failCount > 0 ? ` (${failCount} failed)` : ''}.`
       )
     } catch (error: any) {
       console.error('[TrainingController] sendTrainingInvitations error:', error)
       return sendError(res, error.message || 'Failed to dispatch training invitations', 500)
     }
-  }
+  },
+
+  async listSessions(req: AuthRequest, res: Response) {
+    const tenantId = req.tenantId ?? req.user?.tenantId
+    if (!tenantId) return sendError(res, 'Tenant context not found', 400)
+
+    const { year, month, date } = req.query as Record<string, string | undefined>
+    try {
+      const whereClause: any = { tenantId }
+      if (date) {
+        const dStr = String(date).split('T')[0]
+        whereClause.sessionDate = new Date(`${dStr}T00:00:00.000Z`)
+      } else if (year && month) {
+        const y = Number(year)
+        const m = Number(month)
+        whereClause.sessionDate = {
+          gte: new Date(Date.UTC(y, m - 1, 1)),
+          lte: new Date(Date.UTC(y, m, 0, 23, 59, 59, 999)),
+        }
+      }
+
+      const sessions = await prisma.trainingSession.findMany({
+        where: whereClause,
+        include: {
+          participants: {
+            include: {
+              employee: {
+                select: { id: true, firstName: true, lastName: true, employeeCode: true, email: true },
+              },
+            },
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+        orderBy: [{ sessionDate: 'asc' }, { createdAt: 'desc' }],
+      })
+
+      return sendSuccess(
+        res,
+        sessions.map((s) => ({
+          ...s,
+          sessionDate: s.sessionDate.toISOString().split('T')[0],
+        }))
+      )
+    } catch (error: any) {
+      return sendError(res, error.message || 'Failed to list training & meeting sessions', 500)
+    }
+  },
+
+  async getMySessions(req: AuthRequest, res: Response) {
+    const tenantId = req.tenantId ?? req.user?.tenantId
+    const userId = req.user?.id
+    if (!tenantId || !userId) return sendError(res, 'Unauthorized', 401)
+
+    try {
+      const employee = await prisma.employee.findUnique({
+        where: { userId },
+        select: { id: true },
+      })
+      if (!employee) return sendSuccess(res, [])
+
+      const { year, month, today } = req.query as Record<string, string | undefined>
+      const sessionFilter: any = { tenantId }
+      if (today === 'true') {
+        const todayIso = new Date().toLocaleDateString('en-CA')
+        sessionFilter.sessionDate = new Date(`${todayIso}T00:00:00.000Z`)
+      } else if (year && month) {
+        const y = Number(year)
+        const m = Number(month)
+        sessionFilter.sessionDate = {
+          gte: new Date(Date.UTC(y, m - 1, 1)),
+          lte: new Date(Date.UTC(y, m, 0, 23, 59, 59, 999)),
+        }
+      }
+
+      const participations = await prisma.trainingParticipant.findMany({
+        where: {
+          tenantId,
+          employeeId: employee.id,
+          session: sessionFilter,
+        },
+        include: {
+          session: true,
+        },
+        orderBy: { session: { sessionDate: 'asc' } },
+      })
+
+      return sendSuccess(
+        res,
+        participations.map((p) => ({
+          participantId: p.id,
+          attendanceStatus: p.attendanceStatus,
+          overrideMode: p.overrideMode,
+          deductedMinutes: p.deductedMinutes,
+          hrNotes: p.hrNotes,
+          id: p.session.id,
+          sessionType: p.session.sessionType,
+          title: p.session.title,
+          trainerName: p.session.trainerName,
+          sessionDate: p.session.sessionDate.toISOString().split('T')[0],
+          timeSlot: p.session.timeSlot,
+          duration: p.session.duration,
+          teamsUrl: p.session.teamsUrl,
+          meetingId: p.session.meetingId,
+          passcode: p.session.passcode,
+          agenda: p.session.agenda,
+          status: p.session.status,
+          cancelledAt: p.session.cancelledAt,
+          cancelReason: p.session.cancelReason,
+        }))
+      )
+    } catch (error: any) {
+      return sendError(res, error.message || 'Failed to load employee sessions', 500)
+    }
+  },
+
+  async markParticipantAttendance(req: AuthRequest, res: Response) {
+    const tenantId = req.tenantId ?? req.user?.tenantId
+    const { sessionId } = req.params
+    const { employeeId, attendanceStatus, overrideMode, hrNotes } = req.body as {
+      employeeId?: string
+      attendanceStatus?: TrainingParticipantStatus
+      overrideMode?: AttendanceOverrideMode
+      hrNotes?: string
+    }
+
+    if (!tenantId || !sessionId || !employeeId) {
+      return sendError(res, 'sessionId and employeeId are required', 400)
+    }
+
+    try {
+      const session = await prisma.trainingSession.findUnique({ where: { id: sessionId } })
+      if (!session || session.tenantId !== tenantId) {
+        return sendError(res, 'Training/Meeting session not found', 404)
+      }
+
+      const participant = await prisma.trainingParticipant.findUnique({
+        where: { sessionId_employeeId: { sessionId, employeeId } },
+      })
+      if (!participant) {
+        return sendError(res, 'Employee is not registered in this session', 404)
+      }
+
+      const nextStatus: TrainingParticipantStatus =
+        attendanceStatus && Object.values(TrainingParticipantStatus).includes(attendanceStatus)
+          ? attendanceStatus
+          : TrainingParticipantStatus.ATTENDED
+      const nextOverride: AttendanceOverrideMode =
+        overrideMode && Object.values(AttendanceOverrideMode).includes(overrideMode)
+          ? overrideMode
+          : AttendanceOverrideMode.NONE
+
+      const sessionMins = parseDurationMinutes(session.duration)
+      const deductedMinutes =
+        nextOverride === AttendanceOverrideMode.SESSION_ONLY
+          ? sessionMins
+          : nextOverride === AttendanceOverrideMode.HALF_DAY
+          ? 240
+          : nextOverride === AttendanceOverrideMode.FULL_DAY
+          ? 480
+          : 0
+
+      const updatedParticipant = await prisma.trainingParticipant.update({
+        where: { id: participant.id },
+        data: {
+          attendanceStatus: nextStatus,
+          overrideMode: nextOverride,
+          deductedMinutes,
+          hrNotes: hrNotes?.trim() || null,
+          markedById: req.user?.id,
+          markedAt: new Date(),
+        },
+        include: {
+          employee: { select: { id: true, firstName: true, lastName: true, employeeCode: true, email: true } },
+        },
+      })
+
+      // Apply manual attendance override to the Attendance table for that sessionDate
+      const existingAtt = await prisma.attendance.findFirst({
+        where: { tenantId, employeeId, date: session.sessionDate },
+      })
+
+      const noteTag = `[${session.sessionType}: ${session.title}] ${nextStatus} (${nextOverride})`
+      if (nextOverride === AttendanceOverrideMode.FULL_DAY) {
+        if (existingAtt) {
+          await prisma.attendance.update({
+            where: { id: existingAtt.id },
+            data: { status: AttendanceStatus.ABSENT, totalHours: 0, notes: noteTag },
+          })
+        } else {
+          await prisma.attendance.create({
+            data: {
+              tenantId,
+              employeeId,
+              date: session.sessionDate,
+              status: AttendanceStatus.ABSENT,
+              totalHours: 0,
+              loginMethod: 'MANUAL_HR_OVERRIDE',
+              notes: noteTag,
+            },
+          })
+        }
+      } else if (nextOverride === AttendanceOverrideMode.HALF_DAY) {
+        if (existingAtt) {
+          const cappedHrs = existingAtt.totalHours !== null ? Math.min(existingAtt.totalHours, 4) : 4
+          await prisma.attendance.update({
+            where: { id: existingAtt.id },
+            data: { status: AttendanceStatus.HALF_DAY, totalHours: cappedHrs, notes: noteTag },
+          })
+        } else {
+          await prisma.attendance.create({
+            data: {
+              tenantId,
+              employeeId,
+              date: session.sessionDate,
+              status: AttendanceStatus.HALF_DAY,
+              totalHours: 4,
+              loginMethod: 'MANUAL_HR_OVERRIDE',
+              notes: noteTag,
+            },
+          })
+        }
+      } else if (nextOverride === AttendanceOverrideMode.SESSION_ONLY) {
+        if (existingAtt) {
+          const nextIdle = Math.max(existingAtt.idleMinutes || 0, sessionMins)
+          const nextTotal =
+            existingAtt.totalHours !== null
+              ? Math.max(0, Math.round((existingAtt.totalHours - sessionMins / 60) * 100) / 100)
+              : null
+          await prisma.attendance.update({
+            where: { id: existingAtt.id },
+            data: {
+              idleMinutes: nextIdle,
+              ...(nextTotal !== null ? { totalHours: nextTotal } : {}),
+              notes: noteTag,
+            },
+          })
+        } else {
+          await prisma.attendance.create({
+            data: {
+              tenantId,
+              employeeId,
+              date: session.sessionDate,
+              status: AttendanceStatus.PRESENT,
+              idleMinutes: sessionMins,
+              loginMethod: 'MANUAL_HR_OVERRIDE',
+              notes: noteTag,
+            },
+          })
+        }
+      } else if (nextStatus === TrainingParticipantStatus.ATTENDED) {
+        if (existingAtt) {
+          await prisma.attendance.update({
+            where: { id: existingAtt.id },
+            data: {
+              ...(existingAtt.status === AttendanceStatus.ABSENT ? { status: AttendanceStatus.PRESENT } : {}),
+              notes: noteTag,
+            },
+          })
+        } else {
+          await prisma.attendance.create({
+            data: {
+              tenantId,
+              employeeId,
+              date: session.sessionDate,
+              status: AttendanceStatus.PRESENT,
+              loginMethod: 'MANUAL_HR_OVERRIDE',
+              notes: noteTag,
+            },
+          })
+        }
+      }
+
+      return sendSuccess(res, updatedParticipant, 'Attendance override saved successfully')
+    } catch (error: any) {
+      return sendError(res, error.message || 'Failed to update session attendance override', 500)
+    }
+  },
+
+  async cancelSession(req: AuthRequest, res: Response) {
+    const tenantId = req.tenantId ?? req.user?.tenantId
+    const { sessionId } = req.params
+    const { reason } = req.body as { reason?: string }
+    if (!tenantId) return sendError(res, 'Tenant context not found', 400)
+
+    try {
+      const existing = await prisma.trainingSession.findFirst({
+        where: { id: sessionId, tenantId },
+      })
+      if (!existing) return sendError(res, 'Training or meeting session not found', 404)
+
+      const updated = await prisma.trainingSession.update({
+        where: { id: existing.id },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+          cancelReason: reason?.trim() || 'Cancelled by HR',
+        },
+        include: {
+          participants: {
+            include: {
+              employee: { select: { id: true, firstName: true, lastName: true, employeeCode: true, email: true } },
+            },
+          },
+        },
+      })
+
+      return sendSuccess(
+        res,
+        {
+          ...updated,
+          sessionDate: updated.sessionDate.toISOString().split('T')[0],
+        },
+        `${updated.sessionType === 'MEETING' ? 'Meeting' : 'Training'} cancelled and employees notified in their portal.`
+      )
+    } catch (error: any) {
+      return sendError(res, error.message || 'Failed to cancel session', 500)
+    }
+  },
 }

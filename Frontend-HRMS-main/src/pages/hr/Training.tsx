@@ -23,6 +23,7 @@ import {
   ExternalLink,
   Plus,
   Trash2,
+  Bell,
   Copy,
   Info,
   Key,
@@ -117,6 +118,7 @@ export default function Training() {
   const [showExtraForm, setShowExtraForm] = useState(false);
 
   // Training Session Fields
+  const [sessionType, setSessionType] = useState<'TRAINING' | 'MEETING'>('TRAINING');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('induction');
   const [trainingTitle, setTrainingTitle] = useState('Company Orientation & HRMS Platform Walkthrough');
   const [trainerName, setTrainerName] = useState('HR Training Team');
@@ -126,8 +128,43 @@ export default function Training() {
     today.setDate(today.getDate() + 1);
     return today.toISOString().split('T')[0];
   });
+  const [startTime, setStartTime] = useState('11:00');
+  const [endTime, setEndTime] = useState('12:30');
   const [trainingTime, setTrainingTime] = useState('11:00 AM - 12:30 PM IST');
   const [duration, setDuration] = useState('90 Minutes');
+
+  const formatTo12Hour = (time24: string) => {
+    if (!time24 || !time24.includes(':')) return time24;
+    const [hStr, mStr] = time24.split(':');
+    let h = parseInt(hStr, 10);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return `${String(h).padStart(2, '0')}:${mStr} ${ampm}`;
+  };
+
+  const applyTimeRange = (nextStart: string, nextEnd: string) => {
+    setStartTime(nextStart);
+    setEndTime(nextEnd);
+    if (nextStart && nextEnd) {
+      setTrainingTime(`${formatTo12Hour(nextStart)} - ${formatTo12Hour(nextEnd)} IST`);
+      const [sh, sm] = nextStart.split(':').map(Number);
+      const [eh, em] = nextEnd.split(':').map(Number);
+      const diffMins = (eh * 60 + em) - (sh * 60 + sm);
+      if (diffMins > 0) {
+        if (diffMins === 30 || diffMins === 45 || diffMins === 60 || diffMins === 90) {
+          setDuration(`${diffMins} Minutes`);
+        } else if (diffMins === 120) {
+          setDuration('2 Hours');
+        } else if (diffMins >= 60) {
+          const hrs = Math.floor(diffMins / 60);
+          const mins = diffMins % 60;
+          setDuration(mins > 0 ? `${hrs} Hr ${mins} Min` : `${hrs} Hours`);
+        } else {
+          setDuration(`${diffMins} Minutes`);
+        }
+      }
+    }
+  };
   const [meetingLink, setMeetingLink] = useState('');
   const [meetingId, setMeetingId] = useState('');
   const [passcode, setPasscode] = useState('');
@@ -139,6 +176,7 @@ export default function Training() {
   // UI & Dispatch State
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isDispatching, setIsDispatching] = useState(false);
+  const [isPublishingPortal, setIsPublishingPortal] = useState(false);
   const [isGeneratingLink, setIsGeneratingLink] = useState(false);
   const [dispatchStatus, setDispatchStatus] = useState<{
     success: boolean;
@@ -481,6 +519,61 @@ export default function Training() {
     return [...fromRoster, ...fromExtra];
   }, [employees, selectedEmpIds, extraAttendees]);
 
+  // Publish directly to HRMS Portal Notifications, Employee Calendar & Today's Tasks
+  const handleSendPortalNotification = async () => {
+    if (selectedRecipients.length === 0) {
+      alert('Please select at least one employee recipient.');
+      return;
+    }
+    if (!trainingTitle.trim()) {
+      alert('Please provide a session title.');
+      return;
+    }
+
+    const finalLink = meetingLink.trim();
+
+    setIsPublishingPortal(true);
+    setDispatchStatus(null);
+    try {
+      const res = await api.post('/training/send-invitations', {
+        portalOnly: true,
+        recipients: selectedRecipients,
+        meetingDetails: {
+          sessionType,
+          title: trainingTitle.trim(),
+          trainerName: trainerName.trim() || 'HR Training Team',
+          customSenderName: customSenderName.trim() || 'VR PI Training Academy',
+          date: trainingDate,
+          rawDate: trainingDate,
+          time: trainingTime,
+          duration,
+          meetingLink: finalLink,
+          meetingId: meetingId.trim(),
+          passcode: passcode.trim(),
+          agenda: agenda.trim(),
+          prerequisites: prerequisites.trim(),
+          instructions: instructions.trim(),
+          customMessage: customMessage.trim()
+        },
+        teamsConfig: getTrainingTeamsConfig()
+      });
+
+      if (res.data?.success) {
+        const resultData = res.data.data;
+        setDispatchStatus({
+          success: true,
+          message: res.data.message || `Published to HRMS Portal notification for ${resultData?.portalCount || selectedRecipients.length} employee(s)!`,
+          details: resultData
+        });
+      }
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to publish to HRMS Portal.';
+      setDispatchStatus({ success: false, message: errorMsg });
+    } finally {
+      setIsPublishingPortal(false);
+    }
+  };
+
   // Dispatch Microsoft Teams Invitations
   const handleSendInvitations = async () => {
     if (selectedRecipients.length === 0) {
@@ -508,10 +601,12 @@ export default function Training() {
       const res = await api.post('/training/send-invitations', {
         recipients: selectedRecipients,
         meetingDetails: {
+          sessionType,
           title: trainingTitle.trim(),
           trainerName: trainerName.trim() || 'HR Training Team',
           customSenderName: customSenderName.trim() || 'VR PI Training Academy',
           date: trainingDate,
+          rawDate: trainingDate,
           time: trainingTime,
           duration,
           meetingLink: finalLink,
@@ -524,7 +619,7 @@ export default function Training() {
         },
         googleMailConfig: getGoogleMailConfig(),
         teamsConfig: getTrainingTeamsConfig(),
-        subject: `[Training Invitation] ${trainingTitle.trim()} via Microsoft Teams`
+        subject: `${sessionType === 'MEETING' ? '[Important Meeting]' : '[Training Invitation]'} ${trainingTitle.trim()} via Microsoft Teams`
       });
 
       if (res.data?.success) {
@@ -732,76 +827,9 @@ export default function Training() {
 
       {/* Main Two-Column Workflow */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.85fr', gap: '24px', alignItems: 'start' }}>
-        
-        {/* LEFT COLUMN: Template Loader & Session Customization */}
+
+        {/* LEFT COLUMN: Session Customization */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
-          {/* Section 1: Template Loader */}
-          <div style={{ background: '#ffffff', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <FileText size={18} color="#4f46e5" />
-                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#0f172a' }}>
-                  Load Corporate Training Templates
-                </h3>
-              </div>
-              <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>
-                {TRAINING_TEMPLATES.length} Pre-built Templates
-              </span>
-            </div>
-
-            <p style={{ margin: '0 0 16px 0', fontSize: '0.82rem', color: '#64748b' }}>
-              Select a standardized module below to auto-fill training title, trainer name, duration, agenda, and technical prerequisites.
-            </p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '10px' }}>
-              {TRAINING_TEMPLATES.map((tpl) => {
-                const isSelected = selectedTemplateId === tpl.id;
-                return (
-                  <button
-                    key={tpl.id}
-                    type="button"
-                    onClick={() => handleLoadTemplate(tpl.id)}
-                    style={{
-                      textAlign: 'left',
-                      padding: '12px 14px',
-                      borderRadius: '10px',
-                      border: isSelected ? '2px solid #4f46e5' : '1px solid #e2e8f0',
-                      background: isSelected ? '#f5f3ff' : '#ffffff',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span
-                        style={{
-                          fontSize: '0.68rem',
-                          fontWeight: 700,
-                          color: tpl.badgeColor,
-                          background: `${tpl.badgeColor}18`,
-                          padding: '2px 8px',
-                          borderRadius: '12px'
-                        }}
-                      >
-                        {tpl.category}
-                      </span>
-                      {isSelected && <CheckCircle2 size={14} color="#4f46e5" />}
-                    </div>
-                    <div style={{ fontSize: '0.84rem', fontWeight: 700, color: isSelected ? '#312e81' : '#1e293b', marginTop: '2px' }}>
-                      {tpl.name}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                      ⏱️ {tpl.defaultDuration}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
           {/* Section 2: Session & Microsoft Teams Customizer */}
           <div style={{ background: '#ffffff', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -834,10 +862,59 @@ export default function Training() {
               </button>
             </div>
 
+            {/* Session Type */}
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                Session Type <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setSessionType('TRAINING')}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    border: sessionType === 'TRAINING' ? '2px solid #4f46e5' : '1px solid #cbd5e1',
+                    background: sessionType === 'TRAINING' ? '#eef2ff' : '#ffffff',
+                    color: sessionType === 'TRAINING' ? '#3730a3' : '#475569',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  🎓 Training Session
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSessionType('MEETING')}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    border: sessionType === 'MEETING' ? '2px solid #7c3aed' : '1px solid #cbd5e1',
+                    background: sessionType === 'MEETING' ? '#f5f3ff' : '#ffffff',
+                    color: sessionType === 'MEETING' ? '#5b21b6' : '#475569',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  📅 Important Meeting
+                </button>
+              </div>
+            </div>
+
             {/* Title / Topic */}
             <div style={{ marginBottom: '14px' }}>
               <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                Training Title / Subject <span style={{ color: '#ef4444' }}>*</span>
+                {sessionType === 'MEETING' ? 'Meeting Title / Subject' : 'Training Title / Subject'} <span style={{ color: '#ef4444' }}>*</span>
               </label>
               <input
                 type="text"
@@ -878,7 +955,7 @@ export default function Training() {
             </div>
 
             {/* Date, Time & Duration */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
                   Session Date
@@ -887,19 +964,6 @@ export default function Training() {
                   type="date"
                   value={trainingDate}
                   onChange={(e) => setTrainingDate(e.target.value)}
-                  style={{ width: '100%', padding: '9px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                  Time & Slot
-                </label>
-                <input
-                  type="text"
-                  value={trainingTime}
-                  onChange={(e) => setTrainingTime(e.target.value)}
-                  placeholder="e.g. 11:00 AM - 12:30 PM IST"
                   style={{ width: '100%', padding: '9px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
                 />
               </div>
@@ -920,7 +984,74 @@ export default function Training() {
                   <option value="2 Hours">2 Hours</option>
                   <option value="Half Day (3.5 Hrs)">Half Day (3.5 Hrs)</option>
                   <option value="Full Day Workshop">Full Day Workshop</option>
+                  {!['30 Minutes', '45 Minutes', '60 Minutes', '90 Minutes', '2 Hours', 'Half Day (3.5 Hrs)', 'Full Day Workshop'].includes(duration) && (
+                    <option value={duration}>{duration}</option>
+                  )}
                 </select>
+              </div>
+            </div>
+
+            {/* Professional Time Slot Picker */}
+            <div style={{ marginBottom: '14px', padding: '12px 14px', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Clock size={14} color="#4f46e5" /> Time &amp; Slot
+                </label>
+                <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#4f46e5', background: '#eef2ff', padding: '2px 8px', borderRadius: '999px' }}>
+                  {trainingTime}
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+                <div>
+                  <span style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>Start Time</span>
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => applyTimeRange(e.target.value, endTime)}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#ffffff' }}
+                  />
+                </div>
+                <span style={{ color: '#94a3b8', fontWeight: 700, marginTop: '16px' }}>→</span>
+                <div>
+                  <span style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>End Time</span>
+                  <input
+                    type="time"
+                    value={endTime}
+                    onChange={(e) => applyTimeRange(startTime, e.target.value)}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#ffffff' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {[
+                  { label: '10:00 – 11:00 AM', s: '10:00', e: '11:00' },
+                  { label: '11:00 AM – 12:30 PM', s: '11:00', e: '12:30' },
+                  { label: '02:00 – 03:00 PM', s: '14:00', e: '15:00' },
+                  { label: '03:30 – 05:00 PM', s: '15:30', e: '17:00' },
+                ].map((preset) => {
+                  const isActive = startTime === preset.s && endTime === preset.e;
+                  return (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => applyTimeRange(preset.s, preset.e)}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '999px',
+                        fontSize: '0.74rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        border: isActive ? '1px solid #4f46e5' : '1px solid #cbd5e1',
+                        background: isActive ? '#eef2ff' : '#ffffff',
+                        color: isActive ? '#4338ca' : '#475569',
+                      }}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -1029,7 +1160,7 @@ export default function Training() {
 
         {/* RIGHT COLUMN: Employee Selection & Email Dispatch */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
+
           {/* Employee Roster Card */}
           <div style={{ background: '#ffffff', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
@@ -1463,7 +1594,7 @@ export default function Training() {
             <button
               type="button"
               onClick={handleSendInvitations}
-              disabled={isDispatching || selectedRecipients.length === 0}
+              disabled={isDispatching || isPublishingPortal || selectedRecipients.length === 0}
               style={{
                 width: '100%',
                 padding: '14px 20px',
@@ -1491,6 +1622,42 @@ export default function Training() {
                 <>
                   <Send size={18} />
                   <span>Send Microsoft Teams Invitation ({selectedRecipients.length})</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSendPortalNotification}
+              disabled={isDispatching || isPublishingPortal || selectedRecipients.length === 0}
+              style={{
+                width: '100%',
+                marginTop: '10px',
+                padding: '13px 20px',
+                borderRadius: '12px',
+                border: selectedRecipients.length === 0 ? '1px solid #cbd5e1' : '1.5px solid #7c3aed',
+                background: selectedRecipients.length === 0 ? '#f1f5f9' : 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)',
+                color: selectedRecipients.length === 0 ? '#94a3b8' : '#ffffff',
+                fontSize: '0.92rem',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px',
+                cursor: selectedRecipients.length === 0 ? 'not-allowed' : 'pointer',
+                boxShadow: selectedRecipients.length > 0 ? '0 6px 18px rgba(124, 58, 237, 0.25)' : 'none',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {isPublishingPortal ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  <span>Sending to HRMS Portal...</span>
+                </>
+              ) : (
+                <>
+                  <Bell size={18} />
+                  <span>Send to HRMS Portal Notification ({selectedRecipients.length})</span>
                 </>
               )}
             </button>
@@ -1862,7 +2029,7 @@ export default function Training() {
             {/* Modal Body */}
             <form onSubmit={handleSaveGroup} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
               <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px', flex: 1 }}>
-                
+
                 {/* Group Name & Description */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
@@ -2060,7 +2227,7 @@ export default function Training() {
                               <input
                                 type="checkbox"
                                 checked={isChecked}
-                                onChange={() => {}}
+                                onChange={() => { }}
                                 style={{ accentColor: '#4f46e5', cursor: 'pointer' }}
                               />
                               <div>

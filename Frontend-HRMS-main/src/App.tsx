@@ -17,6 +17,7 @@ import AdminAttendanceCalendar from './pages/admin/AttendanceCalendar'
 import AttendanceDetails from './pages/admin/AttendanceDetails'
 import EmployeePortfolio from './pages/admin/EmployeePortfolio'
 import EmpDashboard from './pages/employee/Dashboard'
+import EmployeeCalendar from './pages/employee/Calendar'
 import ApplyLeave from './pages/employee/ApplyLeave'
 import MyAttendance from './pages/employee/MyAttendance'
 import AttendanceHistory from './pages/employee/AttendanceHistory'
@@ -182,6 +183,7 @@ export default function App() {
           <Route element={<EmployeeLayout />}>
             <Route path="/employee" element={<EmpDashboard />} />
             <Route path="/employee/attendance" element={<MyAttendance />} />
+            <Route path="/employee/calendar" element={<EmployeeCalendar />} />
             <Route path="/employee/leave" element={<ApplyLeave />} />
             <Route path="/employee/history" element={<AttendanceHistory />} />
             <Route path="/employee/payslips" element={<Payslips />} />

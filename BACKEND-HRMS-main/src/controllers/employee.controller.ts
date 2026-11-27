@@ -1242,6 +1242,94 @@ export const employeeController = {
       return sendError(res, error.message || 'Failed to update employee status', 500)
     }
   },
+  async updateIdCard(req: AuthRequest, res: Response) {
+    const tenantId = req.tenantId ?? req.user?.tenantId
+    const { id } = req.params
+    const { fullName, designation, employeeCode, phone, bloodGroup, photo, signature } = req.body as {
+      fullName?: string
+      designation?: string
+      employeeCode?: string
+      phone?: string
+      bloodGroup?: string
+      photo?: string | null
+      signature?: string | null
+    }
+
+    if (!tenantId || !id) {
+      return sendError(res, 'Context not found', 400)
+    }
+
+    try {
+      const existing = await prisma.employee.findUnique({
+        where: { id },
+        include: { designation: true },
+      })
+
+      if (!existing || existing.tenantId !== tenantId) {
+        return sendError(res, 'Employee not found', 404)
+      }
+
+      const updateData: any = {}
+
+      if (typeof fullName === 'string' && fullName.trim()) {
+        const parts = fullName.trim().split(/\s+/)
+        updateData.firstName = parts[0]
+        updateData.lastName = parts.slice(1).join(' ') || ''
+      }
+      if (typeof employeeCode === 'string' && employeeCode.trim()) {
+        updateData.employeeCode = employeeCode.trim()
+      }
+      if (typeof phone === 'string') {
+        updateData.phone = phone.trim() || null
+      }
+      if (typeof bloodGroup === 'string') {
+        updateData.bloodGroup = bloodGroup.trim() || null
+      }
+      if (photo !== undefined) {
+        updateData.photo = photo && photo.trim() ? photo.trim() : null
+      }
+      if (signature !== undefined) {
+        updateData.signature = signature && signature.trim() ? signature.trim() : null
+      }
+
+      if (typeof designation === 'string' && designation.trim()) {
+        const title = designation.trim()
+        let desig = await prisma.designation.findFirst({
+          where: { tenantId, title: { equals: title, mode: 'insensitive' } },
+        })
+        if (!desig) {
+          desig = await prisma.designation.create({
+            data: { tenantId, title },
+          })
+        }
+        updateData.designationId = desig.id
+      }
+
+      const updated = await prisma.employee.update({
+        where: { id },
+        data: updateData,
+        include: {
+          department: { select: { name: true } },
+          designation: { select: { title: true } },
+        },
+      })
+
+      if (existing.userId && (updateData.firstName !== undefined || updateData.phone !== undefined)) {
+        await prisma.user.update({
+          where: { id: existing.userId },
+          data: {
+            ...(updateData.firstName !== undefined ? { firstName: updateData.firstName, lastName: updateData.lastName } : {}),
+            ...(updateData.phone !== undefined ? { phone: updateData.phone } : {}),
+          },
+        }).catch(() => {})
+      }
+
+      invalidateEmployeeListCache(tenantId)
+      return sendSuccess(res, updated, 'Employee ID card and profile updated successfully')
+    } catch (error: any) {
+      return sendError(res, error.message || 'Failed to update employee ID card', 500)
+    }
+  },
 }
 
 export async function generateNextEmployeeCode(tenantId: string, prefix = 'VRPITS'): Promise<string> {
