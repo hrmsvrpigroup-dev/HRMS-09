@@ -104,6 +104,7 @@ export default function Training() {
 
   // Custom Employee Groups State
   const [employeeGroups, setEmployeeGroups] = useState<EmployeeGroup[]>(() => getStoredGroups());
+  const [activeGroupFilterId, setActiveGroupFilterId] = useState<string | null>(null);
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [groupFormName, setGroupFormName] = useState('');
   const [groupFormDescription, setGroupFormDescription] = useState('');
@@ -302,8 +303,17 @@ export default function Training() {
   }, [employees]);
 
   // Filtered employees
+  const activeGroupFilter = useMemo(
+    () => (activeGroupFilterId ? employeeGroups.find((g) => g.id === activeGroupFilterId) || null : null),
+    [activeGroupFilterId, employeeGroups]
+  );
+
   const filteredEmployees = useMemo(() => {
     return employees.filter((emp) => {
+      if (activeGroupFilter && !activeGroupFilter.employeeIds.includes(emp.id)) {
+        return false;
+      }
+
       const query = searchQuery.toLowerCase().trim();
       const fullName = `${emp.firstName || ''} ${emp.lastName || ''}`.toLowerCase();
       const code = (emp.employeeCode || '').toLowerCase();
@@ -324,7 +334,7 @@ export default function Training() {
 
       return matchesQuery && matchesDept;
     });
-  }, [employees, searchQuery, selectedDept]);
+  }, [employees, searchQuery, selectedDept, activeGroupFilter]);
 
   // Employee Selection Helpers
   const handleToggleEmployee = (id: string) => {
@@ -434,6 +444,7 @@ export default function Training() {
     if (!window.confirm('Are you sure you want to delete this group?')) return;
     const updated = employeeGroups.filter((g) => g.id !== groupId);
     setEmployeeGroups(updated);
+    if (activeGroupFilterId === groupId) setActiveGroupFilterId(null);
     try {
       localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(updated));
     } catch (err) {
@@ -443,6 +454,14 @@ export default function Training() {
 
   const handleToggleGroupSelection = (grp: EmployeeGroup) => {
     const allSelected = grp.employeeIds.length > 0 && grp.employeeIds.every((id) => selectedEmpIds.has(id));
+    if (allSelected) {
+      if (activeGroupFilterId === grp.id) {
+        setActiveGroupFilterId(null);
+      }
+    } else {
+      setSelectedDept('ALL');
+      setActiveGroupFilterId(grp.id);
+    }
     setSelectedEmpIds((prev) => {
       const next = new Set(prev);
       if (allSelected) {
@@ -1365,6 +1384,43 @@ export default function Training() {
                 </button>
               )}
             </div>
+
+            {/* Active Group Members Banner */}
+            {activeGroupFilter && (
+              <div style={{
+                marginBottom: '10px',
+                padding: '8px 12px',
+                borderRadius: '10px',
+                background: '#eef2ff',
+                border: '1px solid #c7d2fe',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+                fontSize: '0.78rem',
+              }}>
+                <span style={{ fontWeight: 700, color: '#3730a3', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Users size={14} />
+                  Group Members: {activeGroupFilter.name} ({filteredEmployees.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setActiveGroupFilterId(null)}
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #a5b4fc',
+                    color: '#4338ca',
+                    borderRadius: '6px',
+                    padding: '3px 9px',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Show All Employees
+                </button>
+              </div>
+            )}
 
             {/* Employees Interactive List */}
             <div style={{ maxHeight: '380px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', paddingRight: '4px' }}>

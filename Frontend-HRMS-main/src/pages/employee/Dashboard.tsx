@@ -125,6 +125,7 @@ export default function Dashboard() {
   const [upcomingSessions, setUpcomingSessions] = useState<MyTrainingSessionItem[]>([])
   const [dismissedSessionBanner, setDismissedSessionBanner] = useState(false)
   const [dismissedCancelBanner, setDismissedCancelBanner] = useState(false)
+  const [visibleCancelledSessions, setVisibleCancelledSessions] = useState<MyTrainingSessionItem[]>([])
   const [loading, setLoading] = useState(true)
   const [clocking, setClocking] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
@@ -698,9 +699,46 @@ export default function Dashboard() {
         const todayStr = now.toISOString().split('T')[0]
         const future = (monthRes.data?.data || []).filter((s) => s.sessionDate >= todayStr)
         setUpcomingSessions(future.slice(0, 4))
+
+        // Show cancelled session notification for only 10 minutes from when portal is opened
+        const TEN_MINS_MS = 10 * 60 * 1000
+        const storageKey = `hrms_emp_cancel_seen_${user?.id || 'emp'}`
+        let seenMap: Record<string, number> = {}
+        try {
+          seenMap = JSON.parse(localStorage.getItem(storageKey) || '{}') || {}
+        } catch {}
+
+        const nowMs = Date.now()
+        const cancelledList = future.filter((s) => s.status === 'CANCELLED')
+        let changed = false
+        const activeCancelled: MyTrainingSessionItem[] = []
+        let maxRemainingMs = 0
+
+        for (const s of cancelledList) {
+          if (!seenMap[s.id]) {
+            seenMap[s.id] = nowMs
+            changed = true
+          }
+          const elapsed = nowMs - seenMap[s.id]
+          if (elapsed < TEN_MINS_MS) {
+            activeCancelled.push(s)
+            maxRemainingMs = Math.max(maxRemainingMs, TEN_MINS_MS - elapsed)
+          }
+        }
+
+        if (changed) {
+          try { localStorage.setItem(storageKey, JSON.stringify(seenMap)) } catch {}
+        }
+        setVisibleCancelledSessions(activeCancelled)
+
+        if (activeCancelled.length > 0 && maxRemainingMs > 0) {
+          setTimeout(() => {
+            setVisibleCancelledSessions([])
+          }, maxRemainingMs)
+        }
       })
       .catch(() => {})
-  }, [])
+  }, [user?.id])
 
   if (loading) return <LoadingSpinner />
 
@@ -726,7 +764,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {upcomingSessions.some(s => s.status === 'CANCELLED') && !dismissedCancelBanner && (
+      {visibleCancelledSessions.length > 0 && !dismissedCancelBanner && (
         <div
           style={{
             marginBottom: '14px',
@@ -750,8 +788,7 @@ export default function Dashboard() {
                 Scheduled Session Cancelled by HR
               </div>
               <div style={{ fontSize: '0.82rem', color: '#b91c1c', marginTop: '2px' }}>
-                {upcomingSessions
-                  .filter(s => s.status === 'CANCELLED')
+                {visibleCancelledSessions
                   .map(s => `${s.sessionType === 'MEETING' ? 'Meeting' : 'Training'}: ${s.title} (${s.sessionDate} • ${s.timeSlot})${s.cancelReason ? ` — ${s.cancelReason}` : ''}`)
                   .join('  |  ')}
               </div>
