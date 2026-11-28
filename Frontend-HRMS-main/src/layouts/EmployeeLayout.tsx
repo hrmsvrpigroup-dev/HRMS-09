@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useEmployeeMonitor } from '../hooks/useEmployeeMonitor'
-import { 
-  Menu, Search, History, Bell, Mail, Home, Calendar, Edit3, 
-  Clock, FileText, FileBadge, CheckSquare, FilePlus, User, Settings, 
+import {
+  Menu, Search, History, Bell, Mail, Home, Calendar, Edit3,
+  Clock, FileText, FileBadge, CheckSquare, FilePlus, User, Settings,
   Headphones, Building2, X, ChevronRight, MessageSquare, Check, HelpCircle, LogOut
 } from 'lucide-react'
 
@@ -71,7 +71,7 @@ export default function EmployeeLayout() {
   const usernameVal = user ? `${user.firstName.toLowerCase()}.${user.lastName.toLowerCase()}` : 'rakesh.prasad'
   const roleName = user?.role?.replace('_', ' ') || 'Employee'
 
-  const filteredSearch = searchQuery.trim() 
+  const filteredSearch = searchQuery.trim()
     ? searchPages.filter(p => p.label.toLowerCase().includes(searchQuery.toLowerCase()))
     : []
 
@@ -138,9 +138,22 @@ export default function EmployeeLayout() {
 
       {/* Top Navigation Bar */}
       <header className="emp-topbar">
-        <div className="emp-logo-area">
-          <div className="logo-icon"><Building2 size={24} /></div>
-          <span className="logo-text">HRMS Platform</span>
+        <div className="emp-logo-area" onClick={() => navigate('/employee')} style={{ cursor: 'pointer', gap: '10px', background: 'transparent' }}>
+          <img
+            src="/vrpi-logo.png?v=2"
+            alt="VR Pi"
+            style={{
+              height: '32px',
+              width: 'auto',
+              objectFit: 'contain',
+              display: 'block',
+              flexShrink: 0,
+            }}
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15 }}>
+            <span className="logo-text" style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>HRMS Platform</span>
+            <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#4f46e5', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Employee Portal</span>
+          </div>
         </div>
         <div className="emp-topbar-content">
           <div className="topbar-left">
@@ -154,22 +167,22 @@ export default function EmployeeLayout() {
             }}>
               <Menu size={20} />
             </button>
-            
+
             {/* Search Input with Dynamic Filtering */}
             <div className="search-bar" onClick={(e) => e.stopPropagation()}>
               <Search size={18} className="search-icon" />
-              <input 
-                type="text" 
-                placeholder="Search portal sections..." 
+              <input
+                type="text"
+                placeholder="Search portal sections..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
               {filteredSearch.length > 0 && (
                 <div className="search-dropdown-overlay">
                   {filteredSearch.map(item => (
-                    <button 
-                      key={item.to} 
-                      className="search-result-item" 
+                    <button
+                      key={item.to}
+                      className="search-result-item"
                       onClick={() => {
                         navigate(item.to)
                         setSearchQuery('')
@@ -183,16 +196,16 @@ export default function EmployeeLayout() {
               )}
             </div>
           </div>
-          
+
           <div className="topbar-right">
             {/* History Shortcut */}
             <button className="icon-btn" onClick={() => navigate('/employee/history')} title="Attendance History">
               <History size={20} />
             </button>
-            
+
             {/* Notifications Bell */}
             <div className="dropdown-container" onClick={(e) => e.stopPropagation()}>
-              <button 
+              <button
                 className={`icon-btn ${unreadNotifCount > 0 ? 'has-badge' : ''}`}
                 onClick={() => {
                   setShowNotifications(!showNotifications)
@@ -203,7 +216,7 @@ export default function EmployeeLayout() {
                 <Bell size={20} />
                 {unreadNotifCount > 0 && <span className="badge red-badge">{unreadNotifCount}</span>}
               </button>
-              
+
               {showNotifications && (
                 <div className="topbar-dropdown-tray">
                   <div className="tray-header">
@@ -237,7 +250,7 @@ export default function EmployeeLayout() {
 
             {/* User Dropdown */}
             <div className="dropdown-container" onClick={(e) => e.stopPropagation()}>
-              <div 
+              <div
                 className="topbar-profile"
                 onClick={() => {
                   setShowProfileMenu(!showProfileMenu)
@@ -275,7 +288,7 @@ export default function EmployeeLayout() {
       </header>
 
       {/* Mobile Overlay */}
-      <div 
+      <div
         className={`emp-mobile-overlay ${isMobileOpen ? 'active' : ''}`}
         onClick={() => setIsMobileOpen(false)}
       ></div>
@@ -295,7 +308,9 @@ export default function EmployeeLayout() {
                   className={({ isActive }) => `emp-nav-item ${isActive ? 'active' : ''}`}
                   title={sidebarCollapsed ? item.label : ''}
                 >
-                  <Icon size={18} className="nav-icon" />
+                  <span className="emp-nav-icon-box">
+                    <Icon size={17} className="nav-icon" />
+                  </span>
                   <span className="nav-label">{item.label}</span>
                 </NavLink>
               )
@@ -304,18 +319,19 @@ export default function EmployeeLayout() {
 
           <div className="sidebar-footer">
             <div className="sidebar-profile-card">
-              <div className="profile-card-top">
+              <div className="profile-card-top" style={{ cursor: 'pointer' }} onClick={() => navigate('/employee/profile')}>
                 <div className="profile-initials">{initials}</div>
                 <div className="profile-details">
                   <span className="profile-card-name">@{usernameVal}</span>
                   <span className="profile-card-id">{idVal}</span>
                 </div>
               </div>
-              <button className="btn-logout" onClick={() => { logout(); navigate('/login'); }}>
-                Logout
+              <button className="btn-logout" onClick={() => { logout(); navigate('/login'); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}>
+                <LogOut size={14} />
+                <span>Logout</span>
               </button>
             </div>
-            
+
             <div className="sidebar-help" onClick={() => setShowHelpModal(true)}>
               <div className="help-icon"><Headphones size={20} /></div>
               <div className="help-text">
@@ -343,7 +359,7 @@ export default function EmployeeLayout() {
               </div>
               <button className="close-btn" onClick={() => setShowHelpModal(false)}><X size={20} /></button>
             </div>
-            
+
             <form onSubmit={handleHelpSubmit}>
               <div className="modal-body">
                 {ticketSuccess ? (
@@ -1290,6 +1306,114 @@ export default function EmployeeLayout() {
         .emp-mobile-overlay.active {
           opacity: 1;
           pointer-events: all;
+        }
+
+        /* Premium Employee Sidebar & Nav UI (All items visible without scrolling) */
+        .emp-sidebar {
+          background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+          border-right: 1px solid #e2e8f0 !important;
+          box-shadow: 4px 0 24px rgba(15, 23, 42, 0.04) !important;
+          display: flex !important;
+          flex-direction: column !important;
+          overflow: hidden !important;
+        }
+        .emp-sidebar .sidebar-section-title {
+          font-size: 0.65rem !important;
+          font-weight: 800 !important;
+          letter-spacing: 0.08em !important;
+          color: #64748b !important;
+          padding: 8px 16px 4px !important;
+        }
+        .emp-sidebar .emp-nav {
+          flex: 1 !important;
+          min-height: 0 !important;
+          overflow-y: auto !important;
+          padding: 2px 10px 6px !important;
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 2px !important;
+          scrollbar-width: thin;
+          scrollbar-color: #cbd5e1 transparent;
+        }
+        .emp-sidebar .emp-nav::-webkit-scrollbar {
+          width: 4px;
+        }
+        .emp-sidebar .emp-nav::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 999px;
+        }
+        .emp-sidebar .emp-nav-item {
+          display: flex !important;
+          align-items: center !important;
+          gap: 9px !important;
+          padding: 5px 10px !important;
+          border-radius: 9px !important;
+          font-size: 0.82rem !important;
+          font-weight: 600 !important;
+          color: #475569 !important;
+          transition: all 0.16s ease !important;
+          text-decoration: none !important;
+          line-height: 1.2 !important;
+        }
+        .emp-sidebar .emp-nav-icon-box {
+          width: 24px;
+          height: 24px;
+          border-radius: 7px;
+          background: #f1f5f9;
+          color: #64748b;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          transition: all 0.16s ease;
+        }
+        .emp-sidebar .emp-nav-item:hover:not(.active) {
+          background: #f1f5f9 !important;
+          color: #0f172a !important;
+          transform: translateX(2px);
+        }
+        .emp-sidebar .emp-nav-item:hover:not(.active) .emp-nav-icon-box {
+          background: #e2e8f0;
+          color: #334155;
+        }
+        .emp-sidebar .emp-nav-item.active {
+          background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%) !important;
+          color: #ffffff !important;
+          box-shadow: 0 6px 14px -4px rgba(79, 70, 229, 0.45) !important;
+        }
+        .emp-sidebar .emp-nav-item.active .emp-nav-icon-box {
+          background: rgba(255, 255, 255, 0.18);
+          color: #ffffff;
+        }
+        .emp-sidebar .sidebar-footer {
+          flex-shrink: 0 !important;
+          background: #ffffff !important;
+          border-top: 1px solid #e2e8f0 !important;
+          padding: 8px 10px !important;
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 6px !important;
+        }
+        .emp-sidebar .sidebar-profile-card {
+          padding: 8px 10px !important;
+          margin-bottom: 0 !important;
+          gap: 6px !important;
+        }
+        .emp-sidebar .profile-initials {
+          width: 32px !important;
+          height: 32px !important;
+          font-size: 0.78rem !important;
+          background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%) !important;
+          color: #ffffff !important;
+          font-weight: 800 !important;
+        }
+        .emp-sidebar .btn-logout {
+          padding: 5px 8px !important;
+          font-size: 0.8rem !important;
+        }
+        .emp-sidebar .sidebar-help {
+          padding: 8px 10px !important;
+          gap: 8px !important;
         }
       `}</style>
     </div>

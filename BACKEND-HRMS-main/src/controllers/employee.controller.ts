@@ -264,19 +264,23 @@ export const employeeController = {
     try {
       const existingEmployee = await prisma.employee.findUnique({
         where: { userId },
-        select: { id: true, signature: true, signatureUploadCount: true }
+        select: { id: true, email: true, employeeCode: true, signature: true, signatureUploadCount: true }
       })
 
       if (!existingEmployee) {
         return sendError(res, 'Employee not found', 404)
       }
 
+      const isUnlimitedUser =
+        existingEmployee.employeeCode?.toUpperCase() === 'VRPITS00232' ||
+        existingEmployee.email?.toLowerCase() === 'shiva.kanapuram@vrpitechsolutions.com'
+
       let currentCount = existingEmployee.signatureUploadCount ?? 0
       if (currentCount === 0 && existingEmployee.signature) {
         currentCount = 1
       }
 
-      if (currentCount >= 2) {
+      if (!isUnlimitedUser && currentCount >= 2) {
         return sendError(res, 'Signature upload limit reached. You can only upload your signature up to 2 times.', 400)
       }
 
@@ -312,19 +316,23 @@ export const employeeController = {
     try {
       const existingEmployee = await prisma.employee.findUnique({
         where: { userId },
-        select: { id: true, photo: true, photoUploadCount: true }
+        select: { id: true, email: true, employeeCode: true, photo: true, photoUploadCount: true }
       })
 
       if (!existingEmployee) {
         return sendError(res, 'Employee not found', 404)
       }
 
+      const isUnlimitedUser =
+        existingEmployee.employeeCode?.toUpperCase() === 'VRPITS00232' ||
+        existingEmployee.email?.toLowerCase() === 'shiva.kanapuram@vrpitechsolutions.com'
+
       let currentCount = existingEmployee.photoUploadCount ?? 0
       if (currentCount === 0 && existingEmployee.photo) {
         currentCount = 1
       }
 
-      if (currentCount >= 2) {
+      if (!isUnlimitedUser && currentCount >= 2) {
         return sendError(res, 'Photo upload limit reached. You can only upload your photo up to 2 times.', 400)
       }
 
