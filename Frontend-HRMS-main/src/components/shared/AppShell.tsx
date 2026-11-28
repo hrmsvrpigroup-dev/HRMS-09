@@ -26,6 +26,8 @@ import {
   ShieldCheck,
   LogOut,
   Sparkles,
+  AlertTriangle,
+  X,
 } from 'lucide-react'
 
 import { useAuthStore } from '../../store/auth.store'
@@ -90,6 +92,7 @@ export default function AppShell({ title, navItems }: Props) {
     })
   }
   const [showNotifications, setShowNotifications] = useState(false)
+  const [showAlertsModal, setShowAlertsModal] = useState(false)
   const [showMessages, setShowMessages] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [selectedNotif, setSelectedNotif] = useState<any | null>(null)
@@ -462,6 +465,56 @@ export default function AppShell({ title, navItems }: Props) {
           background: #fee2e2 !important;
           border-color: #fca5a5 !important;
         }
+        .app-shell .sidebar-alert-btn {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          gap: 11px;
+          padding: 9px 12px;
+          border-radius: 11px;
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: #475569;
+          background: transparent;
+          border: 1px solid transparent;
+          cursor: pointer;
+          transition: all 0.16s ease;
+        }
+        .app-shell .sidebar-alert-btn .nav-icon-box {
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
+          background: #fffbeb;
+          color: #d97706;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          transition: all 0.16s ease;
+        }
+        .app-shell .sidebar-alert-btn:hover:not(.active) {
+          background: #f1f5f9;
+          color: #0f172a;
+          transform: translateX(2px);
+        }
+        .app-shell .sidebar-alert-btn.active {
+          background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+          color: #ffffff;
+          box-shadow: 0 8px 18px -5px rgba(79, 70, 229, 0.45);
+        }
+        .app-shell .sidebar-alert-btn.active .nav-icon-box {
+          background: rgba(255, 255, 255, 0.18);
+          color: #ffffff;
+        }
+        .app-shell .sidebar-alert-badge {
+          font-size: 0.7rem;
+          font-weight: 800;
+          padding: 2px 7px;
+          border-radius: 999px;
+          background: #ef4444;
+          color: #ffffff;
+          line-height: 1.2;
+        }
       `}</style>
 
       {/* Sidebar */}
@@ -498,6 +551,20 @@ export default function AppShell({ title, navItems }: Props) {
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.label}</span>
             </NavLink>
           ))}
+          <button
+            type="button"
+            className={`sidebar-alert-btn ${showAlertsModal ? 'active' : ''}`}
+            onClick={() => {
+              setShowAlertsModal(true)
+              setIsMobileMenuOpen(false)
+            }}
+          >
+            <span className="nav-icon-box"><AlertTriangle size={17} /></span>
+            <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Alerts</span>
+            {unreadNotifCount > 0 && (
+              <span className="sidebar-alert-badge">{unreadNotifCount > 99 ? '99+' : unreadNotifCount}</span>
+            )}
+          </button>
         </nav>
         <div className="sidebar-footer">
           <div
@@ -712,6 +779,105 @@ export default function AppShell({ title, navItems }: Props) {
         </div>
 
         <Outlet />
+
+        {/* Sidebar Alerts Modal */}
+        {showAlertsModal && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Workspace Alerts"
+            onClick={(e) => { if (e.target === e.currentTarget) setShowAlertsModal(false) }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.5)',
+              backdropFilter: 'blur(4px)',
+              zIndex: 1100,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 16,
+            }}
+          >
+            <div style={{ background: '#ffffff', borderRadius: 20, width: '100%', maxWidth: 540, maxHeight: '82vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 60px rgba(15,23,42,0.22)', border: '1px solid #e2e8f0' }}>
+              <div style={{ padding: '18px 22px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: '#f8fafc' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 10, background: '#fffbeb', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #fde68a' }}>
+                    <AlertTriangle size={18} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#0f172a' }}>Alerts &amp; Notifications</h3>
+                    <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>
+                      {unreadNotifCount} unread • {notifications.length} total
+                    </span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {notifications.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleMarkAllNotificationsRead}
+                        style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #c7d2fe', background: '#eef2ff', color: '#4338ca', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Mark all read
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleClearAllNotifications}
+                        style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Clear all
+                      </button>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowAlertsModal(false)}
+                    aria-label="Close alerts"
+                    style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid #e2e8f0', background: '#ffffff', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ padding: '14px 20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {notifications.length === 0 ? (
+                  <div style={{ padding: '36px 16px', textAlign: 'center', color: '#64748b', fontSize: 13 }}>
+                    No active alerts or notifications right now.
+                  </div>
+                ) : (
+                  notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      onClick={() => {
+                        setSelectedNotif(n)
+                        setShowAlertsModal(false)
+                      }}
+                      style={{
+                        padding: '12px 14px',
+                        borderRadius: 12,
+                        border: `1px solid ${n.read ? '#e2e8f0' : '#c7d2fe'}`,
+                        background: n.read ? '#ffffff' : '#f5f7ff',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 10,
+                      }}
+                    >
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: n.read ? '#cbd5e1' : '#ef4444', marginTop: 6, flexShrink: 0 }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: n.read ? 500 : 700, color: '#0f172a', lineHeight: 1.4 }}>{n.text}</div>
+                        <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 3 }}>{n.time}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Notification details modal */}
         {selectedNotif && (

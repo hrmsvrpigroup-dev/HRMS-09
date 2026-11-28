@@ -62,6 +62,11 @@ export default function Profile() {
   const [employeeSearch, setEmployeeSearch] = useState<string>('')
   const [cardSaveSuccess, setCardSaveSuccess] = useState<boolean>(false)
   const [showPhotoAdjust, setShowPhotoAdjust] = useState<boolean>(true)
+  const [showSigAdjust, setShowSigAdjust] = useState<boolean>(false)
+  const [rawSigSource, setRawSigSource] = useState<string | null>(null)
+  const [sigBgThreshold, setSigBgThreshold] = useState<number>(215)
+  const [rawPhotoSource, setRawPhotoSource] = useState<string | null>(null)
+  const [photoBgTolerance, setPhotoBgTolerance] = useState<number>(42)
 
   // Interactive Photo Cropper Modal states
   const [isCropModalOpen, setIsCropModalOpen] = useState<boolean>(false)
@@ -85,6 +90,10 @@ export default function Profile() {
     photoOffsetX?: number
     photoOffsetY?: number
     photoRotate?: number
+    sigScale?: number
+    sigOffsetX?: number
+    sigOffsetY?: number
+    sigRotate?: number
   }>({
     fullName: '',
     designation: '',
@@ -99,6 +108,10 @@ export default function Profile() {
     photoOffsetX: 0,
     photoOffsetY: 0,
     photoRotate: 0,
+    sigScale: 1,
+    sigOffsetX: 0,
+    sigOffsetY: 0,
+    sigRotate: 0,
   })
 
   const getInitials = (name: string) => {
@@ -385,12 +398,19 @@ export default function Profile() {
     if (savedCustom) {
       try {
         const parsed = JSON.parse(savedCustom)
+        const target = empId !== 'ME' ? employees.find(e => e.id === empId) : null
         setLiveCardData({
           photoScale: 1,
           photoOffsetX: 0,
           photoOffsetY: 0,
           photoRotate: 0,
-          ...parsed
+          sigScale: 1,
+          sigOffsetX: 0,
+          sigOffsetY: 0,
+          sigRotate: 0,
+          ...parsed,
+          photo: parsed.photo ?? target?.photo ?? '',
+          signature: parsed.signature ?? target?.signature ?? '',
         })
         return
       } catch (e) {}
@@ -563,6 +583,36 @@ export default function Profile() {
   }
 
   const [isDraggingPhoto, setIsDraggingPhoto] = useState<boolean>(false)
+  const [isDraggingSig, setIsDraggingSig] = useState<boolean>(false)
+
+  const handleSigMouseDown = (e: React.MouseEvent) => {
+    if (user?.role !== 'HR' || !liveCardData.signature) return
+    e.preventDefault()
+    setIsDraggingSig(true)
+    const startX = e.clientX
+    const startY = e.clientY
+    const initialX = liveCardData.sigOffsetX || 0
+    const initialY = liveCardData.sigOffsetY || 0
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const newX = Math.round(initialX + (moveEvent.clientX - startX))
+      const newY = Math.round(initialY + (moveEvent.clientY - startY))
+      setLiveCardData(prev => ({
+        ...prev,
+        sigOffsetX: Math.max(-60, Math.min(60, newX)),
+        sigOffsetY: Math.max(-40, Math.min(40, newY)),
+      }))
+    }
+
+    const handleMouseUp = () => {
+      setIsDraggingSig(false)
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+  }
 
   const handlePhotoMouseDown = (e: React.MouseEvent) => {
     if (user?.role !== 'HR' || !liveCardData.photo) return
@@ -596,7 +646,7 @@ export default function Profile() {
     window.addEventListener('mouseup', handleMouseUp)
   }
 
-  const removeSignatureBackground = (base64Image: string): Promise<string> => {
+  const removeSignatureBackground = (base64Image: string, thresholdHigh = 215): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image()
       img.crossOrigin = 'anonymous'
@@ -613,8 +663,7 @@ export default function Profile() {
           ctx.drawImage(img, 0, 0)
           const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
           const d = imgData.data
-          const thresholdLow = 90
-          const thresholdHigh = 225
+          const thresholdLow = Math.max(40, thresholdHigh - 125)
 
           for (let i = 0; i < d.length; i += 4) {
             const r = d[i]
@@ -642,6 +691,50 @@ export default function Profile() {
     })
   }
 
+  const removePhotoBackground = (base64Image: string, tolerance = 42): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width = img.width
+          canvas.height = img.height
+          const ctx = canvas.getContext('2d')
+          if (!ctx) { resolve(base64Image); return }
+          ctx.drawImage(img, 0, 0)
+          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+          const d = imgData.data
+          // Sample top-left and top-right corners to detect solid backdrop color
+          const idx1 = 0
+          const idx2 = (canvas.width - 1) * 4
+          const bgR = Math.round((d[idx1] + d[idx2]) / 2)
+          const bgG = Math.round((d[idx1 + 1] + d[idx2 + 1]) / 2)
+          const bgB = Math.round((d[idx1 + 2] + d[idx2 + 2]) / 2)
+          const feather = tolerance + 18
+
+          for (let i = 0; i < d.length; i += 4) {
+            const dist = Math.sqrt(
+              (d[i] - bgR) ** 2 + (d[i + 1] - bgG) ** 2 + (d[i + 2] - bgB) ** 2
+            )
+            if (dist <= tolerance) {
+              d[i + 3] = 0
+            } else if (dist < feather) {
+              const factor = (dist - tolerance) / (feather - tolerance)
+              d[i + 3] = Math.round(d[i + 3] * factor)
+            }
+          }
+          ctx.putImageData(imgData, 0, 0)
+          resolve(canvas.toDataURL('image/png'))
+        } catch {
+          resolve(base64Image)
+        }
+      }
+      img.onerror = () => resolve(base64Image)
+      img.src = base64Image
+    })
+  }
+
   const handleLiveSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -649,15 +742,16 @@ export default function Profile() {
     reader.readAsDataURL(file)
     reader.onloadend = async () => {
       const base64String = reader.result as string
-      const cleanSig = await removeSignatureBackground(base64String)
-      setLiveCardData(prev => ({ ...prev, signature: cleanSig }))
+      setRawSigSource(base64String)
+      const cleanSig = await removeSignatureBackground(base64String, sigBgThreshold)
+      setLiveCardData(prev => ({ ...prev, signature: cleanSig, sigScale: 1, sigOffsetX: 0, sigOffsetY: 0, sigRotate: 0 }))
     }
     e.target.value = ''
   }
 
   const handleSaveLiveCard = async () => {
     try {
-      localStorage.setItem(`hrms_custom_idcard_${selectedEmployeeId}`, JSON.stringify(liveCardData))
+      // 1. Always persist to database first so large base64 images are never blocked by localStorage quota
       if (selectedEmployeeId !== 'ME') {
         const res = await employeeApi.updateIdCard(selectedEmployeeId, {
           fullName: liveCardData.fullName,
@@ -690,19 +784,34 @@ export default function Profile() {
           phone: liveCardData.phone,
           manualBloodGroup: liveCardData.bloodGroup,
         }))
-        localStorage.setItem(`hrms_profile_${user.id}`, JSON.stringify({
-          ...profile,
-          manualEmployeeId: liveCardData.employeeCode,
-          phone: liveCardData.phone,
-          manualBloodGroup: liveCardData.bloodGroup,
-        }))
-        if (liveCardData.photo) {
-          localStorage.setItem(`hrms_photo_${user.id}`, liveCardData.photo)
-        }
-        if (liveCardData.signature) {
-          localStorage.setItem(`hrms_signature_${user.id}`, liveCardData.signature)
-        }
+        try {
+          localStorage.setItem(`hrms_profile_${user.id}`, JSON.stringify({
+            ...profile,
+            manualEmployeeId: liveCardData.employeeCode,
+            phone: liveCardData.phone,
+            manualBloodGroup: liveCardData.bloodGroup,
+          }))
+          if (liveCardData.photo) localStorage.setItem(`hrms_photo_${user.id}`, liveCardData.photo)
+          if (liveCardData.signature) localStorage.setItem(`hrms_signature_${user.id}`, liveCardData.signature)
+        } catch {}
       }
+
+      // 2. Cache layout/metadata in localStorage safely (never throw QuotaExceededError)
+      try {
+        const { photo: _p, signature: _s, ...metaOnly } = liveCardData
+        const cachePayload = selectedEmployeeId === 'ME' ? liveCardData : metaOnly
+        localStorage.setItem(`hrms_custom_idcard_${selectedEmployeeId}`, JSON.stringify(cachePayload))
+      } catch {
+        // Evict stale idcard cache entries and retry storing metadata only
+        try {
+          Object.keys(localStorage)
+            .filter(k => k.startsWith('hrms_custom_idcard_') && k !== `hrms_custom_idcard_${selectedEmployeeId}`)
+            .forEach(k => localStorage.removeItem(k))
+          const { photo: _p, signature: _s, ...metaOnly } = liveCardData
+          localStorage.setItem(`hrms_custom_idcard_${selectedEmployeeId}`, JSON.stringify(metaOnly))
+        } catch {}
+      }
+
       setCardSaveSuccess(true)
       triggerHrNotification(`ID Card for ${liveCardData.fullName} (${liveCardData.employeeCode}) was updated and synced to employee portal.`)
       setTimeout(() => setCardSaveSuccess(false), 3500)
@@ -1496,6 +1605,22 @@ export default function Profile() {
                                     <SlidersHorizontal size={13} />
                                     <span>Adjust</span>
                                   </button>
+                                  <button
+                                    type="button"
+                                    className="btn-mini-adjust"
+                                    onClick={async () => {
+                                      const src = rawPhotoSource || liveCardData.photo
+                                      if (!rawPhotoSource && liveCardData.photo) setRawPhotoSource(liveCardData.photo)
+                                      if (src) {
+                                        const cleaned = await removePhotoBackground(src, photoBgTolerance)
+                                        setLiveCardData(prev => ({ ...prev, photo: cleaned }))
+                                      }
+                                    }}
+                                    title="Remove solid/light background from photo"
+                                  >
+                                    <Sparkles size={13} />
+                                    <span>Remove BG</span>
+                                  </button>
                                   <button 
                                     type="button" 
                                     className="btn-mini-clear"
@@ -1533,13 +1658,43 @@ export default function Profile() {
                                 />
                               </label>
                               {liveCardData.signature && (
-                                <button 
-                                  type="button" 
-                                  className="btn-mini-clear"
-                                  onClick={() => setLiveCardData(prev => ({ ...prev, signature: '' }))}
-                                >
-                                  Remove
-                                </button>
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn-mini-adjust"
+                                    onClick={() => setShowSigAdjust(prev => !prev)}
+                                    title="Adjust signature zoom, position, and background removal"
+                                  >
+                                    <SlidersHorizontal size={13} />
+                                    <span>Adjust</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-mini-adjust"
+                                    onClick={async () => {
+                                      const src = rawSigSource || liveCardData.signature
+                                      if (!rawSigSource && liveCardData.signature) setRawSigSource(liveCardData.signature)
+                                      if (src) {
+                                        const cleaned = await removeSignatureBackground(src, sigBgThreshold)
+                                        setLiveCardData(prev => ({ ...prev, signature: cleaned }))
+                                      }
+                                    }}
+                                    title="Live remove background from signature"
+                                  >
+                                    <Sparkles size={13} />
+                                    <span>Remove BG</span>
+                                  </button>
+                                  <button 
+                                    type="button" 
+                                    className="btn-mini-clear"
+                                    onClick={() => {
+                                      setRawSigSource(null)
+                                      setLiveCardData(prev => ({ ...prev, signature: '', sigScale: 1, sigOffsetX: 0, sigOffsetY: 0, sigRotate: 0 }))
+                                    }}
+                                  >
+                                    Remove
+                                  </button>
+                                </>
                               )}
                             </div>
                           </div>
@@ -1748,10 +1903,160 @@ export default function Profile() {
                                   <Move size={11} /> Drag photo on ID card
                                 </span>
                               </div>
+
+                              {/* Live Photo Background Remover Slider */}
+                              <div className="adjust-control-row" style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed #cbd5e1' }}>
+                                <span className="adjust-label">
+                                  <Sparkles size={12} /> Live BG Remover: <strong>{photoBgTolerance}</strong>
+                                </span>
+                                <div className="adjust-input-group">
+                                  <input
+                                    type="range"
+                                    min="15"
+                                    max="95"
+                                    step="1"
+                                    value={photoBgTolerance}
+                                    onChange={async (e) => {
+                                      const tol = parseInt(e.target.value, 10)
+                                      setPhotoBgTolerance(tol)
+                                      const src = rawPhotoSource || liveCardData.photo
+                                      if (!rawPhotoSource && liveCardData.photo) setRawPhotoSource(liveCardData.photo)
+                                      if (src) {
+                                        const cleaned = await removePhotoBackground(src, tol)
+                                        setLiveCardData(prev => ({ ...prev, photo: cleaned }))
+                                      }
+                                    }}
+                                    className="adjust-slider"
+                                  />
+                                  {rawPhotoSource && (
+                                    <button
+                                      type="button"
+                                      className="btn-adjust-reset"
+                                      onClick={() => setLiveCardData(prev => ({ ...prev, photo: rawPhotoSource }))}
+                                      title="Restore original photo"
+                                    >
+                                      Original
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           ) : (
                             <div className="adjust-empty-hint">
                               <span>No photo uploaded. Upload a photo or select an employee to adjust framing.</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Signature Adjust & Live BG Remover Panel */}
+                      {user?.role === 'HR' && showSigAdjust && (
+                        <div className="preview-photo-adjust-box" style={{ marginTop: 10 }}>
+                          <div className="adjust-box-header">
+                            <div className="adjust-box-title">
+                              <SlidersHorizontal size={14} color="#7c3aed" />
+                              <span>Signature Adjust &amp; Live BG Remover</span>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn-adjust-reset"
+                              onClick={() => setLiveCardData(prev => ({ ...prev, sigScale: 1, sigOffsetX: 0, sigOffsetY: 0, sigRotate: 0 }))}
+                            >
+                              <RefreshCw size={11} />
+                              <span>Reset</span>
+                            </button>
+                          </div>
+
+                          {liveCardData.signature ? (
+                            <div className="adjust-controls-container">
+                              <div className="adjust-control-row">
+                                <span className="adjust-label">
+                                  <ZoomIn size={12} /> Zoom: <strong>{Math.round((liveCardData.sigScale || 1) * 100)}%</strong>
+                                </span>
+                                <div className="adjust-input-group">
+                                  <button type="button" className="adjust-step-btn" onClick={() => setLiveCardData(prev => ({ ...prev, sigScale: Math.max(0.3, Math.round(((prev.sigScale || 1) - 0.1) * 100) / 100) }))}>
+                                    <ZoomOut size={12} />
+                                  </button>
+                                  <input
+                                    type="range" min="0.3" max="3.0" step="0.05"
+                                    value={liveCardData.sigScale || 1}
+                                    onChange={(e) => setLiveCardData(prev => ({ ...prev, sigScale: parseFloat(e.target.value) }))}
+                                    className="adjust-slider"
+                                  />
+                                  <button type="button" className="adjust-step-btn" onClick={() => setLiveCardData(prev => ({ ...prev, sigScale: Math.min(3.0, Math.round(((prev.sigScale || 1) + 0.1) * 100) / 100) }))}>
+                                    <ZoomIn size={12} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="adjust-control-row">
+                                <span className="adjust-label">
+                                  <MoveHorizontal size={12} /> Move X: <strong>{liveCardData.sigOffsetX || 0}px</strong>
+                                </span>
+                                <div className="adjust-input-group">
+                                  <input
+                                    type="range" min="-60" max="60" step="1"
+                                    value={liveCardData.sigOffsetX || 0}
+                                    onChange={(e) => setLiveCardData(prev => ({ ...prev, sigOffsetX: parseInt(e.target.value, 10) }))}
+                                    className="adjust-slider"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="adjust-control-row">
+                                <span className="adjust-label">
+                                  <MoveVertical size={12} /> Move Y: <strong>{liveCardData.sigOffsetY || 0}px</strong>
+                                </span>
+                                <div className="adjust-input-group">
+                                  <input
+                                    type="range" min="-40" max="40" step="1"
+                                    value={liveCardData.sigOffsetY || 0}
+                                    onChange={(e) => setLiveCardData(prev => ({ ...prev, sigOffsetY: parseInt(e.target.value, 10) }))}
+                                    className="adjust-slider"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="adjust-control-row" style={{ paddingTop: 6, borderTop: '1px dashed #cbd5e1' }}>
+                                <span className="adjust-label">
+                                  <Sparkles size={12} /> Live BG Remover: <strong>{sigBgThreshold}</strong>
+                                </span>
+                                <div className="adjust-input-group">
+                                  <input
+                                    type="range" min="130" max="245" step="1"
+                                    value={sigBgThreshold}
+                                    onChange={async (e) => {
+                                      const th = parseInt(e.target.value, 10)
+                                      setSigBgThreshold(th)
+                                      const src = rawSigSource || liveCardData.signature
+                                      if (!rawSigSource && liveCardData.signature) setRawSigSource(liveCardData.signature)
+                                      if (src) {
+                                        const cleaned = await removeSignatureBackground(src, th)
+                                        setLiveCardData(prev => ({ ...prev, signature: cleaned }))
+                                      }
+                                    }}
+                                    className="adjust-slider"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="adjust-bottom-tools">
+                                <button
+                                  type="button"
+                                  className="btn-rotate-adjust"
+                                  onClick={() => setLiveCardData(prev => ({ ...prev, sigRotate: ((prev.sigRotate || 0) + 90) % 360 }))}
+                                >
+                                  <RotateCw size={12} />
+                                  <span>Rotate 90° ({liveCardData.sigRotate || 0}°)</span>
+                                </button>
+                                <span className="adjust-drag-hint">
+                                  <Move size={11} /> Drag signature on ID card
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="adjust-empty-hint">
+                              <span>No signature uploaded. Upload a signature to adjust framing or remove background.</span>
                             </div>
                           )}
                         </div>
@@ -1849,9 +2154,28 @@ export default function Profile() {
                           {/* Signatures */}
                           <div className="id-signatures-row">
                             <div className="id-signature-col left">
-                              <div className="sig-image-container">
+                              <div
+                                className="sig-image-container"
+                                onMouseDown={handleSigMouseDown}
+                                style={{
+                                  cursor: user?.role === 'HR' && liveCardData.signature ? 'grab' : 'default',
+                                  overflow: 'hidden',
+                                  userSelect: 'none',
+                                }}
+                                title={user?.role === 'HR' && liveCardData.signature ? 'Drag with mouse to adjust signature position' : undefined}
+                              >
                                 {liveCardData.signature ? (
-                                  <img src={liveCardData.signature} alt="Employee Signature" />
+                                  <img
+                                    src={liveCardData.signature}
+                                    alt="Employee Signature"
+                                    draggable={false}
+                                    style={{
+                                      transform: `translate(${liveCardData.sigOffsetX || 0}px, ${liveCardData.sigOffsetY || 0}px) scale(${liveCardData.sigScale || 1}) rotate(${liveCardData.sigRotate || 0}deg)`,
+                                      transformOrigin: 'center center',
+                                      transition: isDraggingSig ? 'none' : 'transform 0.08s ease-out',
+                                      pointerEvents: 'none',
+                                    }}
+                                  />
                                 ) : (
                                   <span className="no-sig-placeholder">No Signature</span>
                                 )}
