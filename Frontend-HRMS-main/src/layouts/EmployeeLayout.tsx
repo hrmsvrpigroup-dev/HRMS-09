@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useEmployeeMonitor } from '../hooks/useEmployeeMonitor'
+import { alertApi, EmployeeActiveAlertItem } from '../api/alert.api'
 import {
   Menu, Search, History, Bell, Mail, Home, Calendar, Edit3,
   Clock, FileText, FileBadge, CheckSquare, FilePlus, User, Settings,
@@ -32,6 +33,31 @@ export default function EmployeeLayout() {
 
   // Messages State (No dummy data)
   const [messages, setMessages] = useState<any[]>([])
+  const [activePopupAlerts, setActivePopupAlerts] = useState<EmployeeActiveAlertItem[]>([])
+  const [confirmAckAlertId, setConfirmAckAlertId] = useState<string | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+    const fetchPopupAlerts = () => {
+      alertApi.getMyActive()
+        .then((res) => {
+          if (mounted) setActivePopupAlerts(res.data?.data || [])
+        })
+        .catch(() => {})
+    }
+    fetchPopupAlerts()
+    const timer = setInterval(fetchPopupAlerts, 30000)
+    return () => {
+      mounted = false
+      clearInterval(timer)
+    }
+  }, [user?.id])
+
+  const handleAcknowledgePopup = async (alertId: string) => {
+    setConfirmAckAlertId(null)
+    setActivePopupAlerts((prev) => prev.filter((a) => a.id !== alertId))
+    await alertApi.acknowledge(alertId).catch(() => {})
+  }
 
   const searchPages = [
     { label: 'Dashboard', to: '/employee' },
@@ -347,6 +373,151 @@ export default function EmployeeLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* HR Portal Popup Alert Modal (Pilot Test / HR Broadcast) */}
+      {activePopupAlerts.length > 0 && (() => {
+        const current = activePopupAlerts[0]
+        const accentMap: Record<string, { bar: string; badgeBg: string; badgeText: string; label: string }> = {
+          URGENT: { bar: '#dc2626', badgeBg: '#fef2f2', badgeText: '#b91c1c', label: 'Emergency Alert' },
+          WARNING: { bar: '#d97706', badgeBg: '#fffbeb', badgeText: '#b45309', label: 'Important Notice' },
+          IMPORTANT: { bar: '#4f46e5', badgeBg: '#eef2ff', badgeText: '#4338ca', label: 'HR Announcement' },
+          INFO: { bar: '#0284c7', badgeBg: '#f0f9ff', badgeText: '#0369a1', label: 'Information' },
+        }
+        const catMap: Record<string, string> = {
+          HOLIDAY: 'Holiday Notice',
+          IMPORTANT_NEWS: 'Important News',
+          URGENT_ALERT: 'Urgent Alert',
+          GENERAL: 'General Notice',
+        }
+        const style = accentMap[current.priority] || accentMap.IMPORTANT
+
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="HR Alert Message"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.62)',
+              backdropFilter: 'blur(4px)',
+              zIndex: 1300,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 16,
+            }}
+          >
+            <div style={{
+              background: '#ffffff',
+              borderRadius: 20,
+              width: '100%',
+              maxWidth: 480,
+              overflow: 'hidden',
+              boxShadow: '0 24px 64px rgba(15, 23, 42, 0.3)',
+              border: '1px solid #e2e8f0',
+            }}>
+              <div style={{ height: 6, background: style.bar }} />
+              <div style={{ padding: '22px 24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: style.badgeBg, color: style.badgeText, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {catMap[current.category] || style.label}
+                    </span>
+                    {activePopupAlerts.length > 1 && (
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 999, background: '#f1f5f9', color: '#475569' }}>
+                        1 of {activePopupAlerts.length}
+                      </span>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 11.5, color: '#64748b', fontWeight: 600 }}>
+                    {new Date(current.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                  </span>
+                </div>
+
+                <h3 style={{ margin: '0 0 8px', fontSize: 18.5, fontWeight: 800, color: '#0f172a', lineHeight: 1.3 }}>
+                  {current.title}
+                </h3>
+                <p style={{ margin: '0 0 16px', fontSize: 13.5, color: '#334155', lineHeight: 1.6, whiteSpace: 'pre-line' }}>
+                  {current.message}
+                </p>
+
+                {confirmAckAlertId === current.id ? (
+                  <div style={{
+                    padding: '12px 14px',
+                    borderRadius: 12,
+                    background: '#fffbeb',
+                    border: '1px solid #fde68a',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                  }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#92400e', lineHeight: 1.45 }}>
+                      ⚠️ Please read this notice carefully once again before closing. Once acknowledged, this popup will not appear again.
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmAckAlertId(null)}
+                        style={{
+                          padding: '7px 14px',
+                          borderRadius: 8,
+                          border: '1px solid #cbd5e1',
+                          background: '#ffffff',
+                          color: '#334155',
+                          fontSize: 12.5,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Read Again
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAcknowledgePopup(current.id)}
+                        style={{
+                          padding: '7px 14px',
+                          borderRadius: 8,
+                          border: 'none',
+                          background: style.bar,
+                          color: '#ffffff',
+                          fontSize: 12.5,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Confirm &amp; Close
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, paddingTop: 12, borderTop: '1px solid #f1f5f9' }}>
+                    <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>
+                      From: {current.createdByName || 'HR Team'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmAckAlertId(current.id)}
+                      style={{
+                        padding: '9px 18px',
+                        borderRadius: 10,
+                        border: 'none',
+                        background: style.bar,
+                        color: '#ffffff',
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Acknowledge &amp; Close
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Help Ticket Modal */}
       {showHelpModal && (

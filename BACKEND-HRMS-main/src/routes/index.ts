@@ -18,6 +18,7 @@ import salaryAdvanceRoutes from './salaryAdvance.routes'
 import mobileQrRoutes from './mobileQr.routes'
 import trainingRoutes from './training.routes'
 import calendarRoutes from './calendar.routes'
+import alertRoutes from './alert.routes'
 
 const router = Router()
 
@@ -47,5 +48,6 @@ router.use('/payments', paymentRoutes)
 router.use('/salary-advances', salaryAdvanceRoutes)
 router.use('/attendance/mobile-qr', mobileQrRoutes)
 router.use('/calendar', calendarRoutes)
+router.use('/alerts', alertRoutes)
 
 export default router

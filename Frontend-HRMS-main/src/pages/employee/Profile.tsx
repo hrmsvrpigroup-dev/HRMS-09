@@ -61,8 +61,8 @@ export default function Profile() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('ME')
   const [employeeSearch, setEmployeeSearch] = useState<string>('')
   const [cardSaveSuccess, setCardSaveSuccess] = useState<boolean>(false)
-  const [showPhotoAdjust, setShowPhotoAdjust] = useState<boolean>(true)
-  const [showSigAdjust, setShowSigAdjust] = useState<boolean>(true)
+  const [showPhotoAdjust, setShowPhotoAdjust] = useState<boolean>(false)
+  const [showSigAdjust, setShowSigAdjust] = useState<boolean>(false)
   const [rawSigSource, setRawSigSource] = useState<string | null>(null)
   const [sigBgThreshold, setSigBgThreshold] = useState<number>(215)
   const [rawPhotoSource, setRawPhotoSource] = useState<string | null>(null)
@@ -1413,62 +1413,59 @@ export default function Profile() {
               {user?.role === 'HR' ? (
                 <div className="idcard-studio-layout">
                   {/* Left Column: ID Card Customizer & Controls */}
-                  <div className="idcard-controls-panel">
-                    <div className="studio-banner">
-                      <div className="studio-banner-title">
-                        <Sparkles size={18} color="#f59e0b" />
-                        <h3>HR ID Card Studio & Batch Customizer</h3>
+                  <div className="idcard-controls-panel" style={{ gap: '12px' }}>
+                    <div className="studio-banner" style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <div className="studio-banner-title" style={{ marginBottom: 0 }}>
+                        <Sparkles size={16} color="#f59e0b" />
+                        <h3 style={{ fontSize: '0.95rem' }}>HR ID Card Studio</h3>
                         <span className="studio-superpower-badge">⚡ Full Access</span>
                       </div>
-                      <p>
-                        Live design & management console. Select any personnel across the company to customize their badge details, upload custom photos or signatures, and download or print badges in real time.
-                      </p>
+                      <span style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 600 }}>Live Badge Customizer</span>
                     </div>
 
                     {cardSaveSuccess && (
-                      <div className="success-toast" style={{ margin: 0 }}>
-                        <CheckCircle size={18} />
-                        <span>ID Card credentials saved successfully for <strong>{liveCardData.fullName}</strong>! Overrides are securely persisted.</span>
+                      <div className="success-toast" style={{ margin: 0, padding: '8px 12px' }}>
+                        <CheckCircle size={16} />
+                        <span>ID Card saved for <strong>{liveCardData.fullName}</strong>!</span>
                       </div>
                     )}
 
                     {/* Employee Selector Card */}
-                    <div className="studio-card">
-                      <div className="studio-card-title">
+                    <div className="studio-card" style={{ padding: '14px 16px' }}>
+                      <div className="studio-card-title" style={{ marginBottom: '10px' }}>
                         <span>Select Member / Target Personnel</span>
                         <span className="badge-count">{employees.length + 1} Available</span>
                       </div>
 
-                      <div className="employee-search-bar" style={{ marginBottom: '12px', position: 'relative' }}>
-                        <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
-                        <input
-                          type="text"
-                          value={employeeSearch}
-                          onChange={(e) => setEmployeeSearch(e.target.value)}
-                          placeholder="Filter personnel by name, EMP ID, or department..."
-                          style={{ paddingLeft: '36px', width: '100%' }}
-                        />
-                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.35fr', gap: '8px', alignItems: 'center' }}>
+                        <div className="employee-search-bar" style={{ position: 'relative' }}>
+                          <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+                          <input
+                            type="text"
+                            value={employeeSearch}
+                            onChange={(e) => setEmployeeSearch(e.target.value)}
+                            placeholder="Search name, ID, dept..."
+                            style={{ paddingLeft: '32px', paddingTop: '8px', paddingBottom: '8px', width: '100%', fontSize: '0.82rem' }}
+                          />
+                        </div>
 
-                      <div className="form-group">
-                        <label>Target Personnel Badge</label>
                         <select 
                           className="studio-select"
                           value={selectedEmployeeId}
                           onChange={(e) => handleSelectEmployee(e.target.value)}
                           style={{
                             width: '100%',
-                            padding: '11px 14px',
+                            padding: '8px 10px',
                             border: '1.5px solid #cbd5e1',
                             borderRadius: '8px',
                             background: '#f8fafc',
                             fontWeight: 600,
                             color: '#1e293b',
-                            fontSize: '0.88rem',
+                            fontSize: '0.82rem',
                             outline: 'none',
                           }}
                         >
-                          <option value="ME">⭐ Current HR Profile: {fullName} (HR-0001)</option>
+                          <option value="ME">⭐ Current HR: {fullName} (HR-0001)</option>
                           <optgroup label={`Workspace Employees (${employees.length})`}>
                             {filteredEmployeesList.map(emp => (
                               <option key={emp.id} value={emp.id}>
@@ -1481,61 +1478,67 @@ export default function Profile() {
                     </div>
 
                     {/* Editable Credentials Card */}
-                    <div className="studio-card">
-                      <div className="studio-card-title">
+                    <div className="studio-card" style={{ padding: '14px 16px' }}>
+                      <div className="studio-card-title" style={{ marginBottom: '10px' }}>
                         <span>Badge Identity & Details</span>
-                        <span style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 600 }}>● Instant Sync</span>
+                        <span style={{ fontSize: '0.72rem', color: '#22c55e', fontWeight: 600 }}>● Instant Sync</span>
                       </div>
 
-                      <div className="form-grid">
-                        <div className="form-group">
-                          <label>Full Name</label>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label style={{ fontSize: '0.72rem', marginBottom: 3 }}>Full Name</label>
                           <input
                             type="text"
                             value={liveCardData.fullName}
                             onChange={(e) => setLiveCardData(prev => ({ ...prev, fullName: e.target.value }))}
+                            style={{ padding: '7px 10px', fontSize: '0.84rem' }}
                           />
                         </div>
 
-                        <div className="form-group">
-                          <label>Designation / Role</label>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label style={{ fontSize: '0.72rem', marginBottom: 3 }}>Designation / Role</label>
                           <input
                             type="text"
                             value={liveCardData.designation}
                             onChange={(e) => setLiveCardData(prev => ({ ...prev, designation: e.target.value }))}
+                            style={{ padding: '7px 10px', fontSize: '0.84rem' }}
                           />
                         </div>
+                      </div>
 
-                        <div className="form-group">
-                          <label>Employee ID (EMP ID)</label>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.7fr', gap: '10px' }}>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label style={{ fontSize: '0.72rem', marginBottom: 3 }}>Employee ID</label>
                           <input
                             type="text"
                             value={liveCardData.employeeCode}
                             onChange={(e) => setLiveCardData(prev => ({ ...prev, employeeCode: e.target.value }))}
+                            style={{ padding: '7px 10px', fontSize: '0.84rem' }}
                           />
                         </div>
 
-                        <div className="form-group">
-                          <label>Phone Number</label>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label style={{ fontSize: '0.72rem', marginBottom: 3 }}>Phone Number</label>
                           <input
                             type="text"
                             value={liveCardData.phone}
                             onChange={(e) => setLiveCardData(prev => ({ ...prev, phone: e.target.value }))}
+                            style={{ padding: '7px 10px', fontSize: '0.84rem' }}
                           />
                         </div>
 
-                        <div className="form-group">
-                          <label>Blood Group</label>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label style={{ fontSize: '0.72rem', marginBottom: 3 }}>Blood Group</label>
                           <select
                             value={liveCardData.bloodGroup}
                             onChange={(e) => setLiveCardData(prev => ({ ...prev, bloodGroup: e.target.value }))}
                             style={{
                               width: '100%',
-                              padding: '10px 14px',
+                              padding: '7px 8px',
                               border: '1px solid #cbd5e1',
                               borderRadius: '8px',
                               background: '#f8fafc',
-                              fontSize: '0.88rem',
+                              fontSize: '0.84rem',
                               color: '#334155',
                               outline: 'none',
                             }}
@@ -1555,17 +1558,17 @@ export default function Profile() {
                     </div>
 
                     {/* Media, Photos & Signatures */}
-                    <div className="studio-card">
-                      <div className="studio-card-title">
+                    <div className="studio-card" style={{ padding: '14px 16px' }}>
+                      <div className="studio-card-title" style={{ marginBottom: '10px' }}>
                         <span>Card Media & Signatures</span>
                       </div>
 
-                      <div className="media-controls-grid">
+                      <div className="media-controls-grid" style={{ gap: '10px' }}>
                         {/* Photo Customizer */}
-                        <div className="media-box">
-                          <div className="media-box-label">Profile Photo</div>
-                          <div className="media-box-body">
-                            <div className="media-preview-mini">
+                        <div className="media-box" style={{ padding: '10px' }}>
+                          <div className="media-box-label" style={{ marginBottom: '6px' }}>Profile Photo</div>
+                          <div className="media-box-body" style={{ alignItems: 'flex-start', gap: '10px' }}>
+                            <div className="media-preview-mini" style={{ width: '44px', height: '44px' }}>
                               {liveCardData.photo ? (
                                 <img src={liveCardData.photo} alt="Photo" />
                               ) : (
@@ -1580,9 +1583,9 @@ export default function Profile() {
                                 </div>
                               )}
                             </div>
-                            <div className="media-box-actions">
-                              <label className="btn-mini-upload">
-                                <Upload size={13} />
+                            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px' }}>
+                              <label className="btn-mini-upload" style={{ gridColumn: liveCardData.photo ? 'span 2' : 'span 2', padding: '5px 8px', fontSize: '0.73rem' }}>
+                                <Upload size={12} />
                                 <span>Upload Photo</span>
                                 <input 
                                   type="file" 
@@ -1596,6 +1599,7 @@ export default function Profile() {
                                   <button
                                     type="button"
                                     className="btn-mini-adjust"
+                                    style={{ padding: '4px 6px', fontSize: '0.71rem' }}
                                     onClick={() => {
                                       if (liveCardData.photo) {
                                         setRawCropImage(liveCardData.photo)
@@ -1607,21 +1611,23 @@ export default function Profile() {
                                     }}
                                     title="Crop and frame photo"
                                   >
-                                    <Crop size={13} />
+                                    <Crop size={11} />
                                     <span>Crop</span>
                                   </button>
                                   <button
                                     type="button"
                                     className="btn-mini-adjust"
-                                    onClick={() => setShowPhotoAdjust(true)}
+                                    style={{ padding: '4px 6px', fontSize: '0.71rem' }}
+                                    onClick={() => { setShowSigAdjust(false); setShowPhotoAdjust(prev => !prev) }}
                                     title="Adjust zoom and position in live preview"
                                   >
-                                    <SlidersHorizontal size={13} />
+                                    <SlidersHorizontal size={11} />
                                     <span>Adjust</span>
                                   </button>
                                   <button
                                     type="button"
                                     className="btn-mini-adjust"
+                                    style={{ padding: '4px 6px', fontSize: '0.71rem' }}
                                     onClick={async () => {
                                       const src = rawPhotoSource || liveCardData.photo
                                       if (!rawPhotoSource && liveCardData.photo) setRawPhotoSource(liveCardData.photo)
@@ -1632,16 +1638,17 @@ export default function Profile() {
                                     }}
                                     title="Remove solid/light background from photo"
                                   >
-                                    <Sparkles size={13} />
-                                    <span>Remove BG</span>
+                                    <Sparkles size={11} />
+                                    <span>No BG</span>
                                   </button>
                                   <button 
                                     type="button" 
                                     className="btn-mini-clear"
+                                    style={{ padding: '4px 6px', fontSize: '0.71rem' }}
                                     onClick={() => setLiveCardData(prev => ({ ...prev, photo: '' }))}
                                     title="Reset to Initials Avatar"
                                   >
-                                    Use Initials
+                                    Initials
                                   </button>
                                 </>
                               )}
@@ -1650,19 +1657,19 @@ export default function Profile() {
                         </div>
 
                         {/* Signature Customizer */}
-                        <div className="media-box">
-                          <div className="media-box-label">Employee Signature</div>
-                          <div className="media-box-body">
-                            <div className="media-preview-mini sig-box">
+                        <div className="media-box" style={{ padding: '10px' }}>
+                          <div className="media-box-label" style={{ marginBottom: '6px' }}>Employee Signature</div>
+                          <div className="media-box-body" style={{ alignItems: 'flex-start', gap: '10px' }}>
+                            <div className="media-preview-mini sig-box" style={{ width: '44px', height: '44px' }}>
                               {liveCardData.signature ? (
                                 <img src={liveCardData.signature} alt="Sig" />
                               ) : (
                                 <span className="no-sig-text">None</span>
                               )}
                             </div>
-                            <div className="media-box-actions">
-                              <label className="btn-mini-upload">
-                                <Upload size={13} />
+                            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px' }}>
+                              <label className="btn-mini-upload" style={{ gridColumn: 'span 2', padding: '5px 8px', fontSize: '0.73rem' }}>
+                                <Upload size={12} />
                                 <span>Upload Sig</span>
                                 <input 
                                   type="file" 
@@ -1676,15 +1683,17 @@ export default function Profile() {
                                   <button
                                     type="button"
                                     className="btn-mini-adjust"
-                                    onClick={() => setShowSigAdjust(prev => !prev)}
+                                    style={{ padding: '4px 6px', fontSize: '0.71rem' }}
+                                    onClick={() => { setShowPhotoAdjust(false); setShowSigAdjust(prev => !prev) }}
                                     title="Adjust signature zoom, position, and background removal"
                                   >
-                                    <SlidersHorizontal size={13} />
+                                    <SlidersHorizontal size={11} />
                                     <span>Adjust</span>
                                   </button>
                                   <button
                                     type="button"
                                     className="btn-mini-adjust"
+                                    style={{ padding: '4px 6px', fontSize: '0.71rem' }}
                                     onClick={async () => {
                                       const src = rawSigSource || liveCardData.signature
                                       if (!rawSigSource && liveCardData.signature) setRawSigSource(liveCardData.signature)
@@ -1695,18 +1704,19 @@ export default function Profile() {
                                     }}
                                     title="Live remove background from signature"
                                   >
-                                    <Sparkles size={13} />
-                                    <span>Remove BG</span>
+                                    <Sparkles size={11} />
+                                    <span>No BG</span>
                                   </button>
                                   <button 
                                     type="button" 
                                     className="btn-mini-clear"
+                                    style={{ gridColumn: 'span 2', padding: '4px 6px', fontSize: '0.71rem' }}
                                     onClick={() => {
                                       setRawSigSource(null)
                                       setLiveCardData(prev => ({ ...prev, signature: '', sigScale: 1, sigOffsetX: 0, sigOffsetY: 0, sigRotate: 0 }))
                                     }}
                                   >
-                                    Remove
+                                    Remove Signature
                                   </button>
                                 </>
                               )}
@@ -1723,7 +1733,7 @@ export default function Profile() {
                         className="btn-save-primary"
                         onClick={handleSaveLiveCard}
                       >
-                        <Save size={16} />
+                        <Save size={15} />
                         <span>Save ID Card Changes</span>
                       </button>
 
@@ -1733,7 +1743,7 @@ export default function Profile() {
                         onClick={handleResetLiveCard}
                         title="Revert customizations back to original database profile"
                       >
-                        <RefreshCw size={15} />
+                        <RefreshCw size={14} />
                         <span>Reset</span>
                       </button>
                     </div>
@@ -1742,335 +1752,249 @@ export default function Profile() {
                   {/* Right Column: Sticky Live ID Card Preview */}
                   <div className="idcard-preview-panel">
                     <div className="preview-sticky-wrapper">
-                      <div className="preview-header-bar">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div className="preview-header-bar" style={{ flexWrap: 'wrap', gap: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                           <span className="live-dot-indicator"></span>
-                          <h4>Live ID Card Preview</h4>
+                          <h4 style={{ fontSize: '0.88rem' }}>Live Preview</h4>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           {user?.role === 'HR' && (
-                            <button
-                              type="button"
-                              className="btn-toggle-adjust-toolbar"
-                              onClick={() => setShowPhotoAdjust(prev => !prev)}
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '5px',
-                                padding: '4px 10px',
-                                borderRadius: '6px',
-                                fontSize: '0.75rem',
-                                fontWeight: 600,
-                                background: showPhotoAdjust ? '#eff6ff' : '#f8fafc',
-                                color: showPhotoAdjust ? '#2563eb' : '#475569',
-                                border: showPhotoAdjust ? '1.5px solid #bfdbfe' : '1px solid #e2e8f0',
-                                cursor: 'pointer',
-                                transition: 'all 0.15s ease'
-                              }}
-                              title="Toggle Photo Adjust Controls"
-                            >
-                              <SlidersHorizontal size={13} />
-                              <span>Photo Adjust</span>
-                              {((liveCardData.photoScale && liveCardData.photoScale !== 1) || liveCardData.photoOffsetX || liveCardData.photoOffsetY || liveCardData.photoRotate) ? (
-                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2563eb' }}></span>
-                              ) : null}
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => { setShowSigAdjust(false); setShowPhotoAdjust(prev => !prev) }}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px',
+                                  borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                                  background: showPhotoAdjust ? '#eff6ff' : '#f8fafc',
+                                  color: showPhotoAdjust ? '#2563eb' : '#475569',
+                                  border: showPhotoAdjust ? '1px solid #93c5fd' : '1px solid #e2e8f0',
+                                }}
+                                title="Toggle Photo Adjust Controls"
+                              >
+                                <SlidersHorizontal size={12} />
+                                <span>Photo</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setShowPhotoAdjust(false); setShowSigAdjust(prev => !prev) }}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px',
+                                  borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                                  background: showSigAdjust ? '#f5f3ff' : '#f8fafc',
+                                  color: showSigAdjust ? '#7c3aed' : '#475569',
+                                  border: showSigAdjust ? '1px solid #c4b5fd' : '1px solid #e2e8f0',
+                                }}
+                                title="Toggle Signature Adjust Controls"
+                              >
+                                <SlidersHorizontal size={12} />
+                                <span>Sig</span>
+                              </button>
+                            </>
                           )}
-                          <span className="live-tag">Real-Time Sync</span>
+                          <span className="live-tag" style={{ fontSize: '0.68rem', padding: '3px 7px' }}>Sync</span>
                         </div>
                       </div>
 
-                      {/* Photo Adjust Controls Box (HR Portal Only) */}
+                      {/* Compact Photo Adjust Controls Box (HR Portal Only) */}
                       {user?.role === 'HR' && showPhotoAdjust && (
-                        <div className="preview-photo-adjust-box">
-                          <div className="adjust-box-header">
-                            <div className="adjust-box-title">
-                              <SlidersHorizontal size={14} color="#2563eb" />
-                              <span>Photo Adjust (Fit & Position)</span>
+                        <div className="preview-photo-adjust-box" style={{ padding: '10px 12px' }}>
+                          <div className="adjust-box-header" style={{ marginBottom: '6px' }}>
+                            <div className="adjust-box-title" style={{ fontSize: '0.76rem' }}>
+                              <SlidersHorizontal size={12} color="#2563eb" />
+                              <span>Photo Fit &amp; BG</span>
                             </div>
                             <button
                               type="button"
                               className="btn-adjust-reset"
                               onClick={() => setLiveCardData(prev => ({ ...prev, photoScale: 1, photoOffsetX: 0, photoOffsetY: 0, photoRotate: 0 }))}
-                              title="Reset photo position and zoom"
                             >
-                              <RefreshCw size={11} />
+                              <RefreshCw size={10} />
                               <span>Reset</span>
                             </button>
                           </div>
 
                           {liveCardData.photo ? (
-                            <div className="adjust-controls-container">
-                              {/* Zoom Slider & Buttons */}
-                              <div className="adjust-control-row">
-                                <span className="adjust-label">
-                                  <ZoomIn size={12} /> Zoom: <strong>{Math.round((liveCardData.photoScale || 1) * 100)}%</strong>
-                                </span>
-                                <div className="adjust-input-group">
-                                  <button 
-                                    type="button" 
-                                    className="adjust-step-btn"
-                                    onClick={() => setLiveCardData(prev => ({ ...prev, photoScale: Math.max(0.15, Math.round(((prev.photoScale || 1) - 0.05) * 100) / 100) }))}
-                                    title="Zoom Out"
-                                  >
-                                    <ZoomOut size={12} />
-                                  </button>
-                                  <input
-                                    type="range"
-                                    min="0.15"
-                                    max="3.0"
-                                    step="0.02"
-                                    value={liveCardData.photoScale || 1}
-                                    onChange={(e) => setLiveCardData(prev => ({ ...prev, photoScale: parseFloat(e.target.value) }))}
-                                    className="adjust-slider"
-                                  />
-                                  <button 
-                                    type="button" 
-                                    className="adjust-step-btn"
-                                    onClick={() => setLiveCardData(prev => ({ ...prev, photoScale: Math.min(3.0, Math.round(((prev.photoScale || 1) + 0.05) * 100) / 100) }))}
-                                    title="Zoom In"
-                                  >
-                                    <ZoomIn size={12} />
-                                  </button>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                              <div>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', marginBottom: 2 }}>
+                                  Zoom: {Math.round((liveCardData.photoScale || 1) * 100)}%
                                 </div>
+                                <input
+                                  type="range" min="0.15" max="3.0" step="0.02"
+                                  value={liveCardData.photoScale || 1}
+                                  onChange={(e) => setLiveCardData(prev => ({ ...prev, photoScale: parseFloat(e.target.value) }))}
+                                  className="adjust-slider"
+                                  style={{ width: '100%' }}
+                                />
                               </div>
-
-                              {/* Pan X Slider & Buttons */}
-                              <div className="adjust-control-row">
-                                <span className="adjust-label">
-                                  <MoveHorizontal size={12} /> Move Left / Right: <strong>{liveCardData.photoOffsetX || 0}px</strong>
-                                </span>
-                                <div className="adjust-input-group">
-                                  <button 
-                                    type="button" 
-                                    className="adjust-step-btn"
-                                    onClick={() => setLiveCardData(prev => ({ ...prev, photoOffsetX: (prev.photoOffsetX || 0) - 4 }))}
-                                    title="Move Left"
-                                  >
-                                    ◀
-                                  </button>
-                                  <input
-                                    type="range"
-                                    min="-150"
-                                    max="150"
-                                    step="1"
-                                    value={liveCardData.photoOffsetX || 0}
-                                    onChange={(e) => setLiveCardData(prev => ({ ...prev, photoOffsetX: parseInt(e.target.value, 10) }))}
-                                    className="adjust-slider"
-                                  />
-                                  <button 
-                                    type="button" 
-                                    className="adjust-step-btn"
-                                    onClick={() => setLiveCardData(prev => ({ ...prev, photoOffsetX: (prev.photoOffsetX || 0) + 4 }))}
-                                    title="Move Right"
-                                  >
-                                    ▶
-                                  </button>
+                              <div>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', marginBottom: 2 }}>
+                                  BG Remover: {photoBgTolerance}
                                 </div>
+                                <input
+                                  type="range" min="15" max="95" step="1"
+                                  value={photoBgTolerance}
+                                  onChange={async (e) => {
+                                    const tol = parseInt(e.target.value, 10)
+                                    setPhotoBgTolerance(tol)
+                                    const src = rawPhotoSource || liveCardData.photo
+                                    if (!rawPhotoSource && liveCardData.photo) setRawPhotoSource(liveCardData.photo)
+                                    if (src) {
+                                      const cleaned = await removePhotoBackground(src, tol)
+                                      setLiveCardData(prev => ({ ...prev, photo: cleaned }))
+                                    }
+                                  }}
+                                  className="adjust-slider"
+                                  style={{ width: '100%' }}
+                                />
                               </div>
-
-                              {/* Pan Y Slider & Buttons */}
-                              <div className="adjust-control-row">
-                                <span className="adjust-label">
-                                  <MoveVertical size={12} /> Move Up / Down: <strong>{liveCardData.photoOffsetY || 0}px</strong>
-                                </span>
-                                <div className="adjust-input-group">
-                                  <button 
-                                    type="button" 
-                                    className="adjust-step-btn"
-                                    onClick={() => setLiveCardData(prev => ({ ...prev, photoOffsetY: (prev.photoOffsetY || 0) - 4 }))}
-                                    title="Move Up"
-                                  >
-                                    ▲
-                                  </button>
-                                  <input
-                                    type="range"
-                                    min="-150"
-                                    max="150"
-                                    step="1"
-                                    value={liveCardData.photoOffsetY || 0}
-                                    onChange={(e) => setLiveCardData(prev => ({ ...prev, photoOffsetY: parseInt(e.target.value, 10) }))}
-                                    className="adjust-slider"
-                                  />
-                                  <button 
-                                    type="button" 
-                                    className="adjust-step-btn"
-                                    onClick={() => setLiveCardData(prev => ({ ...prev, photoOffsetY: (prev.photoOffsetY || 0) + 4 }))}
-                                    title="Move Down"
-                                  >
-                                    ▼
-                                  </button>
+                              <div>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', marginBottom: 2 }}>
+                                  Move X: {liveCardData.photoOffsetX || 0}px
                                 </div>
+                                <input
+                                  type="range" min="-150" max="150" step="1"
+                                  value={liveCardData.photoOffsetX || 0}
+                                  onChange={(e) => setLiveCardData(prev => ({ ...prev, photoOffsetX: parseInt(e.target.value, 10) }))}
+                                  className="adjust-slider"
+                                  style={{ width: '100%' }}
+                                />
                               </div>
-
-                              {/* Bottom Actions: Rotate & Hint */}
-                              <div className="adjust-bottom-tools">
+                              <div>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', marginBottom: 2 }}>
+                                  Move Y: {liveCardData.photoOffsetY || 0}px
+                                </div>
+                                <input
+                                  type="range" min="-150" max="150" step="1"
+                                  value={liveCardData.photoOffsetY || 0}
+                                  onChange={(e) => setLiveCardData(prev => ({ ...prev, photoOffsetY: parseInt(e.target.value, 10) }))}
+                                  className="adjust-slider"
+                                  style={{ width: '100%' }}
+                                />
+                              </div>
+                              <div style={{ gridColumn: 'span 2', display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 4 }}>
                                 <button
                                   type="button"
                                   className="btn-rotate-adjust"
                                   onClick={() => setLiveCardData(prev => ({ ...prev, photoRotate: ((prev.photoRotate || 0) + 90) % 360 }))}
                                 >
-                                  <RotateCw size={12} />
-                                  <span>Rotate 90° ({liveCardData.photoRotate || 0}°)</span>
+                                  <RotateCw size={11} />
+                                  <span>Rotate ({liveCardData.photoRotate || 0}°)</span>
                                 </button>
-                                <span className="adjust-drag-hint">
-                                  <Move size={11} /> Drag photo on ID card
-                                </span>
-                              </div>
-
-                              {/* Live Photo Background Remover Slider */}
-                              <div className="adjust-control-row" style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed #cbd5e1' }}>
-                                <span className="adjust-label">
-                                  <Sparkles size={12} /> Live BG Remover: <strong>{photoBgTolerance}</strong>
-                                </span>
-                                <div className="adjust-input-group">
-                                  <input
-                                    type="range"
-                                    min="15"
-                                    max="95"
-                                    step="1"
-                                    value={photoBgTolerance}
-                                    onChange={async (e) => {
-                                      const tol = parseInt(e.target.value, 10)
-                                      setPhotoBgTolerance(tol)
-                                      const src = rawPhotoSource || liveCardData.photo
-                                      if (!rawPhotoSource && liveCardData.photo) setRawPhotoSource(liveCardData.photo)
-                                      if (src) {
-                                        const cleaned = await removePhotoBackground(src, tol)
-                                        setLiveCardData(prev => ({ ...prev, photo: cleaned }))
-                                      }
-                                    }}
-                                    className="adjust-slider"
-                                  />
-                                  {rawPhotoSource && (
-                                    <button
-                                      type="button"
-                                      className="btn-adjust-reset"
-                                      onClick={() => setLiveCardData(prev => ({ ...prev, photo: rawPhotoSource }))}
-                                      title="Restore original photo"
-                                    >
-                                      Original
-                                    </button>
-                                  )}
-                                </div>
+                                {rawPhotoSource && (
+                                  <button
+                                    type="button"
+                                    className="btn-adjust-reset"
+                                    onClick={() => setLiveCardData(prev => ({ ...prev, photo: rawPhotoSource }))}
+                                  >
+                                    Original Photo
+                                  </button>
+                                )}
                               </div>
                             </div>
                           ) : (
-                            <div className="adjust-empty-hint">
-                              <span>No photo uploaded. Upload a photo or select an employee to adjust framing.</span>
+                            <div className="adjust-empty-hint" style={{ padding: '6px 0', fontSize: '0.74rem' }}>
+                              <span>Upload a photo to adjust framing or remove background.</span>
                             </div>
                           )}
                         </div>
                       )}
 
-                      {/* Signature Adjust & Live BG Remover Panel */}
+                      {/* Compact Signature Adjust & Live BG Remover Panel */}
                       {user?.role === 'HR' && showSigAdjust && (
-                        <div className="preview-photo-adjust-box" style={{ marginTop: 10 }}>
-                          <div className="adjust-box-header">
-                            <div className="adjust-box-title">
-                              <SlidersHorizontal size={14} color="#7c3aed" />
-                              <span>Signature Adjust &amp; Live BG Remover</span>
+                        <div className="preview-photo-adjust-box" style={{ padding: '10px 12px' }}>
+                          <div className="adjust-box-header" style={{ marginBottom: '6px' }}>
+                            <div className="adjust-box-title" style={{ fontSize: '0.76rem' }}>
+                              <SlidersHorizontal size={12} color="#7c3aed" />
+                              <span>Signature Fit &amp; BG</span>
                             </div>
                             <button
                               type="button"
                               className="btn-adjust-reset"
                               onClick={() => setLiveCardData(prev => ({ ...prev, sigScale: 1, sigOffsetX: 0, sigOffsetY: 0, sigRotate: 0 }))}
                             >
-                              <RefreshCw size={11} />
+                              <RefreshCw size={10} />
                               <span>Reset</span>
                             </button>
                           </div>
 
                           {liveCardData.signature ? (
-                            <div className="adjust-controls-container">
-                              <div className="adjust-control-row">
-                                <span className="adjust-label">
-                                  <ZoomIn size={12} /> Zoom: <strong>{Math.round((liveCardData.sigScale || 1) * 100)}%</strong>
-                                </span>
-                                <div className="adjust-input-group">
-                                  <button type="button" className="adjust-step-btn" onClick={() => setLiveCardData(prev => ({ ...prev, sigScale: Math.max(0.3, Math.round(((prev.sigScale || 1) - 0.1) * 100) / 100) }))}>
-                                    <ZoomOut size={12} />
-                                  </button>
-                                  <input
-                                    type="range" min="0.3" max="3.0" step="0.05"
-                                    value={liveCardData.sigScale || 1}
-                                    onChange={(e) => setLiveCardData(prev => ({ ...prev, sigScale: parseFloat(e.target.value) }))}
-                                    className="adjust-slider"
-                                  />
-                                  <button type="button" className="adjust-step-btn" onClick={() => setLiveCardData(prev => ({ ...prev, sigScale: Math.min(3.0, Math.round(((prev.sigScale || 1) + 0.1) * 100) / 100) }))}>
-                                    <ZoomIn size={12} />
-                                  </button>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                              <div>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', marginBottom: 2 }}>
+                                  Zoom: {Math.round((liveCardData.sigScale || 1) * 100)}%
                                 </div>
+                                <input
+                                  type="range" min="0.3" max="3.0" step="0.05"
+                                  value={liveCardData.sigScale || 1}
+                                  onChange={(e) => setLiveCardData(prev => ({ ...prev, sigScale: parseFloat(e.target.value) }))}
+                                  className="adjust-slider"
+                                  style={{ width: '100%' }}
+                                />
                               </div>
-
-                              <div className="adjust-control-row">
-                                <span className="adjust-label">
-                                  <MoveHorizontal size={12} /> Move X: <strong>{liveCardData.sigOffsetX || 0}px</strong>
-                                </span>
-                                <div className="adjust-input-group">
-                                  <input
-                                    type="range" min="-60" max="60" step="1"
-                                    value={liveCardData.sigOffsetX || 0}
-                                    onChange={(e) => setLiveCardData(prev => ({ ...prev, sigOffsetX: parseInt(e.target.value, 10) }))}
-                                    className="adjust-slider"
-                                  />
+                              <div>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', marginBottom: 2 }}>
+                                  BG Remover: {sigBgThreshold}
                                 </div>
+                                <input
+                                  type="range" min="130" max="245" step="1"
+                                  value={sigBgThreshold}
+                                  onChange={async (e) => {
+                                    const th = parseInt(e.target.value, 10)
+                                    setSigBgThreshold(th)
+                                    const src = rawSigSource || liveCardData.signature
+                                    if (!rawSigSource && liveCardData.signature) setRawSigSource(liveCardData.signature)
+                                    if (src) {
+                                      const cleaned = await removeSignatureBackground(src, th)
+                                      setLiveCardData(prev => ({ ...prev, signature: cleaned }))
+                                    }
+                                  }}
+                                  className="adjust-slider"
+                                  style={{ width: '100%' }}
+                                />
                               </div>
-
-                              <div className="adjust-control-row">
-                                <span className="adjust-label">
-                                  <MoveVertical size={12} /> Move Y: <strong>{liveCardData.sigOffsetY || 0}px</strong>
-                                </span>
-                                <div className="adjust-input-group">
-                                  <input
-                                    type="range" min="-40" max="40" step="1"
-                                    value={liveCardData.sigOffsetY || 0}
-                                    onChange={(e) => setLiveCardData(prev => ({ ...prev, sigOffsetY: parseInt(e.target.value, 10) }))}
-                                    className="adjust-slider"
-                                  />
+                              <div>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', marginBottom: 2 }}>
+                                  Move X: {liveCardData.sigOffsetX || 0}px
                                 </div>
+                                <input
+                                  type="range" min="-60" max="60" step="1"
+                                  value={liveCardData.sigOffsetX || 0}
+                                  onChange={(e) => setLiveCardData(prev => ({ ...prev, sigOffsetX: parseInt(e.target.value, 10) }))}
+                                  className="adjust-slider"
+                                  style={{ width: '100%' }}
+                                />
                               </div>
-
-                              <div className="adjust-control-row" style={{ paddingTop: 6, borderTop: '1px dashed #cbd5e1' }}>
-                                <span className="adjust-label">
-                                  <Sparkles size={12} /> Live BG Remover: <strong>{sigBgThreshold}</strong>
-                                </span>
-                                <div className="adjust-input-group">
-                                  <input
-                                    type="range" min="130" max="245" step="1"
-                                    value={sigBgThreshold}
-                                    onChange={async (e) => {
-                                      const th = parseInt(e.target.value, 10)
-                                      setSigBgThreshold(th)
-                                      const src = rawSigSource || liveCardData.signature
-                                      if (!rawSigSource && liveCardData.signature) setRawSigSource(liveCardData.signature)
-                                      if (src) {
-                                        const cleaned = await removeSignatureBackground(src, th)
-                                        setLiveCardData(prev => ({ ...prev, signature: cleaned }))
-                                      }
-                                    }}
-                                    className="adjust-slider"
-                                  />
+                              <div>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', marginBottom: 2 }}>
+                                  Move Y: {liveCardData.sigOffsetY || 0}px
                                 </div>
+                                <input
+                                  type="range" min="-40" max="40" step="1"
+                                  value={liveCardData.sigOffsetY || 0}
+                                  onChange={(e) => setLiveCardData(prev => ({ ...prev, sigOffsetY: parseInt(e.target.value, 10) }))}
+                                  className="adjust-slider"
+                                  style={{ width: '100%' }}
+                                />
                               </div>
-
-                              <div className="adjust-bottom-tools">
+                              <div style={{ gridColumn: 'span 2', display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 4 }}>
                                 <button
                                   type="button"
                                   className="btn-rotate-adjust"
                                   onClick={() => setLiveCardData(prev => ({ ...prev, sigRotate: ((prev.sigRotate || 0) + 90) % 360 }))}
                                 >
-                                  <RotateCw size={12} />
-                                  <span>Rotate 90° ({liveCardData.sigRotate || 0}°)</span>
+                                  <RotateCw size={11} />
+                                  <span>Rotate ({liveCardData.sigRotate || 0}°)</span>
                                 </button>
-                                <span className="adjust-drag-hint">
-                                  <Move size={11} /> Drag signature on ID card
+                                <span className="adjust-drag-hint" style={{ fontSize: '0.68rem' }}>
+                                  <Move size={10} /> Drag on card
                                 </span>
                               </div>
                             </div>
                           ) : (
-                            <div className="adjust-empty-hint">
-                              <span>No signature uploaded. Upload a signature to adjust framing or remove background.</span>
+                            <div className="adjust-empty-hint" style={{ padding: '6px 0', fontSize: '0.74rem' }}>
+                              <span>Upload a signature to adjust framing or remove background.</span>
                             </div>
                           )}
                         </div>

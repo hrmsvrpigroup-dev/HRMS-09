@@ -50,6 +50,20 @@ export const employeeRequestController = {
         return sendError(res, 'Unauthorized', 401)
       }
 
+      if (user.role === 'HR' || user.role === 'ADMIN' || user.role === 'SUPER_ADMIN') {
+        const allRequests = await prisma.employeeRequest.findMany({
+          where: { tenantId: user.tenantId },
+          include: {
+            employee: {
+              select: { firstName: true, lastName: true, employeeCode: true, email: true },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        })
+        return sendSuccess(res, allRequests)
+      }
+
       const employee = await prisma.employee.findUnique({
         where: { userId: user.id }
       })
@@ -82,6 +96,20 @@ export const employeeRequestController = {
 
       if (!user || !user.tenantId) {
         return sendError(res, 'Unauthorized', 401)
+      }
+
+      if (user.role === 'HR' || user.role === 'ADMIN' || user.role === 'SUPER_ADMIN') {
+        const allRequests = await prisma.employeeRequest.findMany({
+          where: { tenantId: user.tenantId },
+          include: {
+            employee: {
+              select: { firstName: true, lastName: true, employeeCode: true, email: true },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        })
+        return sendSuccess(res, allRequests)
       }
 
       const employee = await prisma.employee.findUnique({

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   History,
@@ -32,6 +32,7 @@ import {
 
 import { useAuthStore } from '../../store/auth.store'
 import { leaveApi } from '../../api/leave.api'
+import api from '../../api/axios'
 
 type NavItem = {
   to: string
@@ -104,6 +105,8 @@ export default function AppShell({ title, navItems }: Props) {
   const unreadMsgCount = messages.filter(m => m.unread).length
 
   const [serverLeaveNotifs, setServerLeaveNotifs] = useState<any[]>([])
+  const serverLeaveNotifsRef = useRef<any[]>([])
+  const serverReqNotifsRef = useRef<any[]>([])
 
   const isLoginOrLogoutNotif = (text: string) => {
     const t = text.toLowerCase()
@@ -117,8 +120,8 @@ export default function AppShell({ title, navItems }: Props) {
     try { return new Set(JSON.parse(localStorage.getItem('hrms_hr_notif_cleared_ids') || '[]')) } catch { return new Set() }
   }
 
-  // Load notifications from localStorage + all-employee leave requests from backend
-  const loadNotifications = (overrideServerLeaves?: any[]) => {
+  // Load notifications from localStorage + all-employee leave requests + employee requests from backend
+  const loadNotifications = (overrideServerLeaves?: any[], overrideServerReqs?: any[]) => {
     try {
       const readIds = getReadSet()
       const clearedIds = getClearedSet()
@@ -134,10 +137,7 @@ export default function AppShell({ title, navItems }: Props) {
         return
       }
 
-      // Exclude login/logout/clock-in/clock-out notifications; keep emergency & leave requests
-      localNotifs = localNotifs.filter((n: any) => !isLoginOrLogoutNotif(String(n.text || '')))
-
-      const leaveSource = overrideServerLeaves ?? serverLeaveNotifs
+      const leaveSource = overrideServerLeaves ?? serverLeaveNotifsRef.current ?? serverLeaveNotifs
       const mappedLeaves = leaveSource
         .filter((l: any) => !clearedIds.has(`leave-${l.id}`))
         .map((l: any) => {
@@ -169,6 +169,33 @@ export default function AppShell({ title, navItems }: Props) {
           }
         })
 
+      const reqSource = overrideServerReqs ?? serverReqNotifsRef.current
+      const mappedReqs = reqSource
+        .filter((r: any) => !clearedIds.has(`req-${r.id}`))
+        .map((r: any) => {
+          const empName = r.employee ? `${r.employee.firstName || ''} ${r.employee.lastName || ''}`.trim() : 'Employee'
+          const id = `req-${r.id}`
+          return {
+            id,
+            text: `📩 ${r.type} Request (${r.priority}): ${empName} — ${r.description}`,
+            time: new Date(r.createdAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+            read: readIds.has(id),
+            createdAt: r.createdAt,
+            details: {
+              employeeName: empName,
+              action: `${r.type} Request (${r.priority})`,
+              timestamp: r.createdAt,
+              changes: [
+                `Employee: ${empName}${r.employee?.employeeCode ? ` (${r.employee.employeeCode})` : ''}`,
+                `Type: ${r.type}`,
+                `Priority: ${r.priority}`,
+                `Description: ${r.description}`,
+                `Status: ${r.status}`,
+              ],
+            },
+          }
+        })
+
       // Avoid duplicating localStorage leave notif if same employee+reason already came from server
       const serverLeaveTexts = new Set(mappedLeaves.map((m) => m.text.toLowerCase()))
       const filteredLocal = localNotifs.filter((n: any) => {
@@ -177,7 +204,7 @@ export default function AppShell({ title, navItems }: Props) {
         return !clearedIds.has(n.id)
       })
 
-      const combined = [...mappedLeaves, ...filteredLocal].sort(
+      const combined = [...mappedLeaves, ...mappedReqs, ...filteredLocal].sort(
         (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
       )
       setNotifications(combined)
@@ -239,17 +266,21 @@ export default function AppShell({ title, navItems }: Props) {
 
     let leaveInterval: ReturnType<typeof setInterval> | undefined
     if (user?.role === 'HR' || user?.role === 'ADMIN') {
-      const fetchServerLeaves = () => {
-        leaveApi.getNotifications()
-          .then((res) => {
-            const list = res.data?.data || []
-            setServerLeaveNotifs(list)
-            loadNotifications(list)
-          })
-          .catch(() => { })
+      const fetchServerNotifs = () => {
+        Promise.all([
+          leaveApi.getNotifications().catch(() => null),
+          api.get('/employees/requests').catch(() => null),
+        ]).then(([leaveRes, reqRes]) => {
+          const leaves = leaveRes?.data?.data || serverLeaveNotifsRef.current
+          const reqs = reqRes?.data?.data || serverReqNotifsRef.current
+          serverLeaveNotifsRef.current = leaves
+          serverReqNotifsRef.current = reqs
+          setServerLeaveNotifs(leaves)
+          loadNotifications(leaves, reqs)
+        })
       }
-      fetchServerLeaves()
-      leaveInterval = setInterval(fetchServerLeaves, 20000)
+      fetchServerNotifs()
+      leaveInterval = setInterval(fetchServerNotifs, 20000)
     }
 
     return () => {
@@ -553,17 +584,18 @@ export default function AppShell({ title, navItems }: Props) {
           ))}
           <button
             type="button"
-            className={`sidebar-alert-btn ${showAlertsModal ? 'active' : ''}`}
+            className={`sidebar-alert-btn ${location.pathname === '/hr/alerts' || showAlertsModal ? 'active' : ''}`}
             onClick={() => {
-              setShowAlertsModal(true)
+              if (title === 'HR') {
+                navigate('/hr/alerts')
+              } else {
+                setShowAlertsModal(true)
+              }
               setIsMobileMenuOpen(false)
             }}
           >
             <span className="nav-icon-box"><AlertTriangle size={17} /></span>
             <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Alerts</span>
-            {unreadNotifCount > 0 && (
-              <span className="sidebar-alert-badge">{unreadNotifCount > 99 ? '99+' : unreadNotifCount}</span>
-            )}
           </button>
         </nav>
         <div className="sidebar-footer">

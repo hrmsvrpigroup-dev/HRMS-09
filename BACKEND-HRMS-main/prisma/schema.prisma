@@ -46,6 +46,7 @@ model Tenant {
   workSchedule      WorkSchedule?
   calendarHolidays  CalendarHoliday[]
   trainingSessions  TrainingSession[]
+  portalAlerts      PortalAlert[]
   companySetting    CompanySetting?
   branches          Branch[]
   roles             Role[]
@@ -196,6 +197,7 @@ model Employee {
   mobileLoginSessions MobileLoginSession[]
   employeeRequests EmployeeRequest[]
   trainingParticipations TrainingParticipant[]
+  portalAlertRecipients PortalAlertRecipient[]
 
   @@unique([tenantId, employeeCode])
   @@index([tenantId, departmentId])
@@ -1078,5 +1080,57 @@ model TrainingParticipant {
   employee         Employee                  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, employeeId])
+  @@index([tenantId, employeeId])
+}
+
+enum PortalAlertCategory {
+  HOLIDAY
+  IMPORTANT_NEWS
+  URGENT_ALERT
+  GENERAL
+}
+
+enum PortalAlertPriority {
+  INFO
+  IMPORTANT
+  WARNING
+  URGENT
+}
+
+model PortalAlert {
+  id               String                 @id @default(cuid())
+  tenantId         String
+  createdById      String
+  createdByName    String?
+  category         PortalAlertCategory    @default(IMPORTANT_NEWS)
+  priority         PortalAlertPriority    @default(IMPORTANT)
+  title            String
+  message          String                 @db.Text
+  targetAllUnderHr Boolean                @default(false)
+  showAsPopup      Boolean                @default(true)
+  isActive         Boolean                @default(true)
+  expiresAt        DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recipients       PortalAlertRecipient[]
+
+  @@index([tenantId, createdById])
+  @@index([tenantId, isActive])
+}
+
+model PortalAlertRecipient {
+  id             String      @id @default(cuid())
+  alertId        String
+  tenantId       String
+  employeeId     String
+  acknowledgedAt DateTime?
+  createdAt      DateTime    @default(now())
+
+  alert          PortalAlert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  employee       Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([alertId, employeeId])
   @@index([tenantId, employeeId])
 }
